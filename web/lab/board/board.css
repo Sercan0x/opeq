@@ -31,6 +31,8 @@ p { margin: 0 0 1em; }
 .hint::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ice); margin-right: 8px; vertical-align: 1px; animation: blink 1.6s ease-in-out infinite; }
 .cta { align-self: center; flex: 0 0 auto; font-size: 13px; color: #fff; text-decoration: none; border: 1px solid var(--rule-2); border-radius: 6px; padding: 8px 12px; }
 .cta:hover { border-color: #fff; color: #fff; }
+.cta-store { border-color: rgba(58, 208, 255, 0.55); color: #fff; background: rgba(58, 208, 255, 0.08); }
+.cta-store:hover { border-color: var(--ice, #3ad0ff); background: rgba(58, 208, 255, 0.16); }
 
 .stage { height: calc(100vh - var(--top, 56px) - 56px); display: grid; place-items: center; padding: 10px clamp(12px, 3vw, 36px) 0; }
 #board { width: min(100%, 1400px, calc((100vh - var(--top, 56px) - 66px) * 1.5897)); height: auto; display: block; overflow: visible; }
@@ -211,7 +213,7 @@ pre { margin: 4px 0 0; padding: 12px 14px; border: 1px solid var(--rule); border
 @media (prefers-reduced-motion: reduce) { .idle, .spot-ring { animation: none; } .idle { opacity: 0; } }
 .bar > .cta + .cta { margin-left: -10px; }
 @media (max-width: 1360px) { .legend a { padding: 0 7px; gap: 4px; } .legend a::after { left: 7px; right: 7px; } .bar { gap: 12px; } .bar > .cta + .cta { margin-left: -4px; } }
-@media (max-width: 1180px) { .legend .num { display: none; } }
+@media (max-width: 1500px) { .legend .num { display: none; } }
 .params { margin: 4px 0 0; padding: 10px 14px; border: 1px solid var(--rule); border-radius: 8px; background: rgba(0, 0, 0, 0.3); font-family: var(--mono); font-size: 11.5px; line-height: 1.6; }
 .params > div { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 10px; padding: 3px 0; }
 .params > div + div { border-top: 1px solid rgba(255, 255, 255, 0.04); }
@@ -219,3 +221,5 @@ pre { margin: 4px 0 0; padding: 12px 14px; border: 1px solid var(--rule); border
 .params dd { margin: 0; color: var(--text-2); }
 .params dd span { display: block; padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; }
 @media (max-width: 520px) { .params > div { grid-template-columns: 1fr; gap: 0; } }
+@media (max-width: 760px) { .cta-store { display: none; } }
+@media (max-width: 420px) { .bar .cta { padding: 8px 10px; } }
