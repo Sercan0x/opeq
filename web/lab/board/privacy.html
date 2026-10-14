@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>opeq privacy policy</title>
+<meta name="description" content="What the opeq wallet and the opeq.io website do with your data.">
+<meta name="theme-color" content="#070b11">
+<link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="privacy.css">
+<script type="module" src="privacy.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html"><img src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <a class="back" href="index.html">Back to the board</a>
+</header>
+
+<main class="doc">
+  <h1>Privacy policy</h1>
+  <p class="meta">Last updated 13 October 2026. Applies to the OPEQ Wallet browser extension ("the extension") and the website opeq.io ("the website").</p>
+
+  <h2>1. Summary</h2>
+  <p>OPEQ has no user accounts, no analytics, no advertising and no tracking. Your recovery words, password and keys are created and kept on your device and are never sent to OPEQ or anyone else. The extension does not talk to any OPEQ server. The only personal data OPEQ stores is what you choose to enter on the waitlist.</p>
+
+  <h2>2. Who is responsible</h2>
+  <p>OPEQ is an independent project run by an individual developer. For any privacy question or request, write to <a href="mailto:hello@opeq.io">hello@opeq.io</a>.</p>
+
+  <h2>3. Data that stays on your device</h2>
+  <ul>
+    <li><b>Recovery words.</b> The 24 words are generated in your browser and shown to you once. They are never stored in plain form and never transmitted.</li>
+    <li><b>Encrypted wallet.</b> The wallet secret is encrypted with your password (PBKDF2-SHA256, 600,000 rounds, then AES-256-GCM) and saved in the browser's IndexedDB, together with public data: the wallet address, the public key tree and a counter of used one-time keys.</li>
+    <li><b>Unlocked session.</b> While a wallet is unlocked, the extension keeps the decrypted key in the browser's in-memory session storage (chrome.storage.session), readable only by the extension's own pages. It is deleted when you lock the wallet, after 10 minutes without activity, or when the browser closes.</li>
+    <li><b>Preferences.</b> The address of the wallet you used last is kept in local storage so the extension can open it next time.</li>
+    <li><b>Password.</b> Your password is never stored. It is used only to derive the encryption key.</li>
+  </ul>
+  <p>Removing the extension, or choosing "Remove from this browser", deletes this data from the browser. Funds stay on the Solana blockchain and can be recovered with the 24 words.</p>
+
+  <h2>4. Data sent over the network</h2>
+  <ul>
+    <li><b>Solana RPC.</b> To show balances and send transactions, the extension and the website wallet call a public Solana RPC node, currently https://api.devnet.solana.com, operated by the Solana Foundation. Requests contain public blockchain data: your wallet address, the accounts being looked up and the transactions you sign. The RPC operator can see your IP address and is subject to its own privacy policy.</li>
+    <li><b>The blockchain.</b> Transactions you confirm are published on the Solana blockchain. Blockchain data is public and permanent and cannot be deleted by anyone, including OPEQ.</li>
+    <li><b>Links you open.</b> Explorer, faucet, website and X links open third-party sites only when you click them.</li>
+    <li>The extension sends nothing else. It contains no analytics, crash reporting or remote code.</li>
+  </ul>
+
+  <h2>5. The website and the waitlist</h2>
+  <ul>
+    <li>opeq.io is hosted on Cloudflare. Cloudflare processes connection data such as IP addresses to deliver and protect the site. OPEQ does not use cookies, analytics or tracking scripts on the website.</li>
+    <li>If you join the waitlist, OPEQ stores the X handle, the link to your X post and the email address you enter, the time you joined, and a one-way hash of your IP address used only to limit abuse. The legal basis is your consent.</li>
+    <li>This data is used only to contact you about OPEQ. It is kept until OPEQ launches on mainnet and the waitlist closes, or until you ask for removal, whichever comes first.</li>
+  </ul>
+
+  <h2>6. Browser permissions</h2>
+  <p>The extension requests a single permission, "storage", for the in-memory session described above. It does not read web pages, does not run on websites and has no access to your browsing history, tabs or other extensions.</p>
+
+  <h2>7. What OPEQ never does</h2>
+  <ul>
+    <li>Sell, rent or share user data with third parties.</li>
+    <li>Use data for advertising, profiling, credit scoring or lending decisions.</li>
+    <li>Use data for any purpose unrelated to the wallet.</li>
+    <li>Ask for your recovery words. Only type them into an OPEQ Recover screen.</li>
+  </ul>
+
+  <h2>8. Security</h2>
+  <p>Keys are generated and used only inside your browser, transactions are confirmed by you before signing, and the extension's content security policy blocks remote code. No system is perfect: OPEQ is a devnet beta. Do not use it with real funds. If you lose both your password and your 24 words, nobody can recover the wallet.</p>
+
+  <h2>9. Your rights</h2>
+  <p>Depending on where you live, including the EU, EEA and UK, you may have the right to access, correct, delete or export your personal data, to withdraw consent, and to complain to a data protection authority. Since OPEQ holds personal data only for the waitlist, write to <a href="mailto:hello@opeq.io">hello@opeq.io</a> and we will answer within 30 days. Wallet data on your device is under your control and can be deleted at any time.</p>
+
+  <h2>10. Children</h2>
+  <p>OPEQ is not intended for anyone under 18 and does not knowingly collect data from children.</p>
+
+  <h2>11. Changes</h2>
+  <p>If this policy changes, the new version will be published on this page with a new date. Material changes will also be announced on <a href="https://x.com/opeqio" rel="noopener noreferrer" target="_blank">@opeqio</a>.</p>
+
+  <h2>12. Contact</h2>
+  <p>Email <a href="mailto:hello@opeq.io">hello@opeq.io</a> or message <a href="https://x.com/opeqio" rel="noopener noreferrer" target="_blank">@opeqio</a> on X.</p>
+</main>
+</body>
+</html>

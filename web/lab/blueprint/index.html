@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>opeq drawings</title>
+<meta name="description" content="opeq, a Solana wallet that quantum computers can't break, presented as a set of engineering drawings.">
+<meta name="theme-color" content="#f7f6f1">
+<link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="blueprint.css">
+<script type="module" src="blueprint.js"></script>
+</head>
+<body>
+<a class="skip" href="#s01">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="#s01"><img class="on-light" src="../../assets/logo-ink.svg" alt="opeq" width="88" height="28"><img class="on-dark" src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <nav class="index" aria-label="Sheet index">
+    <a href="#s02">02 Problem</a>
+    <a href="#s03">03 Wallet</a>
+    <a href="#s04">04 Signature</a>
+    <a href="#s05">05 Tree</a>
+    <a href="#s06">06 Compared</a>
+    <a href="#s07">07 Security</a>
+    <a href="#s08">08 Spec</a>
+    <a href="#s09">09 Build</a>
+    <a href="#s10">10 Questions</a>
+  </nav>
+  <a class="stamp" href="../../#/waitlist">Join the waitlist</a>
+  <button class="theme" id="theme" type="button">Dark</button>
+</header>
+
+<main class="set">
+
+<section class="sheet sheet-hero sheet-tb2" id="s01" aria-labelledby="t01">
+  <div class="sheet-no">Sheet 01 of 10</div>
+  <div class="hero-grid">
+    <div class="hero-text">
+      <p class="ref">General arrangement</p>
+      <h1 id="t01">A wallet drawn to outlast the quantum computer.</h1>
+      <p class="lead">Hash-based signatures that work with any Solana app, keep the same address, and need no change to the protocol. Every part on these sheets is measured from the running program.</p>
+      <div class="actions">
+        <a class="button button-ink" href="../../#/waitlist">Join the waitlist</a>
+        <a class="button button-line" href="../../#/app">Try it on devnet</a>
+      </div>
+      <dl class="dims">
+        <div><dt>Signature</dt><dd>448 B</dd></div>
+        <div><dt>Security</dt><dd>128/64 bit</dd></div>
+        <div><dt>Keys per tree</dt><dd>1008</dd></div>
+        <div><dt>Transfer</dt><dd>160k CU</dd></div>
+      </dl>
+    </div>
+    <figure class="drawing" aria-labelledby="cap01">
+      <svg id="sig" viewBox="0 0 770 452" role="img" aria-label="Engineering drawing of one opeq signature: eighteen hash ladders with one revealed rung each, a Merkle path to the stored root, and dimension lines giving the byte sizes."></svg>
+      <figcaption id="cap01">
+        <label class="field" for="msg"><span>Message under test</span><input id="msg" type="text" value="" placeholder="Write something here" maxlength="120" spellcheck="false" autocomplete="off"></label>
+        <span class="note" id="cost"></span>
+      </figcaption>
+      <p class="figtext">Every message reveals one rung on each of 18 ladders and picks one key of the tree. Only the path to the root goes on chain. The real client tries 131,072 salts and keeps the one that needs about 1,275 rungs.</p>
+    </figure>
+  </div>
+  <div class="title-block">
+    <div><span>Title</span><b>General arrangement</b></div>
+    <div><span>Scale</span><b>1 : 1</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+    <div><span>Drawn</span><b>By hand, no frameworks</b></div>
+    <div class="wide"><span>Program</span><b>424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN</b></div>
+  </div>
+</section>
+
+<section class="sheet" id="s02" aria-labelledby="t02">
+  <div class="sheet-no">Sheet 02 of 10</div>
+  <p class="ref">The problem</p>
+  <h2 id="t02">Every wallet has the same lock</h2>
+  <p class="intro">Every Solana account today is protected by one signature scheme, Ed25519. Its safety rests on one assumption: you can't work out a private key from its public key.</p>
+  <div class="cols">
+    <div class="text">
+      <h3>Shor's algorithm</h3>
+      <p>In 1994 Peter Shor showed that a large enough quantum computer solves exactly that problem. Ed25519, secp256k1 and every elliptic curve in use today fall to it.</p>
+      <h3>Your address is the key</h3>
+      <p>On Solana the address <i>is</i> the public key. Every wallet that has ever received a token has already published everything a quantum attacker needs.</p>
+      <h3>Migrations are slow</h3>
+      <p>Nobody knows when such a machine arrives. Estimates range from five to twenty years. Moving a whole network to new signatures takes years too, so the work has to start before the threat is real.</p>
+      <p class="pencil">Quantum computers do not break hash functions like SHA-256 in the same way. Grover's algorithm only halves the effective strength, which a long enough hash already absorbs. opeq builds its signatures from hashes alone.</p>
+    </div>
+    <figure class="inset">
+      <canvas id="bonk" role="img" aria-label="Animation: an AI robot and a quantum computer try to steal from the opeq safe, and the safe bonks both of them with a hammer."></canvas>
+      <figcaption>Fig. 2.1, breaking the math is the attack opeq is built to stop.</figcaption>
+    </figure>
+  </div>
+  <div class="title-block">
+    <div><span>Title</span><b>The problem</b></div>
+    <div><span>Threat</span><b>Shor's algorithm against elliptic curves</b></div>
+    <div><span>Exposure</span><b>Every public key already on chain</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+  </div>
+</section>
+
+<section class="sheet" id="s03" aria-labelledby="t03">
+  <div class="sheet-no">Sheet 03 of 10</div>
+  <p class="ref">What opeq is</p>
+  <h2 id="t03">A wallet that stays safe</h2>
+  <p class="intro">opeq is a Solana program plus a client. Your funds sit in an address that has no private key at all. The program moves them only after it checks a hash-based signature.</p>
+  <dl class="features">
+    <div><dt>A normal address</dt><dd>Receive SOL, hold SPL and Token-2022 tokens, share it like any other address. Other programs see an ordinary signer.</dd></div>
+    <div><dt>Works with any app</dt><dd>One signature authorizes a list of instructions to any programs. Tested with transfers, tokens, token accounts, Memo and Raydium swaps.</dd></div>
+    <div><dt>Same address forever</dt><dd>One key tree signs 1008 transactions. A rekey moves to a fresh tree. Your address, balances and token accounts never change.</dd></div>
+    <div><dt>24 recovery words</dt><dd>Standard BIP39 words. Every key tree is derived from them, so the words stay valid after any number of rekeys.</dd></div>
+    <div><dt>No protocol change</dt><dd>Runs on Solana as it is today. No new chain, no fork, no waiting for a network upgrade.</dd></div>
+    <div><dt>Quantum-safe upgrades</dt><dd>The program's own upgrade key is an opeq wallet. Even the code can't be changed with a broken Ed25519 key.</dd></div>
+  </dl>
+  <div class="title-block">
+    <div><span>Title</span><b>What opeq is</b></div>
+    <div><span>Parts</span><b>One program, one client</b></div>
+    <div><span>Address</span><b>Program-derived, no private key</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+  </div>
+</section>
+
+<section class="sheet" id="s04" aria-labelledby="t04">
+  <div class="sheet-no">Sheet 04 of 10</div>
+  <div class="cols">
+    <div class="text">
+      <p class="ref">How it works, part 1</p>
+      <h2 id="t04">Ladders and a check</h2>
+      <p class="intro">The signature scheme is WOTS+ (Winternitz one-time signatures) arranged in a Merkle tree, the same family as NIST's SLH-DSA standard. The drawing on sheet 01 is a real signature, computed in your browser.</p>
+      <h3>Eighteen ladders</h3>
+      <p>Picture 18 ladders with 255 rungs each. At the bottom of every ladder sits a secret number. Climbing one rung means hashing the number once. Climbing is easy, coming down is impossible. The tops of all ladders together form the public key.</p>
+      <p>To sign, the message is hashed into 16 numbers from 0 to 255, plus 2 checksum numbers. For each ladder you reveal the rung the number points to. The verifier climbs the rest of the way and checks that every ladder reaches its top.</p>
+      <h3>Why nobody can forge it</h3>
+      <p>Someone who sees a signature can climb further up any ladder, so they could raise message numbers. The two checksum ladders stop that: if any message number goes up, the checksum must go down, and going down a ladder is impossible. The only way through is to find a different message with exactly the same 128-bit hash.</p>
+    </div>
+    <figure class="drawing drawing-ladder" aria-label="Detail of one ladder with the revealed rung, the hidden rungs below it and the public top.">
+      <svg viewBox="0 0 430 420" id="ladder"></svg>
+      <figcaption class="figtext">Fig. 4.1, one ladder. Everything below the revealed rung stays secret.</figcaption>
+    </figure>
+  </div>
+  <div class="title-block">
+    <div><span>Title</span><b>Ladders and a check</b></div>
+    <div><span>Parts</span><b>18 ladders, 2 of them checksum</b></div>
+    <div><span>Hash</span><b>SHA-256, 16 byte output, tweaked per call</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+  </div>
+</section>
+
+<section class="sheet" id="s05" aria-labelledby="t05">
+  <div class="sheet-no">Sheet 05 of 10</div>
+  <div class="cols cols-flip">
+    <figure class="drawing" aria-label="The key tree: 1024 one-time keys hashed pairwise up to one root. Keys 0 to 1007 are for transactions, keys 1008 to 1023 are reserved for moving to the next tree.">
+      <svg viewBox="0 0 720 400" id="tree"></svg>
+      <figcaption class="figtext">Fig. 5.1, the tree. Used keys filled, the counter never moves backwards.</figcaption>
+    </figure>
+    <div class="text">
+      <p class="ref">How it works, part 2</p>
+      <h2 id="t05">One tree, 1024 keys</h2>
+      <p>A one-time key must never sign twice. So opeq makes 1024 of them and hashes their public keys pair by pair into a Merkle tree. The chain stores only the 16-byte root. Each signature carries its key's 160-byte path to the root. That is the opeq mark: the used key in colour, its path to the root filled, the unused keys empty.</p>
+      <h3>On chain</h3>
+      <ol class="procedure">
+        <li><b>Your client signs.</b> It reserves the next key and writes the counter to storage before signing, so a crash can never reuse a key. It hashes the exact instructions to run, then grinds a salt so verification is cheap.</li>
+        <li><b>A normal transaction carries it.</b> Phantom (or any Ed25519 key) pays the fee. That key only pays: it has no power over the opeq wallet.</li>
+        <li><b>The program checks everything.</b> Expiry slot, unused key, the hash of every inner instruction, all 18 ladders, the Merkle path, the root on chain.</li>
+        <li><b>Then it acts.</b> It advances the counter and calls the target programs, signing as your wallet address with <code>invoke_signed</code>.</li>
+      </ol>
+      <p class="pencil">Counter first, then sign. A crash skips a key. It never repeats one.</p>
+    </div>
+  </div>
+  <div class="title-block">
+    <div><span>Title</span><b>One tree, 1024 keys</b></div>
+    <div><span>Height</span><b>10 levels, 1024 leaves</b></div>
+    <div><span>Usable</span><b>0 to 1007, then rekey</b></div>
+    <div><span>Reserve</span><b>1008 to 1023</b></div>
+  </div>
+</section>
+
+<section class="sheet" id="s06" aria-labelledby="t06">
+  <div class="sheet-no">Sheet 06 of 10</div>
+  <p class="ref">Compared</p>
+  <h2 id="t06">What exists today</h2>
+  <p class="intro">The only other quantum-resistant option on Solana is a cold-storage vault. opeq is a wallet you can use.</p>
+  <div class="scroll">
+    <table class="parts parts-cmp">
+      <thead><tr><th scope="col"><span class="sr-only">Property</span></th><th scope="col">Ed25519 wallet</th><th scope="col">Winternitz vault</th><th scope="col" class="us">opeq</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Safe against quantum computers</th><td class="no">No</td><td class="yes">Yes</td><td class="yes us">Yes</td></tr>
+        <tr><th scope="row">Address stays the same</th><td class="yes">Yes</td><td class="no">New address each time</td><td class="yes us">Yes</td></tr>
+        <tr><th scope="row">Holds tokens</th><td class="yes">Yes</td><td class="no">SOL only</td><td class="yes us">Yes</td></tr>
+        <tr><th scope="row">Swaps, DeFi, any program</th><td class="yes">Yes</td><td class="no">No</td><td class="yes us">Yes</td></tr>
+        <tr><th scope="row">Recovery words</th><td class="yes">Yes</td><td>-</td><td class="yes us">Yes</td></tr>
+        <tr><th scope="row">Needs a protocol change</th><td>No</td><td>No</td><td class="us">No</td></tr>
+        <tr><th scope="row">Signature size</th><td>64 B</td><td>-</td><td class="us">448 B</td></tr>
+        <tr><th scope="row">Status</th><td>Mainnet</td><td>Experimental</td><td class="us">Pre-audit</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note-p">Solana core developers have proposed a Falcon signature syscall (SIMD-0416). If it ships, opeq can add Falcon as a second signature type. It does not need to wait for it.</p>
+  <div class="title-block">
+    <div><span>Title</span><b>Compared</b></div>
+    <div><span>Alternatives</span><b>Ed25519 wallets, Winternitz vault</b></div>
+    <div><span>Pending</span><b>SIMD-0416 Falcon syscall</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+  </div>
+</section>
+
+<section class="sheet sheet-tb2" id="s07" aria-labelledby="t07">
+  <div class="sheet-no">Sheet 07 of 10</div>
+  <p class="ref">Security</p>
+  <h2 id="t07">What is protected</h2>
+  <p class="intro">A clear threat model, the limits we know about, and what two internal reviews found.</p>
+  <div class="split">
+    <div class="pane pane-ok">
+      <h3>Inside the line</h3>
+      <p>Funds and tokens in your opeq wallet. Every action needs a hash-based signature over the exact instructions. The program's upgrade key is also an opeq wallet.</p>
+    </div>
+    <div class="pane pane-no">
+      <h3>Outside the line</h3>
+      <p>The Ed25519 key that pays fees (keep little SOL in it). Solana's validators and consensus, which use classical cryptography and need their own migration.</p>
+    </div>
+  </div>
+  <h3>Security level</h3>
+  <table class="parts">
+    <tbody>
+      <tr><th scope="row">Classical security per one-time key</th><td>128 bits</td><td>second preimage of a 16-byte tweaked hash</td></tr>
+      <tr><th scope="row">Quantum security (Grover), NIST category 1, like SLH-DSA-128</th><td>64 bits</td><td>the same bar as the NIST standard</td></tr>
+      <tr><th scope="row">Multi-target speedup</th><td>none</td><td>every hash call has a unique address tweak and a 16-byte randomizer</td></tr>
+      <tr><th scope="row">Signature expiry</th><td>at most 300 slots</td><td>enforced on chain since rev 1.1</td></tr>
+      <tr><th scope="row">The one rule</th><td>never sign twice with one key</td><td>the client enforces it, the chain refuses a reused key</td></tr>
+    </tbody>
+  </table>
+  <h3>The one rule: never reuse a key</h3>
+  <p class="text-p">Two different signatures from one key let an attacker forge a third. opeq is built around never letting that happen:</p>
+  <dl class="features features-rules">
+    <div><dt>Counter first</dt><dd>The next key is reserved and saved before anything is signed. A crash just skips a key.</dd></div>
+    <div><dt>One tab at a time</dt><dd>A browser lock stops two tabs from signing with the same wallet at once.</dd></div>
+    <div><dt>Tamper check</dt><dd>The wallet record is authenticated with your password. Rolling back the counter or swapping the program address is detected.</dd></div>
+    <div><dt>Failed means burned</dt><dd>If a transaction fails, the client burns its key with a no-op so the failed signature can never run later.</dd></div>
+    <div><dt>Expiry</dt><dd>Every signature names a slot about a minute ahead. After it, the program rejects it.</dd></div>
+    <div><dt>Recovery skips ahead</dt><dd>Restoring from words reads the on-chain counter and skips 64 keys, in case a lost device signed something that never landed.</dd></div>
+  </dl>
+  <h3>Internal reviews</h3>
+  <p class="text-p">Two independent adversarial reviews looked at the program, the protocol, the cryptography and the client, and tried to prove every finding with working attack code. Everything they found is fixed and covered by tests.</p>
+  <div class="scroll">
+    <table class="parts parts-rev2">
+      <thead><tr><th scope="col">Severity</th><th scope="col">Finding</th><th scope="col">Fix</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sev sev-c">Critical</span></td><td>Two client runs at the same time could sign with the same key</td><td>File and tab locks, counter saved before signing</td></tr>
+        <tr><td><span class="sev sev-h">High</span></td><td>The wallet locked forever once all 1024 keys were used</td><td>Last 16 keys reserved for rekey only</td></tr>
+        <tr><td><span class="sev sev-h">High</span></td><td>A tampered wallet file could roll back the counter</td><td>Whole-record authentication with the password</td></tr>
+        <tr><td><span class="sev sev-h">High</span></td><td>A retried rekey could orphan the new tree</td><td>Trees derived from the master seed, rekey state recovered from chain</td></tr>
+        <tr><td><span class="sev sev-h">High</span></td><td>Two paths to one wallet file could bypass the lock</td><td>Lock on the real path, not its spelling</td></tr>
+        <tr><td><span class="sev sev-m">Medium</span></td><td>Rekey could return to the current tree</td><td>Rejected on chain (error 22)</td></tr>
+        <tr><td><span class="sev sev-m">Medium</span></td><td>Message hash had no secret randomizer</td><td>16 random bytes hashed first, as in SLH-DSA</td></tr>
+        <tr><td><span class="sev sev-m">Medium</span></td><td>An interrupted send could run twice on retry</td><td>In-flight record kept until the chain settles it</td></tr>
+        <tr><td><span class="sev sev-l">Low</span></td><td>A failed transaction could be replayed until it expired</td><td>Failed keys are burned</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="pencil">Not externally audited. Internal reviews are not a substitute for a professional audit. Do not move real funds to opeq until an external audit is published.</p>
+  <div class="title-block">
+    <div><span>Title</span><b>Security</b></div>
+    <div><span>Reviews</span><b>Two internal adversarial audits</b></div>
+    <div><span>External audit</span><b>Before mainnet</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+    <div class="wide"><span>Verified</span><b>Compiled program equals the reference model on 5,000 random inputs; the signature binds every field of the transaction</b></div>
+  </div>
+</section>
+
+<section class="sheet sheet-tb2" id="s08" aria-labelledby="t08">
+  <div class="sheet-no">Sheet 08 of 10</div>
+  <p class="ref">Specification</p>
+  <h2 id="t08">The details</h2>
+  <p class="intro">Everything needed to write an independent client or verifier.</p>
+  <h3>Parameters</h3>
+  <table class="parts parts-spec">
+    <tbody>
+      <tr><th scope="row">One-time signature</th><td>WOTS+, n = 16 bytes, w = 256, 16 message + 2 checksum chains</td></tr>
+      <tr><th scope="row">Signature size</th><td class="code">288 B (18 x 16)</td></tr>
+      <tr><th scope="row">Merkle tree</th><td>Height 10, 1024 leaves, auth path 160 B. Leaves 0 to 1007 sign actions, 1008 to 1023 only rekeys</td></tr>
+      <tr><th scope="row">Tweakable hash</th><td class="code">F(x) = SHA256(pub_seed16 || ADRS8 || x)[0..16]</td></tr>
+      <tr><th scope="row">ADRS (8 bytes)</th><td class="code">type u8 | a u8 | b u8 | 0 | index u32le</td></tr>
+      <tr><th scope="row">Hash types</th><td class="code">0 chain (a = chain, b = position, index = leaf)<br>1 leaf (index = leaf)<br>2 node (a = height, index = node)<br>3 secret (client only)</td></tr>
+      <tr><th scope="row">Checksum</th><td class="code">sum(255 - d) over 16 digits, written as 2 base-256 digits (max 4080)</td></tr>
+      <tr><th scope="row">Tree seeds</th><td class="code">sk = SHA256("opeq/tree/sk/v1" || master || epoch u32le)<br>pub = SHA256("opeq/tree/pub/v1" || master || epoch u32le)[0..16]</td></tr>
+      <tr><th scope="row">Master seed</th><td>32 bytes, shown as 24 BIP39 English words</td></tr>
+      <tr><th scope="row">Account id</th><td class="code">SHA256("opeq/id/v1" || pub_seed of tree 0 || root of tree 0)</td></tr>
+      <tr><th scope="row">Addresses (PDAs)</th><td class="code">state = ["s", account id]<br>wallet = ["w", account id]<br>canonical bumps found on chain</td></tr>
+      <tr><th scope="row">Expiry</th><td>slot named by the signer, at most 300 slots ahead, checked on chain</td></tr>
+    </tbody>
+  </table>
+  <div class="cols cols-top">
+    <div>
+      <h3>Signed message</h3>
+<pre>digest = SHA256(
+    R (16 random bytes)
+ || "opeq/exec/v1" || program id || account id
+ || epoch u32 || leaf u32 || expiry slot u64
+ || count u8
+ || for each inner instruction:
+       program id || meta count u8
+    || for each account:
+          pubkey || flags u8
+          (flags: 1 = signer, 2 = writable)
+    || data length u16 || data
+ || salt u32
+)[0..16]</pre>
+      <p class="note-p">Rekey uses <code>"opeq/rekey/v1"</code> and hashes the new public seed and new root instead of instructions. The client tries 2<sup>17</sup> salts and keeps the one with the fewest verification steps.</p>
+      <h3>State account (88 bytes)</h3>
+      <table class="parts parts-spec">
+        <thead><tr><th scope="col">Offset</th><th scope="col">Field</th></tr></thead>
+        <tbody>
+          <tr><td class="code">0</td><td class="code">magic "OPEQST01"</td></tr>
+          <tr><td class="code">8</td><td class="code">account id (32)</td></tr>
+          <tr><td class="code">40</td><td class="code">pub_seed (16)</td></tr>
+          <tr><td class="code">56</td><td class="code">root (16)</td></tr>
+          <tr><td class="code">72</td><td class="code">next leaf u32</td></tr>
+          <tr><td class="code">76</td><td class="code">epoch u32 (bumps on every rekey)</td></tr>
+          <tr><td class="code">80</td><td class="code">state bump u8, wallet bump u8, 6 zero bytes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Instructions</h3>
+      <table class="parts parts-spec">
+        <thead><tr><th scope="col">Instruction</th><th scope="col">Data</th><th scope="col">Accounts</th></tr></thead>
+        <tbody>
+          <tr><td class="code">0 init</td><td class="code">tag | pub_seed 16 | root 16 | lamports u64</td><td class="code">payer (s, w), state (w), wallet, system</td></tr>
+          <tr><td class="code">1 exec</td><td class="code">tag | leaf u32 | expiry u64 | salt u32 | R 16 | sig 288 | path 160 | count u8 | inner...</td><td class="code">state (w), wallet (w), every account the inner instructions use</td></tr>
+          <tr><td class="code">2 rekey</td><td class="code">tag | leaf u32 | expiry u64 | salt u32 | R 16 | sig 288 | path 160 | new pub_seed 16 | new root 16</td><td class="code">state (w), wallet</td></tr>
+        </tbody>
+      </table>
+      <p class="note-p">Inner instruction: <code>program index u8 | meta count u8 | (account index u8, flags u8)* | data length u16 | data</code>, indexes into the outer account list.</p>
+      <h3>Costs</h3>
+      <table class="parts parts-spec">
+        <tbody>
+          <tr><th scope="row">SOL transfer</th><td>about 160,000 compute units</td></tr>
+          <tr><th scope="row">Full Raydium swap</th><td>about 200,000 compute units</td></tr>
+          <tr><th scope="row">Base fee</th><td>5000 lamports, same as any transaction</td></tr>
+          <tr><th scope="row">Instruction data for a transfer</th><td>502 bytes, inside the 1232 byte limit</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+  <h3>Error codes</h3>
+  <dl class="codes">
+    <div><dt>1</dt><dd>bad instruction</dd></div>
+    <div><dt>2</dt><dd>too many accounts</dd></div>
+    <div><dt>3</dt><dd>state not owned by program</dd></div>
+    <div><dt>4</dt><dd>bad state account</dd></div>
+    <div><dt>5</dt><dd>wallet/state address mismatch</dd></div>
+    <div><dt>6</dt><dd>signature expired</dd></div>
+    <div><dt>7</dt><dd>leaf already used</dd></div>
+    <div><dt>8</dt><dd>leaf out of range</dd></div>
+    <div><dt>9</dt><dd>self cpi</dd></div>
+    <div><dt>10</dt><dd>bad meta flags</dd></div>
+    <div><dt>11</dt><dd>signer escalation</dd></div>
+    <div><dt>12</dt><dd>malformed inner instructions</dd></div>
+    <div><dt>13</dt><dd>bad signature</dd></div>
+    <div><dt>14</dt><dd>state not writable</dd></div>
+    <div><dt>15</dt><dd>init address mismatch</dd></div>
+    <div><dt>16</dt><dd>too many slices</dd></div>
+    <div><dt>17</dt><dd>account index out of range</dd></div>
+    <div><dt>18</dt><dd>payer must sign</dd></div>
+    <div><dt>19</dt><dd>already initialized</dd></div>
+    <div><dt>20</dt><dd>bad system program</dd></div>
+    <div><dt>21</dt><dd>too many metas</dd></div>
+    <div><dt>22</dt><dd>rekey to the current root</dd></div>
+    <div><dt>23</dt><dd>expiry too far in the future</dd></div>
+  </dl>
+  <div class="title-block">
+    <div><span>Title</span><b>Specification</b></div>
+    <div><span>Format</span><b>1</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+    <div><span>Program</span><b>8,080 bytes of sBPF v3</b></div>
+    <div class="wide"><span>Deployment</span><b>Program 424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN, upgrade authority FoWCn5Rj4jPuMLqpUSQ7KkQrMK5RhFNNhzs6ZLsxxzdm (an opeq wallet)</b></div>
+  </div>
+</section>
+
+<section class="sheet" id="s09" aria-labelledby="t09">
+  <div class="sheet-no">Sheet 09 of 10</div>
+  <div class="cols">
+    <div class="text">
+      <p class="ref">Built from scratch</p>
+      <h2 id="t09">Materials and method</h2>
+      <p>The program is written in sBPF v3 assembly through a hand-made Python assembler. There is no Rust, LLVM or Solana CLI anywhere. A custom sBPF emulator runs the program locally with Solana's compute-unit prices. Its count matched the live network to within 0.05%. Every change is checked against a reference model with differential fuzzing.</p>
+      <p>This website is plain JavaScript with no dependencies: SHA-256, WOTS+, BIP39, base58, program addresses and the transaction format are all written by hand. It loads nothing from third parties.</p>
+      <p class="pencil">Rev 1.1 was installed through the program's own signature. The wallet that upgrades the code is itself an opeq wallet.</p>
+    </div>
+    <div>
+      <p class="ref">Roadmap</p>
+      <h2>Where this goes</h2>
+      <div class="road">
+        <div><h3>Done</h3><ul class="done">
+          <li>On-chain program</li><li>Any-program CPI, tokens, Raydium swap</li><li>Rekey, quantum-safe upgrades</li>
+          <li>24 recovery words</li><li>Two internal security reviews</li><li>Command line client</li><li>Web app with tokens and swaps</li><li>On-chain expiry cap (rev 1.1)</li></ul></div>
+        <div><h3>Next</h3><ul>
+          <li>External security audit</li><li>Jupiter routing for mainnet swaps</li><li>TypeScript SDK</li>
+          <li>Upgrade governance: immutable or multisig with timelock</li><li>Mainnet</li></ul></div>
+        <div><h3>Later</h3><ul>
+          <li>Integrations with existing wallets</li><li>Falcon signatures once SIMD-0416 lands</li><li>Mobile</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="title-block">
+    <div><span>Title</span><b>Built from scratch</b></div>
+    <div><span>Toolchain</span><b>Own assembler, own emulator, own client</b></div>
+    <div><span>Accuracy</span><b>Compute count within 0.05% of mainnet</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+  </div>
+</section>
+
+<section class="sheet sheet-rev" id="s10" aria-labelledby="t10">
+  <div class="sheet-no">Sheet 10 of 10</div>
+  <p class="ref">Questions</p>
+  <h2 id="t10">Questions and answers</h2>
+  <div class="faqs">
+    <details><summary>Is opeq live?</summary><p>Not on mainnet yet. The program has not had an external audit. Please don't use it with real money yet.</p></details>
+    <details><summary>When will quantum computers break Ed25519?</summary><p>Nobody knows. Published estimates range from five to twenty years. What is certain is that network-wide migrations take years, and that on Solana every public key is already visible on chain.</p></details>
+    <details><summary>Why not wait for Solana to add post-quantum signatures?</summary><p>A Falcon verification syscall has been proposed (SIMD-0416), and a full migration plan exists on paper. Protocol migrations are slow. opeq works today, on the network as it is, and can adopt Falcon later.</p></details>
+    <details><summary>Do I get a new address?</summary><p>Yes. Your opeq wallet is a new address. You move funds into it like into any other address. After that the address never changes.</p></details>
+    <details><summary>What does Phantom do here?</summary><p>It pays transaction fees and approves them. Your funds don't live in Phantom: they live in the opeq address, which only moves with your hash-based signature. If Phantom's key were ever broken, the attacker would get the fee balance and nothing else.</p></details>
+    <details><summary>Where are my keys stored?</summary><p>In your browser, encrypted with your password (PBKDF2 with 600,000 rounds and AES-256-GCM). They never leave your device and are never sent to any server. The site loads nothing from third parties. An open wallet locks itself after 10 minutes without activity, and showing the 24 words always asks for the password again.</p></details>
+    <details><summary>What if I clear my browser or lose my device?</summary><p>Use your 24 words on the Recover screen. The client rebuilds your keys, finds your current tree on chain and skips ahead 64 keys to stay safe.</p></details>
+    <details><summary>Can I use the same words on two devices?</summary><p>For recovery, yes. Don't sign from two devices at the same time: each device tracks which keys it used, and two devices can't see each other's counters until a transaction lands.</p></details>
+    <details><summary>What happens after 1008 transactions?</summary><p>You rekey. The wallet moves to a fresh tree of 1024 keys derived from the same words. Your address, balances and words stay the same. The last 16 keys of every tree are reserved for this, so you can never get locked out.</p></details>
+    <details><summary>How much does it cost?</summary><p>The normal 5000 lamport fee. A transfer uses about 160,000 compute units, well inside Solana's limits. When priority fees apply, they scale with compute units, so a busy network costs a little more than a plain transfer.</p></details>
+    <details><summary>Why are the signatures so big?</summary><p>Hash-based signatures trade size for safety. 288 bytes of signature plus 160 bytes of Merkle path, 448 bytes in total, against 64 bytes for Ed25519. It still fits in one transaction, together with a swap.</p></details>
+    <details><summary>Which apps work?</summary><p>Any program that accepts a signer. Tested: system transfers, SPL Token, Token-2022, associated token accounts, Memo and Raydium CPMM. Large transactions need address lookup tables, which opeq supports. Programs that demand an Ed25519 signature from the wallet itself can't work with any program-based wallet.</p></details>
+    <details><summary>Could the opeq team steal my funds?</summary><p>The program can be upgraded, and whoever controls upgrades could change it. Today the upgrade key is itself an opeq wallet. Before mainnet the plan is to make the program immutable or put upgrades behind a multisig with a timelock, so users can leave before any change.</p></details>
+    <details><summary>Is the code open source?</summary><p>Yes, under the Apache 2.0 license. The repository goes public at launch.</p></details>
+  </div>
+  <h3>Revisions</h3>
+  <table class="parts parts-rev">
+    <thead><tr><th scope="col">Rev</th><th scope="col">Change</th><th scope="col">State</th></tr></thead>
+    <tbody>
+      <tr><td>1.0</td><td>Initial issue: WOTS+ ladders, Merkle tree of 1024, rekey, quantum-signed self-upgrade</td><td>devnet</td></tr>
+      <tr><td>1.1</td><td>Expiry capped on chain at 300 slots; upgraded through the program's own signature</td><td>devnet, live</td></tr>
+      <tr><td>next</td><td>External audit, governance of the upgrade key, mainnet issue</td><td>in progress</td></tr>
+    </tbody>
+  </table>
+  <div class="cta">
+    <p>The next issue is mainnet. Leave your email and we will send you the sheet when it is signed off.</p>
+    <a class="button button-ink" href="../../#/waitlist">Join the waitlist</a>
+  </div>
+  <div class="title-block">
+    <div><span>Title</span><b>Questions</b></div>
+    <div><span>License</span><b>Apache 2.0, code only</b></div>
+    <div><span>Source</span><b>Public at launch</b></div>
+    <div><span>Rev</span><b>1.1</b></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>opeq. Quantum-proof wallets for Solana. Apache 2.0.</span>
+  <span class="mono">Program 424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN</span>
+</footer>
+</body>
+</html>

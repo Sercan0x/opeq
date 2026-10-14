@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.devnet.solana.com; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>OPEQ Wallet (Devnet)</title>
+<meta name="theme-color" content="#070b11">
+<link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="ext.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+
+<div class="mount" id="mount" aria-hidden="true">
+  <svg viewBox="0 0 420 160" class="mount-art">
+    <rect x="250" y="20" width="150" height="120" rx="8" class="m-io"></rect>
+    <rect x="250" y="62" width="70" height="36" rx="3" class="m-housing"></rect>
+    <rect x="250" y="68" width="6" height="24" class="m-mouth"></rect>
+    <g class="m-stick">
+      <path d="M250 62 L134 62 Q112 62 112 80 Q112 98 134 98 L250 98 Z" class="m-body"></path>
+      <rect x="232" y="62" width="18" height="36" class="m-collar"></rect>
+      <circle cx="128" cy="80" r="5.5" class="m-hole"></circle>
+      <text x="182" y="86" text-anchor="middle" class="m-label">opeq</text>
+      <circle cx="222" cy="80" r="2.6" class="m-led"></circle>
+    </g>
+    <path d="M320 80 L370 80 L370 40 L392 40" class="m-trace"></path>
+    <path d="M320 86 L376 86 L376 120 L392 120" class="m-trace m-trace2"></path>
+  </svg>
+  <p class="mount-text mono" id="mount-text">mounting opeq drive</p>
+</div>
+
+<header class="bar">
+  <a class="brand" href="https://opeq.io" target="_blank" rel="noopener noreferrer"><img src="assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <span class="drive mono" id="drive"><i></i><span id="drive-text">drive mounted, devnet</span></span>
+  <span class="devnet mono">devnet only, never send real SOL here</span>
+  <a class="back" href="https://opeq.io" target="_blank" rel="noopener noreferrer">opeq.io</a>
+</header>
+
+
+<main class="rig">
+  <aside class="io">
+    <section class="slot">
+      <h2 class="silk"><span>POWER</span><b>fee key</b></h2>
+      <p class="hint">Network fees are paid by a small key built into this wallet. It comes from your 24 words, holds only a little SOL and has no power over your opeq wallet.</p>
+      <div id="fee-none"><p class="hint">Unlock a wallet to power it on.</p></div>
+      <div id="fee-on" class="hidden">
+        <div class="addr-row"><p class="mono addr" id="fee-addr"></p><button class="icon-btn small" id="fee-copy" type="button" title="Copy fee key address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy fee key address</span></button></div>
+        <p class="hint" id="fee-bal"></p>
+        <p class="hint">Your wallet tops it up when it runs low. Never keep savings on it: it uses a normal Ed25519 key.</p>
+      </div>
+    </section>
+
+    <section class="slot">
+      <h2 class="silk"><span>PORTS</span><b>wallets in this browser</b></h2>
+      <div id="ports" class="ports"></div>
+      <button class="port-empty" id="go-create" type="button"><span class="port-mouth"></span><span><b>Plug in a new wallet</b><small>creates 24 recovery words</small></span></button>
+      <button class="port-empty" id="go-recover" type="button"><span class="port-mouth"></span><span><b>Insert an existing wallet</b><small>recover from 24 words</small></span></button>
+    </section>
+  </aside>
+
+  <section class="board-area">
+
+    <div class="view" id="v-welcome">
+      <div class="card">
+        <h2 class="silk"><span>BOOT</span><b>get started</b></h2>
+        <p>Create a quantum-proof wallet, or recover one from your 24 words.</p>
+        <ol class="steps">
+          <li>Plug in a new wallet on the left, write down the 24 words, set a password.</li>
+          <li>Send a little devnet SOL to the activation address it shows. Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>.</li>
+          <li>Activate. The setup costs about 0.0015 SOL and the rest moves into your opeq wallet.</li>
+          <li>Send SOL, hold tokens and swap, each signed with a one-time quantum-proof key.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="view hidden" id="v-create">
+      <div class="card">
+        <h2 class="silk"><span>NEW KEY</span><b>plug in a new wallet</b></h2>
+        <div id="c1">
+          <p class="hint">Your keys are made in this browser and never leave it. The password encrypts them here. It is not a recovery method: the 24 words are.</p>
+          <label class="f" for="c-pw">Password, at least 10 characters</label><input type="password" id="c-pw" autocomplete="new-password">
+          <label class="f" for="c-pw2">Repeat password</label><input type="password" id="c-pw2" autocomplete="new-password">
+          <div class="row"><button class="btn btn-solid" id="c-make" type="button">Generate keys</button></div>
+          <div class="progress hidden" id="c-prog"><div></div></div>
+        </div>
+        <div id="c2" class="hidden">
+          <p class="warn"><b>Write these 24 words on paper, in order.</b> Anyone with them controls the wallet. Don't take a photo or store them on this computer.</p>
+          <div class="words" id="c-words"></div>
+          <div class="row"><button class="btn btn-solid" id="c-written" type="button">I wrote them down</button></div>
+        </div>
+        <div id="c3" class="hidden">
+          <p class="hint">Prove you wrote them down. The words are hidden now.</p>
+          <div id="c-quiz"></div>
+          <div class="row"><button class="btn btn-solid" id="c-check" type="button">Save wallet</button><button class="btn btn-line" id="c-back" type="button">Show words again</button></div>
+        </div>
+        <p class="err" id="c-err" role="alert"></p>
+      </div>
+    </div>
+
+    <div class="view hidden" id="v-recover">
+      <div class="card">
+        <h2 class="silk"><span>RESTORE</span><b>insert an existing wallet</b></h2>
+        <p class="hint">Use your words in one place at a time. If the wallet is already active elsewhere, this copy asks you to choose Use on this device, and the other copy stops signing.</p>
+        <label class="f" for="r-words">24 words, separated by spaces. The first 4 letters of each word are enough.</label>
+        <textarea id="r-words" spellcheck="false" autocomplete="off"></textarea>
+        <label class="f" for="r-pw">New password for this browser</label><input type="password" id="r-pw" autocomplete="new-password">
+        <label class="f" for="r-pw2">Repeat password</label><input type="password" id="r-pw2" autocomplete="new-password">
+        <div class="row"><button class="btn btn-solid" id="r-go" type="button">Recover</button></div>
+        <div class="progress hidden" id="r-prog"><div></div></div>
+        <p class="err" id="r-err" role="alert"></p>
+      </div>
+    </div>
+
+    <div class="view hidden" id="v-unlock">
+      <div class="card tpm">
+        <div class="chip-art" aria-hidden="true"><span>TPM 2.0</span></div>
+        <div>
+          <h2 class="silk"><span>TPM</span><b>unlock your wallet</b></h2>
+          <p class="lock-note hidden" id="u-note"></p>
+          <p class="mono addr" id="u-id"></p>
+          <label class="f" for="u-pw">Password</label><input type="password" id="u-pw" autocomplete="current-password">
+          <div class="row"><button class="btn btn-solid" id="u-go" type="button">Unlock</button><button class="btn btn-quiet" id="u-forget" type="button">Remove from this browser</button></div>
+          <p class="err" id="u-err" role="alert"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="view hidden" id="v-wallet">
+      <div class="cpu" id="cpu">
+        <div class="cpu-pins" aria-hidden="true"></div>
+        <div class="cpu-die">
+          <p class="silk-line mono">OPEQ Q1 <span id="w-status">…</span></p>
+          <p class="bal"><span id="w-bal">…</span><small>SOL</small></p>
+          <p class="mono addr" id="w-addr"></p>
+          <dl class="kv">
+            <div><dt>Status</dt><dd id="w-state">…</dd></div>
+            <div><dt>Key tree</dt><dd id="w-tree">…</dd></div>
+            <div><dt>Signatures left</dt><dd id="w-left">…</dd></div>
+          </dl>
+          <div class="row tight">
+            <button class="btn btn-line btn-sm" id="w-copy" type="button">Copy address</button>
+            <a class="btn btn-line btn-sm" id="w-explorer" rel="noopener noreferrer" target="_blank">Explorer</a>
+            <button class="btn btn-line btn-sm" id="w-refresh" type="button">Refresh</button>
+            <button class="btn btn-danger btn-sm" id="w-lock" type="button">Lock</button>
+          </div>
+          <div class="keys-line">
+        <div class="keys-bar"><i id="keys-fill"></i></div>
+        <p class="mono" id="w-keys"></p>
+      </div>
+          <div class="sign hidden" id="sign"><span class="mono" id="sign-text">signing</span><div class="progress"><div id="sign-bar"></div></div></div>
+        </div>
+      </div>
+
+        <div class="fe hidden" id="w-sweep" role="status"><span id="w-sweep-text"></span><button class="fe-go" id="w-sweep-go" type="button">Move to wallet</button></div>
+<div class="fe hidden" id="w-fe" role="status"><span>Fee key is empty. Send it 0.01 SOL.</span><button class="fe-go" id="w-fe-copy" type="button" title="Copy fee key address">Copy</button></div>
+<div class="rw hidden" id="w-rw" role="status"><p id="w-rw-text"></p><button class="btn btn-sm rw-go" id="w-rw-go" type="button">Rekey now</button></div>
+
+<div class="card hidden" id="w-take-box">
+      <h2 class="silk"><span>TPM</span><b>use on this device</b></h2>
+      <p class="hint">This copy of the wallet is not signing yet. Your words may be active in another browser or device. Choose Use on this device to make this copy the only one that signs. Any other copy stops until you do the same there.</p>
+      <p class="hint">Fee key, pays the fee for this step:</p>
+      <div class="addr-row"><p class="mono addr" id="t-fee-addr"></p><button class="icon-btn small" id="t-fee-copy" type="button" title="Copy fee key address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy fee key address</span></button></div>
+      <p class="hint" id="t-fee-bal"></p>
+      <div class="row"><button class="btn btn-solid btn-sm" id="w-take" type="button">Use on this device</button></div>
+      <p class="err" id="w-take-err" role="alert"></p>
+    </div>
+<div class="card hidden" id="w-init-box">
+        <h2 class="silk"><span>PCIE_0</span><b>activate on chain</b></h2>
+        <p class="hint">One-time setup. Send at least 0.01 devnet SOL to this activation address from any wallet or from <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>
+        <p class="mono addr" id="i-addr"></p>
+        <p class="hint" id="i-bal"></p>
+        <div class="row"><button class="btn btn-line" id="i-copy" type="button">Copy activation address</button><button class="btn btn-line" id="i-check" type="button">Check balance</button><button class="btn btn-solid" id="w-init" type="button">Activate</button></div>
+        <p class="err" id="i-err" role="alert"></p>
+      </div>
+
+      <section class="dock" id="dock">
+        <div class="tabs" role="tablist" aria-label="Actions">
+          <button class="tab" role="tab" id="tab-send" aria-controls="pane-send" aria-selected="true" type="button">Send</button>
+          <button class="tab" role="tab" id="tab-tokens" aria-controls="pane-tokens" aria-selected="false" type="button">Tokens</button>
+          <button class="tab" role="tab" id="tab-swap" aria-controls="pane-swap" aria-selected="false" type="button">Swap</button>
+          <button class="tab" role="tab" id="tab-receive" aria-controls="pane-receive" aria-selected="false" type="button">Receive</button>
+          <button class="tab" role="tab" id="tab-keys" aria-controls="pane-keys" aria-selected="false" type="button">Keys</button>
+        </div>
+        <div class="pane" role="tabpanel" id="pane-send" aria-labelledby="tab-send">
+          <div id="w-send-box">          <h2 class="silk"><span>PCIE_2</span><b>send SOL</b></h2>
+          <p class="hint">Signed with one quantum-proof key. The fee key only pays the network fee.</p>
+          <label class="f" for="s-to">To address</label><input type="text" id="s-to" spellcheck="false" autocomplete="off">
+          <label class="f" for="s-amt">Amount in SOL</label><input type="text" id="s-amt" inputmode="decimal" placeholder="0.1" autocomplete="off">
+          <div class="row"><button class="btn btn-solid" id="s-go" type="button">Send</button></div>
+          <p class="ok" id="s-ok"></p><p class="err" id="s-err" role="alert"></p>
+        </div>
+          <p class="hint hidden" id="send-off">Activate the wallet first.</p>
+        </div>
+        <div class="pane hidden" role="tabpanel" id="pane-tokens" aria-labelledby="tab-tokens">
+          <div id="w-tokens-box">        <h2 class="silk"><span>M.2</span><b>tokens</b></h2>
+        <div id="t-list" class="toks"></div>
+        <p class="hint">Anyone can send tokens to your wallet address. Tokens arrive in token accounts owned by the wallet.</p>
+      </div>
+          <div id="w-more"><div>          <h2 class="silk"><span>PCIE_3</span><b>send token</b></h2>
+          <label class="f" for="t-sel">Token</label><select id="t-sel"></select>
+          <label class="f" for="t-to">To address</label><input type="text" id="t-to" spellcheck="false" autocomplete="off">
+          <label class="f" for="t-amt">Amount</label><input type="text" id="t-amt" inputmode="decimal" autocomplete="off">
+          <p class="hint">If the receiver has no account for this token yet, the fee key pays its rent (about 0.002 SOL).</p>
+          <div class="row"><button class="btn btn-solid" id="t-go" type="button">Sign and send</button></div>
+          <p class="ok" id="t-ok"></p><p class="err" id="t-err" role="alert"></p>
+        </div></div>
+        </div>
+        <div class="pane hidden" role="tabpanel" id="pane-swap" aria-labelledby="tab-swap">
+          <div>          <h2 class="silk"><span>PCIE_4</span><b>swap</b></h2>
+          <p class="hint">Swaps through a Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
+          <label class="f" for="x-dir">Direction</label>
+          <select id="x-dir"><option value="buy">SOL to DEMO</option><option value="sell">DEMO to SOL</option></select>
+          <label class="f" for="x-amt">Amount in</label><input type="text" id="x-amt" inputmode="decimal" autocomplete="off">
+          <p class="quote mono" id="x-quote">&nbsp;</p>
+          <div class="row"><button class="btn btn-solid" id="x-go" type="button">Sign and swap</button></div>
+          <p class="ok" id="x-ok"></p><p class="err" id="x-err" role="alert"></p>
+        </div>
+        </div>
+        <div class="pane hidden" role="tabpanel" id="pane-receive" aria-labelledby="tab-receive">
+          <div>          <h2 class="silk"><span>PCIE_1</span><b>receive</b></h2>
+          <p class="hint">Send devnet SOL or tokens to this address from any wallet. It stays the same when the keys rotate. Your mainnet opeq address will be different.</p>
+          <p class="mono addr" id="v-addr"></p>
+          <div class="row"><button class="btn btn-line" id="v-copy" type="button">Copy address</button></div>
+          <p class="hint">Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a></p>
+        </div>
+        </div>
+        <div class="pane hidden" role="tabpanel" id="pane-keys" aria-labelledby="tab-keys">
+          <div class="split">
+            <div id="w-rekey-box">          <div class="batt-art" aria-hidden="true"><span>+</span></div>
+          <div>
+            <h2 class="silk"><span>CMOS</span><b>rekey</b></h2>
+            <p class="hint">Moves to a fresh key tree. Your address and words stay the same.</p>
+            <div class="row"><button class="btn btn-line" id="k-rekey" type="button">Rekey now</button></div>
+            <p class="ok" id="k-ok"></p><p class="err" id="k-err" role="alert"></p>
+          </div>
+        </div>
+            <div>          <div class="chip-art small" aria-hidden="true"><span>TPM</span></div>
+          <div>
+            <h2 class="silk"><span>TPM</span><b>recovery words</b></h2>
+            <p class="hint">Shows your 24 words after you enter the password again. Write them on paper. They hide themselves after 60 seconds.</p>
+            <div class="row"><button class="btn btn-line" id="k-words" type="button">Show recovery words</button></div>
+            <div id="k-auth" class="hidden">
+              <label class="f" for="k-pw">Password</label><input type="password" id="k-pw" autocomplete="current-password">
+              <div class="row"><button class="btn btn-solid" id="k-show" type="button">Show</button><button class="btn btn-quiet" id="k-cancel" type="button">Cancel</button></div>
+            </div>
+            <p class="err" id="w-err" role="alert"></p>
+          </div>
+        </div>
+          </div>
+          <div class="hidden" id="k-panel">        <p class="warn"><b>Only type these words into the opeq Recover screen. opeq never asks for them anywhere else.</b> They are only for opeq recovery.</p>
+        <div class="words" id="k-wordlist"></div>
+        <div class="row"><button class="btn btn-quiet btn-sm" id="k-hide" type="button">Hide</button></div>
+      </div>
+        </div>
+      </section>
+
+      <details class="bus">
+        <summary class="silk"><span>BUS</span><b>activity</b></summary>
+        <div class="log mono" id="log"></div>
+      </details>
+    </div>
+
+  </section>
+</main>
+
+<dialog class="ask" id="ask" aria-labelledby="ask-text">
+  <p id="ask-text"></p>
+  <div class="row"><button class="btn btn-solid" id="ask-yes" type="button">Confirm</button><button class="btn btn-line" id="ask-no" type="button">Cancel</button></div>
+</dialog>
+</body>
+</html>

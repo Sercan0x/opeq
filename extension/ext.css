@@ -1,0 +1,23 @@
+.ask { width: min(420px, calc(100vw - 32px)); padding: 20px 22px; border-radius: 12px; border: 1px solid var(--rule-2); background: #111924; color: var(--text); }
+.ask::backdrop { background: rgba(3, 6, 10, 0.72); }
+.ask p { margin: 0; white-space: pre-line; font-size: 14px; line-height: 1.55; color: var(--text-2); word-break: break-word; }
+.rw { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 201, 74, 0.5); background: rgba(255, 201, 74, 0.08); }
+.rw p { flex: 1; margin: 0; font-size: 13px; line-height: 1.45; color: var(--text); }
+.rw-go { flex: 0 0 auto; background: var(--gold); color: #1a1405; }
+.rw-go:hover { background: #ffd76e; }
+.rw.urgent { border-color: rgba(255, 122, 110, 0.65); background: rgba(255, 122, 110, 0.1); }
+.rw.urgent .rw-go { background: var(--red); color: #1d0705; }
+.io #fee-on .addr-row { display: flex; align-items: flex-start; gap: 6px; }
+.io #fee-on .addr { flex: 1; }
+.addr-row .icon-btn { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; flex: 0 0 auto; }
+.addr-row .icon-btn:hover { border-color: var(--rule-2); color: #fff; }
+.addr-row .icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.fe { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255, 122, 110, 0.4); background: rgba(255, 122, 110, 0.07); font-size: 12px; color: var(--text-2); }
+.fe::before { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
+.fe span { flex: 1; min-width: 0; }
+.fe-go { flex: 0 0 auto; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--red); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.fe-go:hover { color: #ff9a90; }
+.icon-btn.copied svg { display: none; }
+.icon-btn.copied::after { content: ""; width: 12px; height: 7px; margin-top: -3px; border-left: 2px solid var(--green); border-bottom: 2px solid var(--green); transform: rotate(-45deg); }
+.btn.copied, .fe-go.copied { color: var(--green); border-color: rgba(79, 209, 139, 0.6); }

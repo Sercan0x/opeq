@@ -1,0 +1,8 @@
+.doc { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+.doc h1 { margin: 0 0 6px; font-size: 32px; font-weight: 650; letter-spacing: -0.015em; color: #fff; }
+.doc .meta { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+.doc h2 { margin: 30px 0 10px; font-size: 18px; font-weight: 600; color: #fff; }
+.doc p, .doc li { font-size: 15px; line-height: 1.7; color: var(--text-2); }
+.doc ul { padding-left: 20px; margin: 0; }
+.doc li { margin: 6px 0; }
+.doc a { word-break: break-word; }

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bonk frames</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<canvas id="c" width="960" height="540"></canvas>
+<script type="module">
+import { scene } from "../lib/bonk.js";
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+window.renderFrame = (f) => {
+  ctx.setTransform(5, 0, 0, 5, 0, 0);
+  scene(ctx, f);
+  return c.toDataURL("image/png");
+};
+window.renderRaw = (f) => {
+  ctx.setTransform(5, 0, 0, 5, 0, 0);
+  scene(ctx, f);
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+  const rgb = new Uint8Array(c.width * c.height * 3);
+  for (let i = 0, j = 0; i < d.length; i += 4, j += 3) { rgb[j] = d[i]; rgb[j + 1] = d[i + 1]; rgb[j + 2] = d[i + 2]; }
+  let s = "";
+  for (let i = 0; i < rgb.length; i += 0x8000) s += String.fromCharCode.apply(null, rgb.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+window.ready = true;
+</script>
+</body>
+</html>

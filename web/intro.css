@@ -1,0 +1,15 @@
+.boot {
+  position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: radial-gradient(ellipse at 50% 40%, #13233a, #0b1420 70%);
+  transition: opacity 0.45s ease;
+  font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+.boot-out { opacity: 0; pointer-events: none; }
+.boot-stage { width: min(760px, 100%); text-align: center; }
+.boot-canvas { display: block; width: 100%; aspect-ratio: 240 / 150; }
+.boot-label { color: #e8eef4; font-size: clamp(17px, 2vw, 21px); font-weight: 600; letter-spacing: -0.01em; margin: 8px 0 14px; min-height: 1.4em; }
+.boot-bar { width: min(340px, 80%); height: 8px; margin: 0 auto; border-radius: 99px; background: rgba(232, 238, 244, 0.12); overflow: hidden; }
+.boot-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #1683b0, #3ad0ff); box-shadow: 0 0 12px rgba(58, 208, 255, 0.6); }
+.booting { overflow: hidden; }
+#boot-cover { animation: boot-fallback 0.4s 14s forwards; }
+@keyframes boot-fallback { to { opacity: 0; visibility: hidden; } }

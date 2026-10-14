@@ -1,0 +1,4 @@
+@font-face { font-family: "Opeq Pixel Bold"; src: url("../assets/opeq-pixel-bold.ttf") format("truetype"); }
+body { background: #101b42; color: #fff5d6; margin: 30px; font-family: "Opeq Pixel Bold"; }
+p { margin: 0 0 18px; }
+.a { font-size: 60px; } .b { font-size: 30px; } .c { font-size: 20px; color: #3ad0ff; }

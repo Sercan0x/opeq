@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>opeq waitlist</title>
+<meta name="description" content="Join the opeq waitlist: follow, post, then leave your email.">
+<meta name="theme-color" content="#070b11">
+<link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="waitlist.css">
+<script type="module" src="waitlist.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html"><img src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <span class="drive mono on"><i></i><span>waitlist, mainnet is next</span></span>
+  <a class="back" href="app.html">Test Wallet (Devnet)</a>
+  <a class="back back-2" href="index.html">Back to the board</a>
+</header>
+
+<main class="wl">
+  <p class="silk"><span>BOOT QUEUE</span><b>join the waitlist</b></p>
+  <h1>Three steps and you are on the list.</h1>
+  <p class="lead">opeq is coming to Solana mainnet. Each step unlocks the next. We will write to you when it opens.</p>
+    <ol class="wl-steps">
+      <li class="wl-step" id="wl-s1">
+        <span class="wl-led" aria-hidden="true"></span><span class="wl-chip mono" aria-hidden="true">LAN</span>
+        <div class="wl-body">
+          <h2>Follow @opeqio on X</h2>
+          <div id="wl-follow-form">
+            <p class="hint">Launch news and the mainnet date go out there first.</p>
+            <div class="row"><a class="btn btn-line" href="https://x.com/intent/follow?screen_name=opeqio" target="_blank" rel="noopener noreferrer">Follow @opeqio</a></div>
+            <label class="f" for="wl-handle">Your X username</label>
+            <div class="wl-inline"><input type="text" id="wl-handle" placeholder="@yourname" maxlength="16" spellcheck="false" autocomplete="off"><button class="btn btn-solid" type="button" id="wl-handle-save">Continue</button></div>
+            <div class="err-text" id="wl-handle-err" role="alert"></div>
+          </div>
+          <p class="wl-done hidden" id="wl-followed">Following as <b id="wl-handle-out"></b> <button class="wl-edit" type="button" id="wl-handle-edit">Change</button></p>
+        </div>
+      </li>
+      <li class="wl-step wl-locked" id="wl-s2">
+        <span class="wl-led" aria-hidden="true"></span><span class="wl-chip mono" aria-hidden="true">ANTENNA</span>
+        <div class="wl-body">
+          <h2>Post about opeq</h2>
+          <div id="wl-post-form">
+            <p class="hint">Share this post on X, then paste its link below.</p>
+            <blockquote class="wl-quote" id="wl-quote"></blockquote>
+            <div class="row"><a class="btn btn-line" id="wl-post-link" href="https://x.com/intent/post" target="_blank" rel="noopener noreferrer">Post on X</a></div>
+            <label class="f" for="wl-url">Link to your post</label>
+            <div class="wl-inline"><input type="text" id="wl-url" placeholder="https://x.com/yourname/status/..." maxlength="200" spellcheck="false" autocomplete="off"><button class="btn btn-solid" type="button" id="wl-url-save">Continue</button></div>
+            <div class="err-text" id="wl-url-err" role="alert"></div>
+          </div>
+          <p class="wl-done hidden" id="wl-posted">Post added. <a id="wl-post-out" target="_blank" rel="noopener noreferrer">View it on X</a> <button class="wl-edit" type="button" id="wl-url-edit">Change</button></p>
+        </div>
+      </li>
+      <li class="wl-step wl-locked" id="wl-s3">
+        <span class="wl-led" aria-hidden="true"></span><span class="wl-chip mono" aria-hidden="true">MOUNT</span>
+        <div class="wl-body">
+          <h2>Join with your email</h2>
+          <form id="wl-form" novalidate>
+            <label class="f" for="wl-email">Email address</label>
+            <input type="email" id="wl-email" autocomplete="email" maxlength="254" spellcheck="false">
+            <input type="text" class="wl-trap" id="wl-company" tabindex="-1" autocomplete="off" aria-hidden="true">
+            <div class="row"><button class="btn btn-solid" type="submit" id="wl-join">Join the waitlist</button></div>
+            <div class="err-text" id="wl-err" role="alert"></div>
+          </form>
+          <p class="wl-done hidden" id="wl-joined">You're on the list.</p>
+        </div>
+      </li>
+    </ol>
+    <p class="wl-all hidden" id="wl-all">All done. We will write to you when opeq opens on mainnet.</p>
+</main>
+</body>
+</html>

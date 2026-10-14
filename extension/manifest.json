@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "OPEQ Wallet (Devnet)",
+  "short_name": "OPEQ",
+  "version": "0.3.4",
+  "description": "A Solana wallet built to resist quantum computers. Hash-based one-time signatures, verified on chain. Devnet beta, test funds only.",
+  "minimum_chrome_version": "137",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_title": "OPEQ Wallet",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.devnet.solana.com; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'"
+  },
+  "permissions": [
+    "storage"
+  ]
+}

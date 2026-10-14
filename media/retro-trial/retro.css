@@ -1,0 +1,187 @@
+@font-face {
+  font-family: "Opeq Pixel Bold";
+  src: url("assets/opeq-pixel-bold.ttf") format("truetype");
+  font-display: swap;
+}
+
+:root[data-style="retro"] {
+  --paper: #0c1430;
+  --sheet: #141f4a;
+  --tint: #1b2a5c;
+  --ink: #fff3d6;
+  --ink-2: #e2d6b8;
+  --muted: #a3acd2;
+  --rule: #2c3b78;
+  --rule-2: #4a5aa0;
+  --ice: #3ad0ff;
+  --ice-ink: #7fe3ff;
+  --ice-wash: rgba(58, 208, 255, 0.1);
+  --amber: #ffcf4a;
+  --amber-wash: rgba(255, 207, 74, 0.1);
+  --amber-line: rgba(255, 207, 74, 0.45);
+  --red: #ff7b8a;
+  --red-wash: rgba(255, 123, 138, 0.14);
+  --green: #5fe0b0;
+  --green-wash: rgba(95, 224, 176, 0.14);
+  --neutral-wash: rgba(226, 214, 184, 0.1);
+  --btn-bg: #ffcf4a;
+  --btn-fg: #2a1c00;
+  --btn-hover: #ffdd75;
+  --bar-bg: rgba(12, 20, 48, 0.94);
+  --lad-fill: #2c3d77;
+  --lad-rung: #1b2a5c;
+  --title: #24336f;
+  --pix: "Opeq Pixel Bold", var(--mono);
+  --shadow: 6px 6px 0 rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+[data-style="retro"] body {
+  font-family: var(--sans);
+  font-size: 17px;
+  background-color: var(--paper);
+  background-repeat: repeat;
+  background-size: 320px 320px;
+  image-rendering: pixelated;
+}
+
+[data-style="retro"] h1, [data-style="retro"] h2, [data-style="retro"] h3,
+[data-style="retro"] .bar-nav, [data-style="retro"] .btn, [data-style="retro"] .theme-btn,
+[data-style="retro"] .toc, [data-style="retro"] .faqs summary, [data-style="retro"] .sev,
+[data-style="retro"] .facts dt, [data-style="retro"] .menu-btn, [data-style="retro"] .sig-input label,
+[data-style="retro"] .road h3, [data-style="retro"] .features dt, [data-style="retro"] .rules dt,
+[data-style="retro"] .tbl thead th, [data-style="retro"] .bal-label, [data-style="retro"] label.f {
+  font-family: var(--pix);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+[data-style="retro"] .bar { border-bottom: 3px solid var(--rule); }
+[data-style="retro"] .bar-in { height: 72px; }
+[data-style="retro"] .bar-nav { font-size: 19px; gap: 22px; white-space: nowrap; }
+[data-style="retro"] .bar-nav a:not(.btn):hover { color: var(--ice); }
+[data-style="retro"] .theme-btn, [data-style="retro"] #theme-btn { display: none; }
+[data-style="retro"] #style-btn { display: inline-block; font-size: 20px; border: 3px solid var(--rule-2); border-radius: 0; padding: 4px 10px; }
+
+[data-style="retro"] .btn { border-radius: 0; font-size: 20px; padding: 13px 20px 11px; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45); }
+[data-style="retro"] .btn-ink { background: var(--btn-bg); color: var(--btn-fg); box-shadow: inset 0 -4px 0 #d59b14, 4px 4px 0 rgba(0, 0, 0, 0.45); }
+[data-style="retro"] .btn-ink:hover { background: var(--btn-hover); }
+[data-style="retro"] .btn-ink:active { transform: translate(2px, 2px); box-shadow: inset 0 -2px 0 #d59b14, 2px 2px 0 rgba(0, 0, 0, 0.45); }
+[data-style="retro"] .btn-line { background: rgba(12, 20, 48, 0.6); border: 3px solid var(--ink); color: var(--ink); }
+[data-style="retro"] .btn-line:hover { border-color: var(--ice); color: var(--ice); }
+[data-style="retro"] .btn-sm { font-size: 20px; padding: 8px 12px 6px; }
+[data-style="retro"] .btn-quiet { box-shadow: none; }
+[data-style="retro"] .bar-nav .btn { font-size: 20px; padding: 9px 14px 7px; }
+
+[data-style="retro"] .hero { display: block; max-width: none; padding: 0; position: relative; }
+[data-style="retro"] .hero-scene { display: block; width: 100%; height: clamp(440px, 46vw, 680px); object-fit: cover; object-position: 60% 100%; image-rendering: pixelated; border-bottom: 3px solid var(--rule); }
+[data-style="retro"] .hero-text {
+  position: absolute; top: clamp(40px, 6vw, 90px);
+  left: max(var(--gut), calc((100vw - var(--wide)) / 2 + var(--gut)));
+  max-width: 600px;
+}
+[data-style="retro"] .hero h1 { font-size: 54px; line-height: 1.1; max-width: 13ch; text-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5); }
+[data-style="retro"] .hero .lead { color: var(--ink); text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6); max-width: 30em; }
+[data-style="retro"] .sig { max-width: var(--wide); margin: 48px auto 0; padding: 0 var(--gut); }
+[data-style="retro"] .sig-stage { border-radius: 0; border: 3px solid var(--rule-2); box-shadow: var(--shadow); padding: 0 0 6px; background: var(--sheet); }
+[data-style="retro"] .sig-stage::before {
+  content: "live-signature.exe"; display: block; font-family: var(--pix); font-size: 20px; color: var(--ink);
+  background: var(--title); padding: 8px 14px 6px; margin-bottom: 12px; border-bottom: 3px solid var(--rule-2);
+}
+[data-style="retro"] .sig-stage svg { padding: 0 14px; }
+[data-style="retro"] .sig-input label { font-size: 20px; color: var(--ink-2); }
+
+[data-style="retro"] .facts dl { border: 3px solid var(--rule-2); background: var(--sheet); box-shadow: var(--shadow); padding: 0 20px; margin-top: 32px; }
+[data-style="retro"] .facts dt { font-size: 20px; color: var(--ice-ink); }
+[data-style="retro"] .facts dd { font-size: 17px; }
+
+[data-style="retro"] .doc { padding-top: 48px; }
+[data-style="retro"] .toc { padding-top: 0; font-size: 20px; }
+[data-style="retro"] .toc-title { font-size: 20px; color: var(--ice-ink); }
+[data-style="retro"] .toc a { padding: 6px 0; grid-template-columns: 28px 1fr; }
+[data-style="retro"] .toc a:hover { color: var(--ice); }
+
+[data-style="retro"] .sec {
+  padding: 0 0 28px; margin-top: 40px; background: var(--sheet); border: 3px solid var(--rule-2);
+  box-shadow: var(--shadow); scroll-margin-top: 88px;
+}
+[data-style="retro"] .sec:first-child { margin-top: 0; }
+[data-style="retro"] .sec > *:not(h2) { margin-left: 26px; margin-right: 26px; }
+[data-style="retro"] .sec h2 {
+  font-size: 30px; line-height: 1.2; background: var(--title); border-bottom: 3px solid var(--rule-2);
+  padding: 14px 70px 10px 20px; margin: 0 0 22px; position: relative; gap: 14px;
+}
+[data-style="retro"] .sec h2::after {
+  content: ""; position: absolute; right: 20px; top: 50%; width: 10px; height: 10px; margin-top: -5px;
+  background: #ff7b8a; box-shadow: -16px 0 0 #ffcf4a, -32px 0 0 #5fe0b0;
+}
+[data-style="retro"] .sn { font-size: 20px; color: var(--ice); }
+[data-style="retro"] .sec h3 { font-size: 20px; color: var(--ice-ink); margin-top: 30px; }
+[data-style="retro"] .sec .intro { color: var(--ink); font-size: 18px; }
+[data-style="retro"] .features dt, [data-style="retro"] .rules dt { font-size: 20px; }
+[data-style="retro"] .features > div, [data-style="retro"] .rules > div { border-top: 2px dashed var(--rule-2); }
+[data-style="retro"] .aside { border-left: 4px solid var(--ice); }
+[data-style="retro"] .gif-fig img { border-radius: 0; border: 3px solid var(--rule-2); }
+[data-style="retro"] .box { border-radius: 0; border-width: 3px; }
+[data-style="retro"] .callout { border-radius: 0; border-left-width: 4px; }
+[data-style="retro"] pre { border-radius: 0; border: 3px solid var(--rule-2); background: var(--paper); }
+[data-style="retro"] code { border-radius: 0; }
+[data-style="retro"] .tbl { border-top: 3px solid var(--ink); }
+[data-style="retro"] .tbl thead th { font-size: 20px; color: var(--ice-ink); }
+[data-style="retro"] .tbl th, [data-style="retro"] .tbl td { border-bottom: 2px solid var(--rule); }
+[data-style="retro"] .sev { font-size: 20px; border-radius: 0; padding: 2px 8px 0; }
+[data-style="retro"] .steps li::before { border-radius: 0; border-width: 3px; font-family: var(--pix); font-size: 20px; }
+[data-style="retro"] .road h3 { font-size: 20px; border-bottom: 3px solid var(--ink); }
+[data-style="retro"] .faqs { border-top: 3px solid var(--ink); }
+[data-style="retro"] .faqs summary { font-size: 20px; line-height: 1.4; }
+[data-style="retro"] .faqs details { border-bottom: 2px dashed var(--rule-2); }
+
+[data-style="retro"] .foot { border-top: 3px solid var(--rule); }
+
+[data-style="retro"] input[type=text], [data-style="retro"] input[type=password], [data-style="retro"] textarea, [data-style="retro"] select {
+  border-radius: 0; border: 3px solid var(--rule-2); background: var(--paper);
+}
+[data-style="retro"] input:focus, [data-style="retro"] textarea:focus, [data-style="retro"] select:focus { border-color: var(--ice); box-shadow: none; }
+[data-style="retro"] label.f { font-size: 20px; color: var(--ink-2); }
+
+[data-style="retro"] .app-head h1 { font-size: 40px; }
+[data-style="retro"] .pane { border-radius: 0; border: 3px solid var(--rule-2); box-shadow: var(--shadow); padding: 0 0 22px; }
+[data-style="retro"] .pane > *:not(h2) { margin-left: 22px; margin-right: 22px; }
+[data-style="retro"] .pane h2 { font-size: 20px; background: var(--title); border-bottom: 3px solid var(--rule-2); padding: 10px 60px 8px 16px; margin: 0 0 16px; position: relative; }
+[data-style="retro"] .pane h2::after {
+  content: ""; position: absolute; right: 16px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
+  background: #ff7b8a; box-shadow: -13px 0 0 #ffcf4a, -26px 0 0 #5fe0b0;
+}
+[data-style="retro"] .pane-hero { padding: 0 0 26px; }
+[data-style="retro"] .pane-hero > * { margin-left: 26px; margin-right: 26px; }
+[data-style="retro"] .pane-hero .bal-row { padding-top: 22px; }
+[data-style="retro"] .bal-label { font-size: 20px !important; color: var(--ice-ink); }
+[data-style="retro"] .vault-item, [data-style="retro"] .words div, [data-style="retro"] .progress { border-radius: 0; }
+[data-style="retro"] .progress { height: 10px; border: 2px solid var(--rule-2); }
+
+.boot {
+  position: fixed; inset: 0; z-index: 100; background: #0c1430; display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.45s ease;
+}
+.boot-out { opacity: 0; pointer-events: none; }
+.boot-canvas { image-rendering: pixelated; width: min(100vw, calc(100vh * 240 / 135)); height: auto; }
+.boot-skip {
+  position: absolute; right: 24px; bottom: 24px; font-family: "Opeq Pixel Bold", monospace; font-size: 20px;
+  color: #fff3d6; background: transparent; border: 3px solid #4a5aa0; padding: 6px 12px 4px; cursor: pointer;
+}
+.hero-scene { display: none; }
+#style-btn { display: inline-block; }
+
+@media (max-width: 980px) {
+  [data-style="retro"] .hero-text { position: static; transform: none; padding: 32px var(--gut) 0; max-width: none; }
+  [data-style="retro"] .hero-scene { height: 300px; object-position: 75% 100%; }
+  [data-style="retro"] .hero h1 { font-size: 50px; }
+  [data-style="retro"] .toc { display: none; }
+}
+
+@media (max-width: 760px) {
+  [data-style="retro"] .hero h1 { font-size: 40px; }
+  [data-style="retro"] .sec h2 { font-size: 20px; padding-right: 60px; }
+  [data-style="retro"] .bar-nav { font-size: 20px; }
+  [data-style="retro"] .sec > *:not(h2) { margin-left: 16px; margin-right: 16px; }
+}
