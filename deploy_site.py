@@ -39,6 +39,8 @@ def read_kv(path):
     return out
 
 
+if os.path.exists(CREDS) and os.stat(CREDS).st_mode & 0o077:
+    raise SystemExit(f"{CREDS} must be readable only by you: chmod 600 {CREDS}")
 CRED = read_kv(CREDS)
 TOKEN, ACCOUNT = CRED["TOKEN"], CRED["ACCOUNT"]
 
@@ -159,9 +161,10 @@ def deploy(db, salt, admin, assets_jwt):
             {"type": "secret_text", "name": "SALT", "text": salt},
             {"type": "secret_text", "name": "ADMIN", "text": admin},
             {"type": "assets", "name": "ASSETS"},
+            {"type": "ratelimit", "name": "JOIN_LIMIT", "namespace_id": "4201", "simple": {"limit": 10, "period": 60}},
         ],
         "assets": {"jwt": assets_jwt, "config": {"html_handling": "auto-trailing-slash", "not_found_handling": "none", "_headers": headers}},
-        "observability": {"enabled": True},
+        "observability": {"enabled": False},
     }
     with open(WORKER, "rb") as f:
         code = f.read()

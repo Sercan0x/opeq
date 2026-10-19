@@ -27,9 +27,12 @@ def deploy():
         {"type": "ratelimit", "name": "LIMIT", "namespace_id": "4101", "simple": {"limit": 300, "period": 60}},
         {"type": "ratelimit", "name": "SEND_LIMIT", "namespace_id": "4102", "simple": {"limit": 30, "period": 60}},
     ]
+    bindings.append({"type": "ratelimit", "name": "GLOBAL", "namespace_id": "4103", "simple": {"limit": 6000, "period": 60}})
     up = upstream()
     if up:
         bindings.append({"type": "secret_text", "name": "UPSTREAM", "text": up})
+    elif "--public" not in sys.argv:
+        raise SystemExit(f"{UPSTREAM_FILE} is missing; deploying now would drop the private upstream. Pass --public only if that is what you want")
     meta = {"main_module": "worker.js", "compatibility_date": "2026-09-01", "bindings": bindings, "observability": {"enabled": False}}
     with open(WORKER, "rb") as f:
         code = f.read()

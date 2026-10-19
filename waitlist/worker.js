@@ -18,12 +18,37 @@ async function sha(text) {
 }
 
 function json(status, data) {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+}
+
+async function readCapped(request, max) {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const parts = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n > max) { await reader.cancel(); return null; }
+    parts.push(value);
+  }
+  const all = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) { all.set(p, o); o += p.byteLength; }
+  return new TextDecoder().decode(all);
+}
+
+function ip6(ip) {
+  const [head, tail = ""] = ip.split("::");
+  const h = head ? head.split(":") : [], t = tail ? tail.split(":") : [];
+  const full = ip.includes("::") ? [...h, ...Array(8 - h.length - t.length).fill("0"), ...t] : h;
+  return full.slice(0, 4).map((g) => parseInt(g || "0", 16).toString(16)).join(":") + "::/64";
 }
 
 function ipKey(ip) {
   ip = (ip || "").trim().toLowerCase();
-  return ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip;
+  return ip.includes(":") ? ip6(ip) : ip;
 }
 
 function sameHost(origin, url) {
@@ -56,7 +81,7 @@ async function join(env, body, ip) {
   const since = now - 3600;
   const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM waitlist WHERE ip_hash = ? AND created_at > ?").bind(ipHash, since).first();
   if (recent.n >= JOINS_PER_HOUR) throw new Fail(429, "Too many sign-ups from this network. Try again in an hour.", "email");
-  if (await env.DB.prepare("SELECT 1 FROM waitlist WHERE email = ?").bind(email).first()) throw new Fail(409, "This email is already on the list.", "email");
+  if (await env.DB.prepare("SELECT 1 FROM waitlist WHERE email = ?").bind(email).first()) return { ok: true };
   if (await env.DB.prepare("SELECT 1 FROM waitlist WHERE post_url = ?").bind(url).first()) throw new Fail(409, "This post is already used by another sign-up.", "post");
   try {
     const res = await env.DB
@@ -87,8 +112,10 @@ async function api(request, env, name) {
   if (request.method !== "POST" || name !== "join") return json(404, { error: "not found" });
   const origin = request.headers.get("Origin");
   if (origin && !sameHost(origin, request.url)) return json(403, { error: "Requests from other sites are not allowed." });
-  const raw = await request.text();
-  if (raw.length > 2048) return json(413, { error: "Request too large." });
+  const ip = request.headers.get("CF-Connecting-IP") || "";
+  if (env.JOIN_LIMIT && !(await env.JOIN_LIMIT.limit({ key: ipKey(ip) })).success) return json(429, { error: "Too many attempts from this network. Try again in a minute." });
+  const raw = await readCapped(request, 2048);
+  if (raw === null) return json(413, { error: "Request too large." });
   let body;
   try {
     body = JSON.parse(raw || "{}");
@@ -97,7 +124,7 @@ async function api(request, env, name) {
     return json(400, { error: "Bad request." });
   }
   try {
-    return json(200, await join(env, body, request.headers.get("CF-Connecting-IP") || ""));
+    return json(200, await join(env, body, ip));
   } catch (e) {
     if (e instanceof Fail) return json(e.status, { error: e.message, step: e.step });
     return json(500, { error: "Something went wrong. Try again." });
