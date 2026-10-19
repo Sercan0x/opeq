@@ -305,7 +305,7 @@ function rekeyWarn(left) {
 async function guard(errId, okId, fn) {
   if (busy) return;
   busy = true;
-  const buttons = document.querySelectorAll(".rig button, .pmain button");
+  const buttons = document.querySelectorAll(".rig button, .pmain button, #p-panel button");
   buttons.forEach((b) => (b.disabled = true));
   if (errId) $(errId).textContent = "";
   if (okId) $(okId).textContent = "";
@@ -345,6 +345,7 @@ async function refreshPorts() {
 }
 
 function openVault(id) {
+  if (busy) return;
   current = id;
   remember(id);
   if (session && session.id === id) { showWallet(); return; }
@@ -767,6 +768,10 @@ function initRecover() {
     setProgress("r-prog", 0);
     const words = $("r-words").value;
     let record = await engine.recover(words, pw, (p) => setProgress("r-prog", p));
+    if (!(await engine.chainState(record).catch(() => null))) {
+      setProgress("r-prog", null);
+      if (!(await ask("This wallet has never been activated on chain. If you expected funds in it, one of the words is probably wrong. Continue anyway?", "Continue"))) return;
+    }
     const existing = await store.get(record.id);
     if (existing) {
       setProgress("r-prog", null);

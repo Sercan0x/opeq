@@ -1,7 +1,7 @@
 const METHODS = new Set([
   "getAccountInfo", "getBalance", "getMultipleAccounts", "getGenesisHash", "getLatestBlockhash", "getMinimumBalanceForRentExemption",
   "getRecentPrioritizationFees", "getSignatureStatuses", "getSlot", "getTokenAccountBalance", "getTokenAccountsByOwner",
-  "sendTransaction", "simulateTransaction",
+  "sendTransaction", "simulateTransaction", "getSignaturesForAddress", "getTransaction",
 ]);
 const MAX_BODY = 16384;
 const FALLBACK = "https://api.mainnet-beta.solana.com";

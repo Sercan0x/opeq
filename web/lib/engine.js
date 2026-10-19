@@ -3,7 +3,7 @@ import * as P from "./protocol.js";
 import * as V from "./vaultstore.js";
 import { LEAVES, PATH_LEN, SIG_LEN } from "./wots.js";
 import {
-  COMPUTE_BUDGET, SYSTEM, b58encode, compileV0, concat, eq, hex, pubkey, u32, u64, unhex, unsignedTx,
+  COMPUTE_BUDGET, SYSTEM, b58decode, b58encode, compileV0, concat, eq, hex, pubkey, u32, u64, unhex, unsignedTx,
 } from "./solana.js";
 
 export const EXPIRY_SLOTS = 150;
@@ -469,7 +469,8 @@ export class Session {
       }
       await this.pendingRekey(r, st);
       const tk = (await this.e.store.get(`tk:${r.aid}`)) || { id: `tk:${r.aid}`, used: {} };
-      const used = [...new Set([...(r.takeover && r.takeover.epoch === st.epoch ? r.takeover.used : []), ...(tk.used[st.epoch] || [])])];
+      const seen = await this.failedLeaves(P.statePda(unhex(r.aid), this.e.program).key);
+      const used = [...new Set([...(r.takeover && r.takeover.epoch === st.epoch ? r.takeover.used : []), ...(tk.used[st.epoch] || []), ...seen])];
       const lo = Math.max(TAKEOVER_FLOOR, st.next + RESTORE_GAP, r.next_leaf > TAKEOVER_FLOOR ? r.next_leaf : 0);
       const free = [];
       for (let l = lo; l < LEAVES; l++) if (!used.includes(l)) free.push(l);
@@ -481,6 +482,23 @@ export class Session {
       await this.put(r);
       return this._rekey(r, st, leaf, progress && ((p) => progress(0.4 + p * 0.6)));
     });
+  }
+
+  async failedLeaves(state) {
+    const sigs = await this.e.rpc.call("getSignaturesForAddress", [b58encode(state), { limit: 300, commitment: "confirmed" }]);
+    if (!Array.isArray(sigs)) throw new Error("the RPC returned a malformed signature list");
+    const out = new Set();
+    for (const s of sigs.filter((x) => x && x.err).slice(0, 40)) {
+      const tx = await this.e.rpc.call("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
+      if (!tx || !tx.transaction) throw new Error("could not read an earlier failed transaction of this wallet; try again");
+      const keys = [...tx.transaction.message.accountKeys, ...((tx.meta && tx.meta.loadedAddresses && [...tx.meta.loadedAddresses.writable, ...tx.meta.loadedAddresses.readonly]) || [])];
+      for (const ix of tx.transaction.message.instructions) {
+        if (keys[ix.programIdIndex] !== b58encode(this.e.program)) continue;
+        const d = b58decode(ix.data);
+        if ((d[0] === P.IX_EXEC || d[0] === P.IX_REKEY) && d.length >= 5) out.add(d[1] | (d[2] << 8) | (d[3] << 16) | (d[4] << 24));
+      }
+    }
+    return [...out];
   }
 
   async pendingRekey(r, st) {
@@ -509,10 +527,19 @@ export class Session {
     try {
       sig = await this.e.submit([this.e.program, metas, data], expiry, 400000, [], price);
     } catch (err) {
+      if (!err.sent) {
+        const back = await this.load();
+        if (back.rekeying && Number(back.rekeying.leaf) === leaf) { delete back.rekeying; await this.put(back); }
+        throw err;
+      }
       if (!M.chainSeeded(this.e.program, st.epoch + 1)) throw err;
       const after = await this.e.chainState(await this.load()).catch(() => null);
       if (!(after && after.epoch === st.epoch + 1 && eq(after.root, s.newRoot))) throw err;
       sig = "landed";
+    }
+    if (sig !== "landed" && !M.chainSeeded(this.e.program, st.epoch + 1)) {
+      const tx = await this.e.rpc.call("getTransaction", [sig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
+      if (!(tx && tx.meta && tx.meta.err === null)) throw new Error("could not confirm this rekey on chain; refresh in a minute");
     }
     if (sig !== "landed") {
       const after = await this.e.chainState(await this.load()).catch(() => null);

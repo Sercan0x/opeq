@@ -83,7 +83,13 @@ function mkRpc(e) {
       if (sig === "dropped") { chain.slot += 400; return null; }
       return { confirmationStatus: "confirmed" };
     },
-    async call() { return []; },
+    async call(method, params) {
+      if (method === "getTransaction") {
+        const name = names.get(params[0]) ?? params[0];
+        return name === "dropped" ? null : { meta: { err: null }, transaction: { message: { accountKeys: [], instructions: [] } } };
+      }
+      return [];
+    },
   };
 }
 
