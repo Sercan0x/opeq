@@ -1031,7 +1031,14 @@ function initWallet() {
           await J.check(rpc, leg.q, leg.ctx, leg.ix);
           const verify = tx.includes(leg.ix.swap) ? await J.balanceGuard(rpc, leg.ctx, J.minOut(leg.q), leg.rent + (leg.ix.pump ? 5000000n : 0n), tx) : null;
           try { sig = await run(plan.legs.length > 1 ? `signing swap ${li + 1} of 2` : "signing the swap", tx, topupNone, { cu: CU_JUP, tables: leg.tables, spend, verify }); }
-          catch (e) { if (li === 1) { $("j-amt").value = ""; refreshWallet().catch(() => {}); throw new Error(`Swap 1 of 2 went through and you now hold the SOL. Swap 2 did not complete: ${friendly(e)}`); } throw e; }
+          catch (e) {
+            if (/failed in simulation/.test(e.message)) {
+              jcache.bad = [...new Set([...(jcache.bad || []), ...J.labels(leg.q)])];
+              e.message += `. The ${J.labels(leg.q).join(", ")} pool failed, so the next try will avoid it.`;
+            }
+            if (li === 1) { $("j-amt").value = ""; refreshWallet().catch(() => {}); throw new Error(`Swap 1 of 2 went through and you now hold the SOL. Swap 2 did not complete: ${friendly(e)}`); }
+            throw e;
+          }
         }
       }
       $("j-ok").textContent = `swapped ${shown} ${symOf(from)}`;

@@ -109,9 +109,12 @@ export async function check(rpc, q, ctx, ix) {
     && metaIs(metas[6], outAta, false, true) && eq(metas[7][0], inMint) && eq(metas[8][0], outMint) && eq(metas[9][0], JUP);
   if (!role) throw new Error("the swap would take from or pay into an account that is not this wallet's");
   let extraWallet = false;
+  const own = new Set((await rpc.tokenAccounts(wallet)).map((t) => t.account));
+  for (const k of [wsol, T.ata(wallet, inMint, T.TOKEN), T.ata(wallet, inMint, T.TOKEN22), T.ata(wallet, outMint, T.TOKEN), T.ata(wallet, outMint, T.TOKEN22)]) own.add(b58encode(k));
   metas.forEach(([k], i) => {
     if (eq(k, wallet) && i !== 2) extraWallet = true;
     if ((eq(k, inAta) && i !== 3) || (eq(k, outAta) && i !== 6)) throw new Error("the swap passes the wallet's token account to a pool, refusing to sign");
+    if (i > 12 && own.has(b58encode(k))) throw new Error("the swap passes another of the wallet's token accounts to a pool, refusing to sign");
   });
   for (const [, ms] of [...ix.setup, ix.swap, ...ix.cleanup]) {
     for (const [k, s] of ms) if (s && !eq(k, wallet)) throw new Error("the swap asks for a signature other than this wallet's");
@@ -155,7 +158,7 @@ export async function buildLeg(rpc, session, from, to, amount, slip, cache) {
   const fi = await mintInfo(rpc, from, cache), ti = await mintInfo(rpc, to, cache);
   const ctx = { wallet: session.wallet, inMint: pubkey(from), outMint: pubkey(to), inProg: fi.prog, outProg: ti.prog, amount };
   let last = new Error("no swap route found");
-  const exclude = [];
+  const exclude = [...(cache.bad || [])];
   for (const max of [28, 28, 28, 20]) {
     let q;
     try { q = await quote(ctx.inMint, ctx.outMint, amount, slip, max, true, exclude); }

@@ -188,7 +188,7 @@ export class Rpc {
 
   async simulate(tx, addresses) {
     const b64 = btoa(String.fromCharCode(...tx));
-    const r = await this.call("simulateTransaction", [b64, { encoding: "base64", sigVerify: true, commitment: "confirmed", accounts: { encoding: "base64", addresses: addresses.map(b58encode) } }]);
+    const r = await this.call("simulateTransaction", [b64, { encoding: "base64", sigVerify: true, commitment: "processed", accounts: { encoding: "base64", addresses: addresses.map(b58encode) } }]);
     const v = r && r.value;
     if (!v || !Array.isArray(v.accounts) || v.accounts.length !== addresses.length) throw new Error("the RPC returned a malformed simulation");
     return { err: v.err, logs: Array.isArray(v.logs) ? v.logs.filter((l) => typeof l === "string").slice(0, 80) : [],
