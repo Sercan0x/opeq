@@ -118,6 +118,8 @@ def vault_authority(rpc, path, elf=None):
     pd = code_of(rpc, gov)
     if pd[12] != 0:
         raise SystemExit(f"the vault's program {ps(gov)} still has an upgrade authority; the admin vault must live on an immutable program")
+    if elf is None and not elf_version(pd[PROGRAMDATA_META:]):
+        raise SystemExit(f"the vault's program {ps(gov)} is not an opeq program")
     if elf is not None and (pd[PROGRAMDATA_META:PROGRAMDATA_META + len(elf)] != elf or any(pd[PROGRAMDATA_META + len(elf):])):
         raise SystemExit(f"the vault's program {ps(gov)} does not run the same opeq code as --elf")
     state, wallet = P.state_pda(aid, gov)[0], P.wallet_pda(aid, gov)[0]
@@ -211,6 +213,8 @@ def main():
             raise SystemExit(f"program {ps(prog.pub)} already exists on {args.net}")
         max_len = max(args.max_len, len(elf))
         if args.authority_vault:
+            import opeq
+            opeq.prove_vault(rpc, args.authority_vault)
             auth = vault_authority(rpc, args.authority_vault, elf)
         else:
             auth = None if not args.authority else ("none" if args.authority == "none" else pk(args.authority))

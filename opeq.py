@@ -29,6 +29,26 @@ CLOCK = pk("SysvarC1ock11111111111111111111111111111111")
 NETS = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainnet-beta.solana.com"}
 GENESIS = {"devnet": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG", "mainnet": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"}
 LOCK_DIR = os.path.join(os.path.expanduser("~"), ".opeq", "locks")
+HWM_DIR = os.path.join(os.path.expanduser("~"), ".opeq", "hwm")
+PRIORITY = [0]
+
+
+def hwm_path(aid_hex):
+    return os.path.join(HWM_DIR, re.sub(r"[^0-9a-f]", "", aid_hex)[:64] + ".json")
+
+
+def hwm_get(aid_hex, epoch):
+    try:
+        return int(json.load(open(hwm_path(aid_hex))).get(str(epoch), 0))
+    except (FileNotFoundError, ValueError):
+        return 0
+
+
+def hwm_put(aid_hex, epoch, next_leaf):
+    if next_leaf <= hwm_get(aid_hex, epoch):
+        return
+    os.makedirs(HWM_DIR, mode=0o700, exist_ok=True)
+    write_json_atomic(hwm_path(aid_hex), {str(epoch): next_leaf})
 TAKEOVER_DIR = os.path.join(os.path.expanduser("~"), ".opeq", "takeover")
 
 
@@ -191,6 +211,7 @@ class Vault:
             raise SystemExit("the vault file was changed by another opeq process, refusing to overwrite it; run the command again")
         self._gen += 1
         self.raw["gen"] = self._gen
+        hwm_put(self.raw["aid"], self.raw.get("epoch", 0), int(self.raw.get("next_leaf", 0)))
         if self.encrypted:
             if self._mac_key is None:
                 raise SystemExit("internal error: saving an encrypted vault before unlocking it")
@@ -203,7 +224,7 @@ class Vault:
         return bytes(self.program) == mnemonic.LEGACY_PROGRAM and not self.has_master
 
     def reserve_leaf(self, chain_next, limit):
-        leaf = max(self.raw.get("next_leaf", 0), chain_next)
+        leaf = max(self.raw.get("next_leaf", 0), chain_next, hwm_get(self.raw["aid"], self.raw.get("epoch", 0)))
         if leaf >= limit:
             if limit == EXEC_LIMIT:
                 raise SystemExit(f"leaf {leaf}: this key tree is used up for transactions, run `rekey` now")
@@ -376,7 +397,7 @@ def outer_layout(v, inner, extra_accounts):
 
 
 def submit(rpc, payer, ix, expiry, cu_limit, tables):
-    ixs = [(COMPUTE_BUDGET, [], u8(2) + u32(cu_limit)), ix]
+    ixs = [(COMPUTE_BUDGET, [], u8(2) + u32(cu_limit))] + ([(COMPUTE_BUDGET, [], u8(3) + struct.pack("<Q", PRIORITY[0]))] if PRIORITY[0] else []) + [ix]
     bh = rpc.call("getLatestBlockhash", [{"commitment": "confirmed"}])["value"]["blockhash"]
     msg, signer_keys = v0.compile_v0(payer.pub, ixs, b58decode(bh), tables or {})
     tx = compact(len(signer_keys)) + b"".join(payer.sign(msg) for _ in signer_keys) + msg
@@ -403,7 +424,7 @@ def submit(rpc, payer, ix, expiry, cu_limit, tables):
             st = rpc.call("getSignatureStatuses", [[sig], {"searchTransactionHistory": True}])["value"][0]
             if st and not st.get("err"):
                 return sig
-            raise Failed(f"tx {sig} expired without landing at slot {expiry}; it can no longer execute, safe to retry")
+            raise Failed(f"tx {sig} expired without landing at slot {expiry}; opeq checks at finalized before it signs again")
         if time.time() - last > 4:
             try:
                 rpc.call("sendTransaction", [raw, {"encoding": "base64", "skipPreflight": True}])
@@ -547,11 +568,16 @@ def cmd_keygen(args):
 
 
 def cmd_backup(args):
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise SystemExit("backup only shows the words on an interactive terminal, not into a pipe or a log")
     v = Vault(args.vault, lock=True)
     if not v.has_master:
         raise SystemExit("this vault was created before recovery words existed; make a new vault and move funds or authority to it")
     v.unlock()
+    confirm_typed("the 24 recovery words will be shown on screen; make sure nobody and no camera can see it", "SHOW")
     show_words(mnemonic.to_words(v.master))
+    input("press Enter to clear the screen...")
+    print("\033[3J\033[2J\033[H", end="", flush=True)
 
 
 def cmd_recover(rpc, args):
@@ -579,6 +605,8 @@ def recover_into(rpc, args, program, master, aid):
     if acc is None:
         epoch, root, next_leaf = 0, None, 0
         print("this wallet was never initialized on chain")
+        if args.net == "mainnet" and not args.allow_uninitialized:
+            raise SystemExit("on mainnet this usually means a mistyped word; check the words, or pass --allow-uninitialized if the wallet is really new")
     else:
         if acc["owner"] != program:
             raise SystemExit("state account is not owned by the program")
@@ -721,6 +749,7 @@ def cmd_takeover(rpc, payer, v, args):
     leaf = free[secrets.randbelow(len(free))]
     mark_takeover(v.raw["aid"], st["epoch"], used + [leaf])
     v.raw["takeover"] = {"epoch": st["epoch"], "used": used + [leaf]}
+    print(f"takeover signs with key {leaf}; if it does not land, retry on this machine with this file")
     v.raw["cluster"] = genesis
     v.save()
     try:
@@ -782,10 +811,34 @@ def upgrade_authority(rpc, program):
     return d[13:45] if d[12] == 1 else None
 
 
+def prove_vault(rpc, path):
+    nv = Vault(path, lock=True)
+    try:
+        if not nv.has_master or not nv.encrypted:
+            raise SystemExit("the new authority must be an encrypted vault made from recovery words")
+        print(f"unlock the vault that will receive the authority ({path})")
+        nv.unlock()
+        genesis = rpc.call("getGenesisHash")
+        if nv.raw.get("cluster") != genesis:
+            raise SystemExit("the new authority vault has never signed on this cluster; run `burn` with it once first")
+        if not nv.is_active():
+            raise SystemExit("the new authority vault is not the active copy of its wallet")
+        st = chain_state(rpc, nv)
+        if st is None or st["root"] != nv.root or st["epoch"] != nv.raw.get("epoch", 0):
+            raise SystemExit("the new authority vault is not in sync with its on-chain state")
+        return nv.wallet
+    finally:
+        nv.close()
+
+
 def cmd_set_authority(rpc, payer, v, args):
     preflight(rpc, v)
     program_format(rpc, v.program)
     target = pk(args.target)
+    if v.program == target:
+        raise SystemExit("a program must not be governed by a wallet that lives on the same program")
+    if rpc.account(programdata_of(v.program))["data"][12] != 0:
+        raise SystemExit("the vault's own program can still be upgraded; the governing vault must live on an immutable program")
     cur = upgrade_authority(rpc, target)
     if cur != payer.pub:
         raise SystemExit(f"upgrade authority is {ps(cur) if cur else 'none'}, not the payer key")
@@ -809,6 +862,7 @@ def cmd_hand_authority(rpc, payer, v, args):
         return
     import deploy
     if args.new_authority_vault:
+        prove_vault(rpc, args.new_authority_vault)
         new_auth = deploy.vault_authority(rpc, args.new_authority_vault)
     elif args.net == "mainnet":
         raise SystemExit("on mainnet pass --new-authority-vault <vault file of an initialized opeq wallet on an immutable program>, not a typed address")
@@ -846,10 +900,12 @@ def cmd_upgrade(rpc, payer, v, args):
     old = deploy.elf_version(bytes(pd["data"]))
     if old and deploy.elf_version(elf) < old and not args.allow_downgrade:
         raise SystemExit(f"the elf is opeq/{'.'.join(map(str, deploy.elf_version(elf)))}, older than the deployed opeq/{'.'.join(map(str, old))}; pass --allow-downgrade if this is on purpose")
+    typed = False
     if args.buffer:
         buf_key = pk(args.buffer)
     else:
-        confirm(args, f"write {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()}) to a new buffer, hand it to the vault and upgrade {ps(target)}")
+        confirm_typed(f"upgrade {ps(target)} to {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()}); a buffer is written and handed to the vault first", ps(target)[-8:])
+        typed = True
         buf = deploy.write_buffer(rpc, payer, elf)
         rpc.send([(LOADER, [(buf.pub, False, True), (payer.pub, True, False), (v.wallet, False, False)], u32(4))], [payer])
         buf_key = buf.pub
@@ -859,7 +915,8 @@ def cmd_upgrade(rpc, payer, v, args):
           and len(d) == BUFFER_META + len(elf) and d[BUFFER_META:] == elf)
     if not ok:
         raise SystemExit("buffer check failed: owner, authority, size or contents differ from the local elf, not signing")
-    confirm_typed(f"upgrade {ps(target)} to {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()}) from buffer {ps(buf_key)}", ps(target)[-8:])
+    if not typed:
+        confirm_typed(f"upgrade {ps(target)} to {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()}) from buffer {ps(buf_key)}", ps(target)[-8:])
     inner = [(LOADER, [
         (programdata_of(target), False, True), (target, False, True), (buf_key, False, True), (payer.pub, False, True),
         (RENT, False, False), (CLOCK, False, False), (v.wallet, True, False),
@@ -882,6 +939,8 @@ def main():
     ap.add_argument("--sha256")
     ap.add_argument("--allow-downgrade", action="store_true")
     ap.add_argument("--new-authority-vault")
+    ap.add_argument("--allow-uninitialized", action="store_true")
+    ap.add_argument("--priority-fee", type=int, default=0)
     ap.add_argument("--program")
     ap.add_argument("--to")
     ap.add_argument("--sol")
@@ -894,6 +953,11 @@ def main():
     args = ap.parse_args()
     if args.net == "mainnet" and (not args.vault or (args.cmd not in ("keygen", "encrypt", "backup", "recover") and not args.payer)):
         raise SystemExit("on mainnet pass --vault and --payer explicitly")
+    if args.net == "mainnet" and (os.environ.get("OPEQ_PASSWORD") or os.environ.get("OPEQ_WORDS")):
+        raise SystemExit("on mainnet type the password and words at the prompt; unset OPEQ_PASSWORD and OPEQ_WORDS")
+    if args.net == "mainnet" and args.plaintext:
+        raise SystemExit("plaintext vaults are not allowed on mainnet")
+    PRIORITY[0] = max(0, args.priority_fee)
     args.vault = args.vault or os.path.join(HERE, "vault.json")
     args.payer = args.payer or os.path.join(HERE, "devnet-key.json")
     if args.cmd == "keygen":

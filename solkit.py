@@ -180,7 +180,7 @@ class Rpc:
 
     def call(self, method, params=None):
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or []}).encode()
-        req = urllib.request.Request(self.url, body, {"content-type": "application/json"})
+        req = urllib.request.Request(self.url, body, {"content-type": "application/json", "user-agent": "opeq-cli/1"})
         for attempt in range(5):
             try:
                 with urllib.request.urlopen(req, timeout=60) as r:
