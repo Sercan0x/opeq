@@ -66,12 +66,12 @@
     <div class="view" id="v-welcome">
       <div class="card">
         <h2 class="silk"><span>BOOT</span><b>get started</b></h2>
-        <p>Create a quantum-proof wallet, or recover one from your 24 words.</p>
+        <p>Create a quantum-resistant wallet, or recover one from your 24 words.</p>
         <ol class="steps">
           <li>Plug in a new wallet on the left, write down the 24 words, set a password.</li>
           <li data-only="devnet">Send a little devnet SOL to the activation address it shows. Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>.</li><li data-only="mainnet">Send a little SOL to the activation address it shows.</li>
           <li>Activate. The setup costs about 0.0015 SOL and the rest moves into your opeq wallet.</li>
-          <li data-only="devnet">Send SOL, hold tokens and swap, each signed with a one-time quantum-proof key.</li><li data-only="mainnet">Send SOL and tokens, each signed with a one-time quantum-proof key.</li>
+          <li data-only="devnet">Send SOL, hold tokens and swap, each signed with a one-time quantum-resistant key.</li><li data-only="mainnet">Send SOL and tokens, each signed with a one-time quantum-resistant key.</li>
         </ol>
       </div>
     </div>
@@ -186,7 +186,7 @@
         </div>
         <div class="pane" role="tabpanel" id="pane-send" aria-labelledby="tab-send">
           <div id="w-send-box">          <h2 class="silk"><span>PCIE_2</span><b>send SOL</b></h2>
-          <p class="hint">Signed with one quantum-proof key. The fee key only pays the network fee.</p>
+          <p class="hint">Signed with one quantum-resistant key. The fee key only pays the network fee.</p>
           <label class="f" for="s-to">To address</label><input type="text" id="s-to" spellcheck="false" autocomplete="off">
           <label class="f" for="s-amt">Amount in SOL</label><input type="text" id="s-amt" inputmode="decimal" placeholder="0.1" autocomplete="off">
           <div class="row"><button class="btn btn-solid" id="s-go" type="button">Send</button></div>
@@ -195,7 +195,7 @@
           <p class="hint hidden" id="send-off">Activate the wallet first.</p>
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-tokens" aria-labelledby="tab-tokens">
-          <div id="w-tokens-box">        <h2 class="silk"><span>M.2</span><b>tokens</b></h2>
+          <p class="hint hidden" id="pre-tok">Activate the wallet first. Your tokens will show here.</p><div id="w-tokens-box">        <h2 class="silk"><span>M.2</span><b>tokens</b></h2>
         <div id="t-list" class="toks"></div>
         <p class="hint">Anyone can send tokens to your wallet address. Tokens arrive in token accounts owned by the wallet.</p>
       </div>
@@ -210,7 +210,7 @@
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-swap" aria-labelledby="tab-swap">
           <div>          <h2 class="silk"><span>PCIE_4</span><b>swap</b></h2>
-          <div id="j-box" class="jx hidden">
+          <p class="hint hidden" id="pre-swap">Activate the wallet first to swap.</p><div id="j-box" class="jx hidden">
             <div class="jx-box">
               <div class="jx-top"><span class="jx-k">You pay</span><button class="jx-max" id="j-max" type="button">Max</button></div>
               <div class="jx-row"><input type="text" class="jx-amt" id="j-amt" inputmode="decimal" autocomplete="off" placeholder="0" aria-label="Amount to pay"><select class="jx-tok" id="j-from" aria-label="Token to pay"></select></div>
@@ -232,7 +232,7 @@
             <p class="hint jx-note">Prices and routes come from Jupiter. The wallet checks every instruction before it signs.</p>
           </div>
           <div id="x-box">
-          <p class="hint" data-only="devnet">Swaps through a Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
+          <p class="hint" data-only="devnet">Swaps through a Raydium pool of the DEMO test token. One quantum-resistant signature covers the whole swap.</p>
           <label class="f" for="x-dir">Direction</label>
           <select id="x-dir"><option value="buy">SOL to DEMO</option><option value="sell">DEMO to SOL</option></select>
           <label class="f" for="x-amt">Amount in</label><input type="text" id="x-amt" inputmode="decimal" autocomplete="off">
@@ -245,7 +245,7 @@
         <div class="pane hidden" role="tabpanel" id="pane-receive" aria-labelledby="tab-receive">
           <div>          <h2 class="silk"><span>PCIE_1</span><b>receive</b></h2>
           <p class="hint" data-only="devnet">Send devnet SOL or tokens to this address from any wallet. It stays the same when the keys rotate. Your mainnet opeq address will be different.</p><p class="hint" data-only="mainnet">Send SOL or tokens to this address from any wallet. It stays the same when the keys rotate.</p>
-          <p class="mono addr" id="v-addr"></p>
+          <p class="hint caution-hint hidden" id="pre-recv">Activate the wallet first. Until then, send SOL only to the activation address on the wallet card; it is also your fee key.</p><p class="mono addr" id="v-addr"></p>
           <div class="row"><button class="btn btn-line" id="v-copy" type="button">Copy address</button></div>
           <p class="hint" data-only="devnet">Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a></p>
         </div>

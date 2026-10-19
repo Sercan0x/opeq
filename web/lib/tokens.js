@@ -132,11 +132,21 @@ function anchorDisc(name) {
   return sha256(enc.encode(`global:${name}`)).slice(0, 8);
 }
 
+export function amountError(t, decimals) {
+  if (!t) return "enter an amount";
+  if (t.includes(",")) return "use a dot for decimals, like 0.25";
+  if (!/^\d*\.?\d*$/.test(t)) return "enter a plain number, like 0.25";
+  const f = t.split(".")[1] || "";
+  if (f.length > decimals) return `this token allows at most ${decimals} decimals`;
+  return "that amount is too large";
+}
+
 export function parseAmount(text, decimals) {
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) throw new Error("this token reports an unsupported number of decimals");
-  const t = text.trim();
+  let t = text.trim();
+  if (t.startsWith(".")) t = "0" + t;
   const ok = decimals ? new RegExp(`^\\d{1,20}(\\.\\d{1,${decimals}})?$`).test(t) : /^\d{1,20}$/.test(t);
-  if (!ok) throw new Error(`enter an amount with at most ${decimals} decimals`);
+  if (!ok) throw new Error(amountError(t, decimals));
   const [w, f = ""] = t.split(".");
   const v = BigInt(w) * 10n ** BigInt(decimals) + BigInt((f + "0".repeat(decimals)).slice(0, decimals) || "0");
   if (v <= 0n) throw new Error("amount must be more than zero");

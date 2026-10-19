@@ -155,11 +155,11 @@
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-receive" aria-labelledby="tab-receive">
         <p class="hint" data-only="devnet">Send devnet SOL or tokens to this address from any wallet. It stays the same when the keys rotate. Your mainnet opeq address will be different.</p><p class="hint" data-only="mainnet">Send SOL or tokens to this address from any wallet. It stays the same when the keys rotate.</p>
-        <p class="mono addr boxed" id="v-addr"></p>
+        <p class="hint caution-hint hidden" id="pre-recv">Activate the wallet first. Until then, send SOL only to the activation address on the wallet card; it is also your fee key.</p><p class="mono addr boxed" id="v-addr"></p>
         <div class="row"><button class="btn btn-line btn-sm" id="v-copy" type="button">Copy address</button><a class="btn btn-quiet btn-sm" data-only="devnet" href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">Free devnet SOL</a></div>
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-swap" aria-labelledby="tab-swap">
-        <div id="j-box" class="jx hidden">
+        <p class="hint hidden" id="pre-swap">Activate the wallet first to swap.</p><div id="j-box" class="jx hidden">
           <div class="jx-box">
             <div class="jx-top"><span class="jx-k">You pay</span><button class="jx-max" id="j-max" type="button">Max</button></div>
             <div class="jx-row"><input type="text" class="jx-amt" id="j-amt" inputmode="decimal" autocomplete="off" placeholder="0" aria-label="Amount to pay"><select class="jx-tok" id="j-from" aria-label="Token to pay"></select></div>
@@ -181,7 +181,7 @@
           <p class="hint jx-note">Prices and routes come from Jupiter. The wallet checks every instruction before it signs.</p>
         </div>
         <div id="x-box">
-        <p class="hint" data-only="devnet">Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
+        <p class="hint" data-only="devnet">Raydium pool of the DEMO test token. One quantum-resistant signature covers the whole swap.</p>
         <label class="f" for="x-dir">Direction</label>
         <select id="x-dir"><option value="buy">SOL to DEMO</option><option value="sell">DEMO to SOL</option></select>
         <label class="f" for="x-amt">Amount in</label><input type="text" id="x-amt" inputmode="decimal" autocomplete="off">
@@ -191,7 +191,7 @@
         </div>
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-tokens" aria-labelledby="tab-tokens">
-        <div id="w-tokens-box"><div id="t-list" class="toks"></div></div>
+        <p class="hint hidden" id="pre-tok">Activate the wallet first. Your tokens will show here.</p><div id="w-tokens-box"><div id="t-list" class="toks"></div></div>
         <div id="w-more">
           <label class="f" for="t-sel">Send token</label><select id="t-sel"></select>
           <label class="f" for="t-to">To address</label><input type="text" id="t-to" spellcheck="false" autocomplete="off">

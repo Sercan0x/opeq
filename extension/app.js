@@ -186,14 +186,25 @@ function friendly(e) {
   if (m && P.ERRORS[m[1]] && e.program === PROGRAM) msg += `: ${P.ERRORS[m[1]]}`;
   if (/insufficient lamports|0x1\b/.test(msg + (e.logs || []).join(" "))) msg += "\nNot enough SOL in the wallet for this amount.";
   if (/User rejected|rejected the request/i.test(msg)) msg = "You rejected the request in your wallet.";
+  if (/invalid base58|not a 32 byte address/.test(msg)) msg = "That is not a Solana address.";
+  if (/No routes found/i.test(msg)) msg = "No pool can swap this amount. Try a larger amount or another token.";
   if (/0x1771|SlippageToleranceExceeded/.test(msg + (e.logs || []).join(" "))) msg = "The price moved more than you allowed, so the swap was cancelled. Only the network fee was spent.";
   else if (/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed/.test((e.logs || []).join(" "))) msg = "The pool turned the swap down, usually because its price changed a moment ago. Nothing was swapped and only the network fee was spent. Try again.";
   return msg;
 }
 
+function addrOf(text) {
+  const t = String(text || "").trim();
+  if (!t) throw new Error("Enter an address.");
+  if (/^0x[0-9a-fA-F]{40}$/.test(t)) throw new Error("That looks like an Ethereum address. OPEQ needs a Solana address.");
+  if (/\s/.test(t)) throw new Error("Remove the spaces inside the address.");
+  try { return pubkey(t); } catch { throw new Error("That is not a Solana address."); }
+}
+
 function parseSol(text) {
-  const t = text.trim();
-  if (!/^\d{1,10}(\.\d{1,9})?$/.test(t)) throw new Error("enter an amount like 0.25 (at most 9 decimals)");
+  let t = text.trim();
+  if (t.startsWith(".")) t = "0" + t;
+  if (!/^\d{1,10}(\.\d{1,9})?$/.test(t)) throw new Error(T.amountError(t, 9));
   const [w, f = ""] = t.split(".");
   const lamports = BigInt(w) * 1000000000n + BigInt((f + "000000000").slice(0, 9));
   if (lamports <= 0n) throw new Error("amount must be more than zero");
@@ -310,7 +321,7 @@ async function guard(errId, okId, fn) {
   if (errId) $(errId).textContent = "";
   if (okId) $(okId).textContent = "";
   try { await fn(); }
-  catch (e) { if (errId) $(errId).textContent = friendly(e); log(friendly(e), "err"); }
+  catch (e) { if (errId) $(errId).textContent = friendly(e); log(friendly(e), "err", !!(e.sent || e.maybeLanded)); }
   finally { busy = false; buttons.forEach((b) => (b.disabled = false)); }
 }
 
@@ -415,6 +426,8 @@ async function refreshWallet() {
   $("w-init-box").classList.toggle("hidden", !!st);
   await refreshFee();
   for (const id of ["w-send-box", "w-more", "w-rekey-box", "w-tokens-box"]) $(id).classList.toggle("hidden", !st);
+  for (const id of ["pre-recv", "pre-tok", "pre-swap"]) if ($(id)) $(id).classList.toggle("hidden", !!st);
+  if ($("j-box")) $("j-box").classList.toggle("hidden", !st || !NET.jupiter);
   $("send-off").classList.toggle("hidden", !!st);
   if (st) {
     const next = Math.max(st.next, r.next_leaf);
@@ -524,7 +537,7 @@ let slipBps = 100;
 function swapInputs() {
   const from = $("j-from").value;
   let to = $("j-to").value;
-  if (to === "other") { to = $("j-mint").value.trim(); pubkey(to); }
+  if (to === "other") { to = b58encode(addrOf($("j-mint").value)); }
   if (!from || !to) throw new Error("choose the tokens to swap");
   return { from, to, slip: slipBps };
 }
@@ -544,6 +557,13 @@ function fillSwap() {
   else toSel.value = fromSel.value === SOL_MINT ? SWAP_TO[0] || SOL_MINT : SOL_MINT;
   $("j-mint").classList.toggle("hidden", toSel.value !== "other");
   showBalance();
+  flipState();
+}
+
+function flipState() {
+  const to = $("j-to").value;
+  $("j-flip").disabled = to === "other" || ![...$("j-from").options].some((o) => o.value === to);
+  $("j-flip").title = $("j-flip").disabled ? `You hold no ${symOf(to === "other" ? "" : to) || "of that token"} to pay with` : "Switch pay and receive";
 }
 
 function balanceOf(from) {
@@ -560,6 +580,8 @@ function showBalance() {
 }
 
 function quoteView(out, min, route) {
+  const from = $("j-from").value, b = from ? balanceOf(from) : null;
+  try { if (b && $("j-amt").value.trim() && T.parseAmount($("j-amt").value, b.decimals) > b.amount) min = `More than your balance. ${min}`; } catch {}
   $("j-out").textContent = out;
   $("j-min").textContent = min;
   $("j-route").textContent = route;
@@ -569,6 +591,7 @@ let jupTimer = null, jupSeq = 0;
 function scheduleJup() {
   if (!NET.jupiter) return;
   showBalance();
+  flipState();
   $("j-mint").classList.toggle("hidden", $("j-to").value !== "other");
   clearTimeout(jupTimer);
   const seq = ++jupSeq;
@@ -712,7 +735,7 @@ function initCreate() {
   });
   $("c-make").addEventListener("click", () => guard("c-err", null, async () => {
     const pw = $("c-pw").value;
-    if (pw.length < 10) throw new Error("use at least 10 characters");
+    if (pw.trim().length < 10 || pw.replace(/\s/g, "").length < 6) throw new Error("use at least 10 characters, not just spaces");
     if (pw !== $("c-pw2").value) throw new Error("passwords do not match");
     setProgress("c-prog", 0);
     const { record, words } = await engine.create(pw, (p) => setProgress("c-prog", p));
@@ -763,7 +786,7 @@ function initRecover() {
   });
   $("r-go").addEventListener("click", () => guard("r-err", null, async () => {
     const pw = $("r-pw").value;
-    if (pw.length < 10) throw new Error("use at least 10 characters");
+    if (pw.trim().length < 10 || pw.replace(/\s/g, "").length < 6) throw new Error("use at least 10 characters, not just spaces");
     if (pw !== $("r-pw2").value) throw new Error("passwords do not match");
     setProgress("r-prog", 0);
     const words = $("r-words").value;
@@ -846,6 +869,7 @@ async function solCheck(lamports) {
   const rest = bal - lamports;
   if (rest < 0n) throw new Error(`not enough SOL: the wallet has ${sol(bal)} SOL`);
   if (rest > 0n && rest < RENT_FLOOR) throw new Error(`this would leave ${sol(rest)} SOL, below Solana's 0.00089 SOL minimum. Send everything or leave at least 0.00089 SOL`);
+  if (rest === 0n) return "\nAfter this the wallet is empty.";
   return rest < 25000000n ? "\nAfter this the wallet has little SOL left to pay future network fees." : "";
 }
 
@@ -863,7 +887,10 @@ function initWallet() {
   $("w-init").addEventListener("click", () => guard("i-err", null, async () => {
     needPayer();
     const bal = await rpc.balance(engine.payer.key());
-    if (bal < 3000000 + FEE_KEEP) throw new Error(`send at least 0.01 SOL to the activation address first (it has ${sol(bal)} SOL)`);
+    if (bal < 3000000 + FEE_KEEP) {
+      const w = await rpc.balance(session.wallet);
+      throw new Error(`send at least 0.01 SOL to the activation address first (it has ${sol(bal)} SOL).${w > 0 ? ` The ${sol(w)} SOL you sent to the wallet address is safe and stays there, but activation needs SOL on the activation address.` : ""}`);
+    }
     signing(true, "activating on chain");
     try {
       const res = await engine.init(await session.load());
@@ -889,7 +916,7 @@ function initWallet() {
   }));
   $("s-go").addEventListener("click", () => guard("s-err", "s-ok", async () => {
     needPayer();
-    const to = pubkey($("s-to").value.trim());
+    const to = addrOf($("s-to").value);
     const lamports = parseSol($("s-amt").value);
     const amount = $("s-amt").value.trim();
     const warn = await checkRecipient(to, false);
@@ -910,7 +937,7 @@ function initWallet() {
     needPayer();
     const t = tokens.find((x) => x.mint === $("t-sel").value);
     if (!t) throw new Error("no token selected");
-    const to = pubkey($("t-to").value.trim());
+    const to = addrOf($("t-to").value);
     const warn = await checkRecipient(to, true);
     const amount = T.parseAmount($("t-amt").value, t.decimals);
     if (amount > t.amount) throw new Error("not enough of this token in the wallet");
@@ -957,6 +984,7 @@ function initWallet() {
     });
     $("j-go").addEventListener("click", () => guard("j-err", "j-ok", async () => {
       needPayer();
+      if (!(await session.status()).st) throw new Error("Activate the wallet first.");
       const { from, to, slip } = swapInputs();
       const fi = await mintInfo(from), ti = await mintInfo(to);
       const amount = T.parseAmount($("j-amt").value, fi.decimals);
@@ -1149,7 +1177,7 @@ function initNetwork() {
     const u = $("n-url").value.trim();
     if (!validRpc(u)) throw new Error("enter an https:// RPC address");
     let g;
-    try { g = await new Rpc(u).call("getGenesisHash", []); } catch (e) { throw new Error(`that RPC did not answer: ${String(e.message || e).slice(0, 120)}`); }
+    try { g = await new Rpc(u).call("getGenesisHash", []); } catch (e) { throw new Error(e.fromRpc ? `that RPC refused the request: ${String(e.message).slice(0, 120)}` : "that RPC could not be reached from the extension"); }
     if (g !== NET.genesis) throw new Error(`that RPC is on a different Solana network than this wallet (${NET.name})`);
     await chrome.storage.local.set({ [RPC_KEY]: u });
     setRpc(u);
