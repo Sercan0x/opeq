@@ -36,7 +36,7 @@ function el(tag, cls, text) {
 
 function notes(...parts) {
   return parts.flatMap((x) => String(x || "").split("\n")).map((s) => s.trim()).filter(Boolean)
-    .map((text) => ({ text, warn: /^(Warning|This token|New accounts|After this|This address)/.test(text) }));
+    .map((text) => ({ text, warn: /^(Warning|This token|New accounts|After this|This address|Anyone can)/.test(text) }));
 }
 
 function ask(msg, yes = "Confirm") {
@@ -454,7 +454,8 @@ const tokenName = (mint) => {
   if (known) return known;
   const l = labels.get(mint);
   if (!l) return short(mint);
-  return KNOWN_NAMES.has(l.toUpperCase()) ? `${l} (unverified)` : l;
+  const bare = l.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return [...KNOWN_NAMES].some((k) => bare.includes(k.replace(/[^A-Z0-9]/g, ""))) ? `${l} (unverified)` : l;
 };
 
 async function refreshTokens() {
@@ -522,9 +523,9 @@ function fillSwap() {
   fromSel.textContent = ""; toSel.textContent = "";
   const opt = (sel, v, text) => { const o = el("option", "", text); o.value = v; sel.append(o); };
   opt(fromSel, SOL_MINT, "SOL");
-  for (const tk of tokens) opt(fromSel, tk.mint, tokenName(tk.mint));
-  const seen = new Set();
-  for (const m of [SOL_MINT, ...SWAP_TO, ...tokens.map((x) => x.mint)]) if (!seen.has(m)) { seen.add(m); opt(toSel, m, symOf(m)); }
+  const named = (m) => (KNOWN.has(pubkey(m).join(",")) ? symOf(m) : `${symOf(m)} ${short(m)}`);
+  for (const tk of tokens) opt(fromSel, tk.mint, named(tk.mint));
+  for (const m of [SOL_MINT, ...SWAP_TO]) opt(toSel, m, symOf(m));
   opt(toSel, "other", "Other");
   if ([...fromSel.options].some((o) => o.value === f)) fromSel.value = f;
   if ([...toSel.options].some((o) => o.value === t)) toSel.value = t;
@@ -967,6 +968,7 @@ function initWallet() {
           rent ? `This creates a token account for ${symOf(to)} in your wallet. Its rent is about ${sol(rent)} SOL, paid once.` : "",
           plan.via ? "There is no direct pool, so this is two swaps through SOL. If the price moves between them, the second swap is skipped and you keep the SOL." : "",
           ntx > (plan.via ? 2 : 1) ? "The route is large, so the wallet prepares your token accounts in a separate transaction first." : "",
+          to !== SOL_MINT && !KNOWN.has(pubkey(to).join(",")) ? "This token is not on the wallet's known list. Anyone can create a token with any name. Check the mint address above against the project's official site before you buy." : "",
           ext, topPlan.note, low) }, "Swap"))) return;
       let topup = topPlan, sig = "";
       for (let li = 0; li < plan.legs.length; li++) {

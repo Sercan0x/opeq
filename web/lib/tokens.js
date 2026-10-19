@@ -40,7 +40,7 @@ function readStr(d, o, max) {
 
 export function cleanLabel(s) {
   if (typeof s !== "string") return "";
-  return s.replace(/[^\p{L}\p{N} $._-]/gu, "").trim().slice(0, 12);
+  return s.normalize("NFKC").replace(/[^A-Za-z0-9 $._-]/g, "").replace(/\s+/g, " ").trim().slice(0, 12);
 }
 
 export function metaplexLabel(d) {
