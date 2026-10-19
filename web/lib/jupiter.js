@@ -205,12 +205,12 @@ export async function balanceGuard(rpc, ctx, min, allowance, tx) {
   const inTx = new Set(tx.flatMap(([p, ms]) => [b58encode(p), ...ms.map((m) => b58encode(m[0]))]));
   const held = (await rpc.tokenAccounts(wallet)).map((t) => pubkey(t.account)).filter((k) => inTx.has(b58encode(k)));
   const addrs = [...new Map([wallet, wsol, inAta, outAta, ...held].filter((k) => inTx.has(b58encode(k)) || eq(k, wallet)).map((k) => [b58encode(k), k])).values()];
-  const pre = await rpc.snapshot(addrs);
   const fromSol = eq(inMint, T.WSOL), toSol = eq(outMint, T.WSOL);
   return async (signed) => {
+    const pre = await rpc.snapshot(addrs);
     const sim = await rpc.simulate(signed, addrs);
-    if (sim.err) { const e = new Error(`the swap failed in simulation, so it was not sent: ${JSON.stringify(sim.err).slice(0, 120)}`); e.logs = sim.logs; throw e; }
-    const bad = (why) => { throw new Error(`simulation shows ${why}, so the swap was not sent`); };
+    if (sim.err) { const e = new Error(`the swap failed in simulation, so the wallet stopped it and retires its key: ${JSON.stringify(sim.err).slice(0, 120)}`); e.logs = sim.logs; throw e; }
+    const bad = (why) => { throw new Error(`simulation shows ${why}, so the wallet stopped this swap and retires its key`); };
     const at = (k) => addrs.findIndex((x) => eq(x, k));
     const d = (k) => {
       const i = at(k);
