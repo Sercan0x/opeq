@@ -506,12 +506,14 @@ async function swapPlan(from, to, amount, slip) {
   catch (e) { throw new Error(String(e.message).replace(/\{(\w+)\}/g, (_, m) => symOf(m))); }
 }
 
+let slipBps = 100;
+
 function swapInputs() {
   const from = $("j-from").value;
   let to = $("j-to").value;
   if (to === "other") { to = $("j-mint").value.trim(); pubkey(to); }
   if (!from || !to) throw new Error("choose the tokens to swap");
-  return { from, to, slip: Number($("j-slip").value) };
+  return { from, to, slip: slipBps };
 }
 
 function fillSwap() {
@@ -520,36 +522,47 @@ function fillSwap() {
   fromSel.textContent = ""; toSel.textContent = "";
   const opt = (sel, v, text) => { const o = el("option", "", text); o.value = v; sel.append(o); };
   opt(fromSel, SOL_MINT, "SOL");
-  for (const tk of tokens) opt(fromSel, tk.mint, `${tokenName(tk.mint)} (${T.formatAmount(tk.amount, tk.decimals)})`);
+  for (const tk of tokens) opt(fromSel, tk.mint, tokenName(tk.mint));
   const seen = new Set();
   for (const m of [SOL_MINT, ...SWAP_TO, ...tokens.map((x) => x.mint)]) if (!seen.has(m)) { seen.add(m); opt(toSel, m, symOf(m)); }
-  opt(toSel, "other", "Other token (paste mint)");
+  opt(toSel, "other", "Other");
   if ([...fromSel.options].some((o) => o.value === f)) fromSel.value = f;
   if ([...toSel.options].some((o) => o.value === t)) toSel.value = t;
   else toSel.value = fromSel.value === SOL_MINT ? SWAP_TO[0] || SOL_MINT : SOL_MINT;
   $("j-mint").classList.toggle("hidden", toSel.value !== "other");
-  amountLabel();
+  showBalance();
 }
 
-function amountLabel() {
+function balanceOf(from) {
+  if (from === SOL_MINT) return { amount: BigInt(Math.round(Number($("w-bal").textContent.replace(/,/g, "")) * 1e9) || 0), decimals: 9 };
+  const held = tokens.find((x) => x.mint === from);
+  return held ? { amount: held.amount, decimals: held.decimals } : { amount: 0n, decimals: 0 };
+}
+
+function showBalance() {
   const from = $("j-from").value;
   if (!from) return;
-  const held = from === SOL_MINT ? null : tokens.find((x) => x.mint === from);
-  const have = from === SOL_MINT ? $("w-bal").textContent : held ? T.formatAmount(held.amount, held.decimals) : "0";
-  $("j-amt-l").textContent = `Amount in ${symOf(from)} (you have ${have})`;
+  const b = balanceOf(from);
+  $("j-have").textContent = `Balance ${T.formatAmount(b.amount, b.decimals)} ${symOf(from)}`;
+}
+
+function quoteView(out, min, route) {
+  $("j-out").textContent = out;
+  $("j-min").textContent = min;
+  $("j-route").textContent = route;
 }
 
 let jupTimer = null, jupSeq = 0;
 function scheduleJup() {
   if (!NET.jupiter) return;
-  amountLabel();
+  showBalance();
   $("j-mint").classList.toggle("hidden", $("j-to").value !== "other");
   clearTimeout(jupTimer);
   const seq = ++jupSeq;
+  if (!$("j-amt").value.trim()) { quoteView("0", "", "Jupiter"); return; }
+  $("j-out").classList.add("wait");
   jupTimer = setTimeout(async () => {
-    const out = $("j-quote");
     try {
-      if (!$("j-amt").value.trim()) { out.textContent = " "; return; }
       const { from, to, slip } = swapInputs();
       const fi = await mintInfo(from), ti = await mintInfo(to);
       const amount = T.parseAmount($("j-amt").value, fi.decimals);
@@ -562,9 +575,11 @@ function scheduleJup() {
         via = true;
       }
       if (seq !== jupSeq) return;
-      out.textContent = `About ${T.formatAmount(BigInt(q.outAmount), ti.decimals)} ${symOf(to)}, at least ${T.formatAmount(J.minOut(q), ti.decimals)}. ${via ? "Two swaps through SOL." : `Via ${J.labels(q).join(", ")}.`}`;
-    } catch (e) { if (seq === jupSeq) out.textContent = String(e.message || e).slice(0, 120); }
-  }, 700);
+      quoteView(T.formatAmount(BigInt(q.outAmount), ti.decimals), `At least ${T.formatAmount(J.minOut(q), ti.decimals)} ${symOf(to)}`,
+        via ? `${symOf(from)} to SOL to ${symOf(to)}` : J.labels(q).join(", "));
+    } catch (e) { if (seq === jupSeq) quoteView("0", String(e.message || e).slice(0, 110), "Jupiter"); }
+    finally { if (seq === jupSeq) $("j-out").classList.remove("wait"); }
+  }, 600);
 }
 
 let quoteTimer = null;
@@ -901,8 +916,28 @@ function initWallet() {
     await refreshWallet();
   }));
   if (NET.jupiter) {
-    for (const id of ["j-from", "j-to", "j-slip"]) $(id).addEventListener("change", scheduleJup);
+    for (const id of ["j-from", "j-to"]) $(id).addEventListener("change", scheduleJup);
     for (const id of ["j-amt", "j-mint"]) $(id).addEventListener("input", scheduleJup);
+    for (const b of $("j-slip").querySelectorAll("button")) b.addEventListener("click", () => {
+      slipBps = Number(b.dataset.slip);
+      for (const o of $("j-slip").querySelectorAll("button")) o.setAttribute("aria-pressed", String(o === b));
+      scheduleJup();
+    });
+    $("j-max").addEventListener("click", () => {
+      const from = $("j-from").value, b = balanceOf(from);
+      let amt = from === SOL_MINT ? b.amount - 10000000n : b.amount;
+      if (amt < 0n) amt = 0n;
+      $("j-amt").value = T.formatAmount(amt, b.decimals);
+      scheduleJup();
+    });
+    $("j-flip").addEventListener("click", () => {
+      const from = $("j-from").value, to = $("j-to").value;
+      if (to === "other" || ![...$("j-from").options].some((o) => o.value === to)) return;
+      $("j-from").value = to;
+      $("j-to").value = from;
+      $("j-amt").value = "";
+      scheduleJup();
+    });
     $("j-go").addEventListener("click", () => guard("j-err", "j-ok", async () => {
       needPayer();
       const { from, to, slip } = swapInputs();
@@ -948,7 +983,7 @@ function initWallet() {
       $("j-ok").textContent = `swapped ${shown} ${symOf(from)}`;
       log(`swapped ${shown} ${symOf(from)} for about ${T.formatAmount(plan.out, ti.decimals)} ${symOf(to)}: ${sig}`, "ok");
       $("j-amt").value = "";
-      $("j-quote").textContent = " ";
+      quoteView("0", "", "Jupiter");
       await refreshWallet();
     }));
   }
