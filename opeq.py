@@ -29,6 +29,31 @@ CLOCK = pk("SysvarC1ock11111111111111111111111111111111")
 NETS = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainnet-beta.solana.com"}
 GENESIS = {"devnet": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG", "mainnet": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"}
 LOCK_DIR = os.path.join(os.path.expanduser("~"), ".opeq", "locks")
+TAKEOVER_DIR = os.path.join(os.path.expanduser("~"), ".opeq", "takeover")
+
+
+def aid_lock(aid_hex):
+    os.makedirs(LOCK_DIR, mode=0o700, exist_ok=True)
+    fd = os.open(os.path.join(LOCK_DIR, re.sub(r"[^0-9a-f]", "", aid_hex)[:64] + ".lock"), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise SystemExit("this wallet is in use by another opeq process (maybe through a copy of the vault file), try again when it finishes") from None
+    return fd
+
+
+def takeover_used(aid_hex, epoch):
+    path = os.path.join(TAKEOVER_DIR, re.sub(r"[^0-9a-f]", "", aid_hex)[:64] + ".json")
+    try:
+        return [int(x) for x in json.load(open(path)).get(str(epoch), [])]
+    except FileNotFoundError:
+        return []
+
+
+def mark_takeover(aid_hex, epoch, used):
+    os.makedirs(TAKEOVER_DIR, mode=0o700, exist_ok=True)
+    write_json_atomic(os.path.join(TAKEOVER_DIR, re.sub(r"[^0-9a-f]", "", aid_hex)[:64] + ".json"), {str(epoch): sorted(set(used))})
 EXPIRY_SLOTS = 150
 RESTORE_GAP = 64
 REKEY_WARN = 32
@@ -95,12 +120,7 @@ class Vault:
                 raise SystemExit("vault is in use by another opeq process, try again when it finishes") from None
         self.raw = json.load(open(path))
         if lock:
-            os.makedirs(LOCK_DIR, mode=0o700, exist_ok=True)
-            self.aid_lock_fd = os.open(os.path.join(LOCK_DIR, re.sub(r"[^0-9a-f]", "", self.raw["aid"])[:64] + ".lock"), os.O_RDWR | os.O_CREAT, 0o600)
-            try:
-                fcntl.flock(self.aid_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise SystemExit("this wallet is in use by another opeq process (maybe through a copy of the vault file), try again when it finishes") from None
+            self.aid_lock_fd = aid_lock(self.raw["aid"])
         self._gen = self.raw.get("gen", 0)
         self.program = pk(self.raw["program"])
         self.aid = bytes.fromhex(self.raw["aid"])
@@ -497,7 +517,7 @@ def new_master_vault(path, program, master, password, epoch, root_check=None, ne
         raise SystemExit("these words do not control this wallet's current tree")
     tree0 = tree if epoch == 0 else mnemonic.tree(master, 0, pk(program))
     aid = P.account_id(tree0.pub_seed, tree0.root)
-    raw = {**tree.to_json(), "seed_type": "master", "program": program, "aid": aid.hex(), "next_leaf": next_leaf, "epoch": epoch, "active": active}
+    raw = {**tree.to_json(), "seed_type": "master", "program": program, "aid": aid.hex(), "next_leaf": next_leaf, "epoch": epoch, "active": active, "gen": secrets.randbelow(2**31) + 1}
     if cluster:
         raw["cluster"] = cluster
     del raw["sk_seed"]
@@ -545,6 +565,14 @@ def cmd_recover(rpc, args):
         raise SystemExit(str(e)) from None
     tree0 = mnemonic.tree(master, 0, program)
     aid = P.account_id(tree0.pub_seed, tree0.root)
+    fd = aid_lock(aid.hex())
+    try:
+        recover_into(rpc, args, program, master, aid)
+    finally:
+        os.close(fd)
+
+
+def recover_into(rpc, args, program, master, aid):
     state = P.state_pda(aid, program)[0]
     acc = rpc.account(state)
     chain_seed = None
@@ -670,19 +698,20 @@ def cmd_takeover(rpc, payer, v, args):
     genesis = check_cluster(rpc, v)
     if st["epoch"] < v.raw.get("epoch", 0):
         raise SystemExit("on-chain epoch is behind this vault file, refusing to sign")
-    if st["epoch"] != v.raw.get("epoch", 0):
+    if st["epoch"] != v.raw.get("epoch", 0) or st["root"] != v.root:
+        same = st["epoch"] == v.raw.get("epoch", 0)
         cur = mnemonic.tree(v.master, st["epoch"], v.program, st["pub_seed"])
         if cur.root != st["root"]:
             raise SystemExit("on-chain tree is not derived from this vault's master seed, refusing to sign")
         v.raw.update(v.tree_fields(cur))
-        v.raw.update({"epoch": st["epoch"], "next_leaf": st["next"], "active": False})
+        v.raw.update({"epoch": st["epoch"], "next_leaf": max(st["next"], v.raw.get("next_leaf", 0)) if same else st["next"], "active": False})
         v.raw.pop("rekeying", None)
         v.raw.pop("inflight", None)
         v._key = None
         v.save()
     pending_rekey(rpc, v, st)
     t = v.raw.get("takeover") or {}
-    used = t.get("used", []) if t.get("epoch") == st["epoch"] else []
+    used = sorted(set((t.get("used", []) if t.get("epoch") == st["epoch"] else []) + takeover_used(v.raw["aid"], st["epoch"])))
     nl = v.raw.get("next_leaf", 0)
     lo = max(TAKEOVER_FLOOR, st["next"] + RESTORE_GAP, nl if nl > TAKEOVER_FLOOR else 0)
     free = [l for l in range(lo, wots.LEAVES) if l not in used]
@@ -690,6 +719,7 @@ def cmd_takeover(rpc, payer, v, args):
         raise SystemExit("no unused takeover keys left on this tree; take over from the copy that is active, or wait for it to rekey")
     confirm(args, "make this copy the only one that signs (one rekey transaction; every other copy stops signing)")
     leaf = free[secrets.randbelow(len(free))]
+    mark_takeover(v.raw["aid"], st["epoch"], used + [leaf])
     v.raw["takeover"] = {"epoch": st["epoch"], "used": used + [leaf]}
     v.raw["cluster"] = genesis
     v.save()

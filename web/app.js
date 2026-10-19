@@ -562,12 +562,12 @@ function initRecover() {
     if (pw.length < 10) throw new Error("use at least 10 characters");
     if (pw !== $("r-pw2").value) throw new Error("passwords do not match");
     setProgress("r-prog", 0);
-    const record = await engine.recover($("r-words").value, pw, (p) => setProgress("r-prog", p));
+    let record = await engine.recover($("r-words").value, pw, (p) => setProgress("r-prog", p));
     setProgress("r-prog", null);
     if (await store.get(record.id)) {
-      if (!confirm("This wallet already exists in this browser. Replace it with the recovered copy? The recovered copy skips 64 keys, which is always safe.")) return;
-    }
-    await engine.save(record);
+      if (!confirm("This wallet already exists in this browser. Replace its password with the new one? Its key counter is kept.")) return;
+      record = await engine.replace(record.id, $("r-words").value, pw, (p) => setProgress("r-prog", p));
+    } else await engine.save(record);
     session = await engine.unlock(record, pw);
     current = session.id;
     remember(current);
@@ -588,7 +588,7 @@ function initUnlock() {
   $("u-pw").addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
   $("u-forget").addEventListener("click", async () => {
     if (!confirm("Remove this wallet from this browser? You can only get it back with the 24 words.")) return;
-    await store.del(current);
+    await engine.remove(current);
     current = null;
     session = null;
     show("view-welcome");

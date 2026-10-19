@@ -1,6 +1,6 @@
 import * as P from "./lib/protocol.js";
 import { Engine, Session, Inactive, EXEC_LIMIT } from "./lib/engine.js";
-import { IdbStore, macKeyFrom, withLock } from "./lib/vaultstore.js";
+import { IdbStore, macKeyFrom } from "./lib/vaultstore.js";
 import { Rpc, pubkey, b58encode, SYSTEM, concat, u32, u64, eq, isOnCurve, unhex } from "./lib/solana.js";
 import * as T from "./lib/tokens.js";
 import { feePayer } from "./feekey.js";
@@ -571,10 +571,7 @@ function initRecover() {
     if (existing) {
       setProgress("r-prog", null);
       if (!(await ask("This wallet already exists in this browser. Replace its password with the new one? Its key counter is kept.", "Replace"))) return;
-      await withLock(`opeq:${record.id}`, async () => {
-        record = await engine.recover(words, pw, (p) => setProgress("r-prog", p), await store.get(record.id));
-        await engine.save(record);
-      });
+      record = await engine.replace(record.id, words, pw, (p) => setProgress("r-prog", p));
     } else await engine.save(record);
     setProgress("r-prog", null);
     await startSession(await engine.unlock(record, pw));
@@ -602,7 +599,7 @@ function initUnlock() {
     if (check.macRaw) check.macRaw.fill(0);
     $("u-pw").value = "";
     if (!(await ask("Remove this wallet from this browser? Its funds stay on chain, but you can only get it back with your 24 recovery words. Make sure you have them written down.", "Remove"))) return;
-    await store.del(current);
+    await engine.remove(current);
     current = null; session = null;
     show("v-welcome");
     refreshPorts();

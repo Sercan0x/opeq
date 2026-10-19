@@ -71,7 +71,28 @@ export class Engine {
     if (existing && existing.epoch > epoch) throw new Error("this browser already holds a newer copy of this wallet");
     const keep = {};
     if (existing && existing.epoch === epoch) for (const k of ["takeover", "inflight", "rekeying"]) if (existing[k]) keep[k] = existing[k];
-    return this._record(master, password, aid, epoch, t, next, !!(existing && existing.active === true && existing.epoch === epoch), keep);
+    const same = !!(existing && existing.epoch === epoch && existing.root === hex(t.root) && existing.pub_seed === hex(t.pubSeed));
+    return this._record(master, password, aid, epoch, t, next, same && existing.active === true, keep);
+  }
+
+  replace(id, words, password, progress) {
+    return V.withLock(`opeq:${id}`, async () => {
+      const rec = await this.recover(words, password, progress, await this.store.get(id));
+      await this.save(rec);
+      return rec;
+    });
+  }
+
+  remove(id) {
+    return V.withLock(`opeq:${id}`, async () => {
+      const r = await this.store.get(id);
+      if (r && (r.rekeying || r.inflight)) {
+        const slot = await this.rpc.slot();
+        if (r.rekeying && slot <= Number(r.rekeying.expiry) + 2) throw new Error("a rekey or takeover from this browser may still land; wait about a minute, then remove");
+        if (r.inflight && slot <= Number(r.inflight.expiry) + 2) throw new Error("a transaction from this browser may still land; wait about a minute, then remove");
+      }
+      await this.store.del(id);
+    });
   }
 
   async _record(master, password, aid, epoch, t, next, active = true, keep = {}) {
@@ -203,7 +224,7 @@ export class Engine {
       if (slot > expiry + 2) {
         let again = null;
         try { again = await this.rpc.status(sig); } catch { again = null; }
-        if (again && !again.err) return sig;
+        if (again && !again.err && (again.confirmationStatus === "confirmed" || again.confirmationStatus === "finalized")) return sig;
         const f = new Failed("transaction expired without landing");
         f.sent = true; f.expired = true;
         throw f;
@@ -434,21 +455,25 @@ export class Session {
       if (!st) throw new Error("wallet is not initialized on chain yet");
       if (st.epoch < r.epoch) throw new Error("on-chain epoch is behind this wallet, refusing to sign");
       if (st.next + RESTORE_GAP >= LEAVES) throw new Error("the current key tree is too far used to take over safely; take over from the device that is active, or wait for it to rekey");
-      if (st.epoch !== r.epoch) {
+      if (st.epoch !== r.epoch || r.root !== hex(st.root)) {
         const t = await this.e.compute.run("treeFor", { master: this.master, epoch: st.epoch, program: this.e.program, pubSeed: st.pubSeed }, progress && ((p) => progress(p * 0.4)));
         if (!eq(t.root, st.root)) throw new Error("on-chain tree is not derived from this wallet's words");
-        Object.assign(r, { epoch: st.epoch, next_leaf: st.next, pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), active: false });
+        const keepNext = st.epoch === r.epoch ? Math.max(r.next_leaf, st.next) : st.next;
+        Object.assign(r, { epoch: st.epoch, next_leaf: keepNext, pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), active: false });
         delete r.inflight;
         delete r.rekeying;
         r = await this.put(r);
       }
       await this.pendingRekey(r, st);
-      const used = r.takeover && r.takeover.epoch === st.epoch ? r.takeover.used : [];
+      const tk = (await this.e.store.get(`tk:${r.aid}`)) || { id: `tk:${r.aid}`, used: {} };
+      const used = [...new Set([...(r.takeover && r.takeover.epoch === st.epoch ? r.takeover.used : []), ...(tk.used[st.epoch] || [])])];
       const lo = Math.max(TAKEOVER_FLOOR, st.next + RESTORE_GAP, r.next_leaf > TAKEOVER_FLOOR ? r.next_leaf : 0);
       const free = [];
       for (let l = lo; l < LEAVES; l++) if (!used.includes(l)) free.push(l);
       if (!free.length) throw new Error("no unused takeover keys left on this tree; take over from the device that is active, or wait for it to rekey");
       const leaf = free[crypto.getRandomValues(new Uint32Array(1))[0] % free.length];
+      tk.used = { [st.epoch]: [...used, leaf] };
+      await this.e.store.put(tk);
       r.takeover = { epoch: st.epoch, used: [...used, leaf] };
       await this.put(r);
       return this._rekey(r, st, leaf, progress && ((p) => progress(0.4 + p * 0.6)));
@@ -485,6 +510,10 @@ export class Session {
       const after = await this.e.chainState(await this.load()).catch(() => null);
       if (!(after && after.epoch === st.epoch + 1 && eq(after.root, s.newRoot))) throw err;
       sig = "landed";
+    }
+    if (sig !== "landed") {
+      const after = await this.e.chainState(await this.load()).catch(() => null);
+      if (!(after && after.epoch === st.epoch + 1 && eq(after.root, s.newRoot))) throw new Error("the rekey was reported as landed but the chain does not show the new tree yet; refresh in a minute");
     }
     const fresh = await this.load();
     Object.assign(fresh, { epoch: r.epoch + 1, next_leaf: 0, pub_seed: hex(s.newPubSeed), root: hex(s.newRoot), leaves: b64(s.newLeaves), active: true });

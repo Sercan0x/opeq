@@ -402,11 +402,9 @@ function initRecover() {
     if (existing) {
       setProgress("r-prog", null);
       if (!confirm("This wallet already exists in this browser. Replace its password with the new one? Its key counter is kept.")) return;
-      record = await engine.recover(words, pw, (p) => setProgress("r-prog", p), existing);
-      await store.del(record.id);
-    }
+      record = await engine.replace(record.id, words, pw, (p) => setProgress("r-prog", p));
+    } else await engine.save(record);
     setProgress("r-prog", null);
-    await engine.save(record);
     session = await engine.unlock(record, pw);
     current = session.id;
     remember(current);
@@ -426,7 +424,7 @@ function initUnlock() {
   $("u-pw").addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
   $("u-forget").addEventListener("click", async () => {
     if (!confirm("Remove this wallet from this browser? You can only get it back with the 24 words.")) return;
-    await store.del(current);
+    await engine.remove(current);
     current = null; session = null;
     show("v-welcome");
     refreshPorts();
