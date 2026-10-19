@@ -29,23 +29,40 @@ def write_buffer(rpc, payer, elf):
         create_account(payer.pub, buf.pub, rpc.rent(size), size, LOADER),
         (LOADER, [(buf.pub, False, True), (payer.pub, False, False)], u32(0)),
     ], [payer, buf])
+    print("buffer", ps(buf.pub))
     for off in range(0, len(elf), CHUNK):
         part = elf[off:off + CHUNK]
         rpc.send([(LOADER, [(buf.pub, False, True), (payer.pub, True, False)], u32(1) + u32(off) + u64(len(part)) + part)], [payer])
         print(f"  wrote {off + len(part)}/{len(elf)}")
+    acc = rpc.account(buf.pub)
+    if acc is None or acc["owner"] != LOADER or bytes(acc["data"][BUFFER_META:]) != elf:
+        raise SystemExit(f"buffer {ps(buf.pub)} does not hold the exact elf bytes, stopping before deploy")
     return buf
 
 
-def deploy(rpc, payer, elf, prog_kp, max_len):
+def deploy(rpc, payer, elf, prog_kp, max_len, authority=None):
     buf = write_buffer(rpc, payer, elf)
     pdata = find_pda([prog_kp.pub], LOADER)
-    sig = rpc.send([
+    ixs = [
         create_account(payer.pub, prog_kp.pub, rpc.rent(PROGRAM_LEN), PROGRAM_LEN, LOADER),
         (LOADER, [
             (payer.pub, True, True), (pdata, False, True), (prog_kp.pub, False, True), (buf.pub, False, True),
             (RENT, False, False), (CLOCK, False, False), (SYSTEM, False, False), (payer.pub, True, False),
         ], u32(2) + u64(max_len)),
-    ], [payer, prog_kp], cu_limit=400_000)
+    ]
+    if authority is not None:
+        ixs.append((LOADER, [(pdata, False, True), (payer.pub, True, False), (authority, False, False)], u32(4)))
+    sig = rpc.send(ixs, [payer, prog_kp], cu_limit=400_000)
+    acc = rpc.account(pdata)
+    data = bytes(acc["data"])
+    auth = data[13:45] if data[12] == 1 else None
+    code = data[PROGRAMDATA_META:]
+    if code[:len(elf)] != elf or any(code[len(elf):]):
+        raise SystemExit("deployed program code differs from the elf")
+    expected = authority if authority is not None else payer.pub
+    if auth != expected:
+        raise SystemExit(f"upgrade authority is {auth and ps(auth)}, expected {ps(expected)}")
+    print("upgrade authority", ps(auth), "(handed over in the same transaction)" if authority is not None else "(the payer key)")
     return sig
 
 
@@ -67,6 +84,7 @@ def main():
     ap.add_argument("--program-key")
     ap.add_argument("--program")
     ap.add_argument("--max-len", type=int, default=0)
+    ap.add_argument("--authority")
     args = ap.parse_args()
     rpc = Rpc(NETS[args.net])
     if args.cmd == "newkey":
@@ -96,9 +114,13 @@ def main():
             prog = Keypair.generate()
             if args.program_key:
                 prog.save(args.program_key)
+        if args.net == "mainnet" and not args.authority:
+            raise SystemExit("a mainnet deploy must hand the upgrade authority to the admin vault wallet in the same transaction: pass --authority <vault wallet>")
+        if args.net == "mainnet" and Rpc(NETS["devnet"]).account(prog.pub) is not None:
+            raise SystemExit("refusing: this program id exists on devnet")
         max_len = max(args.max_len, len(elf))
         print("program", ps(prog.pub), "elf", len(elf), "max_len", max_len)
-        print("deployed", deploy(rpc, payer, elf, prog, max_len))
+        print("deployed", deploy(rpc, payer, elf, prog, max_len, pk(args.authority) if args.authority else None))
     elif args.cmd == "upgrade":
         elf = open(args.elf, "rb").read()
         print("upgraded", upgrade(rpc, payer, elf, pk(args.program)))

@@ -12,9 +12,12 @@ import wots
 from solkit import b58encode, find_pda_bump
 
 master = bytes(range(32))
-tree = mnemonic.tree(master, 0)
-tree1 = mnemonic.tree(master, 1)
+tree = mnemonic.tree(master, 0, mnemonic.LEGACY_PROGRAM)
+tree1 = mnemonic.tree(master, 1, mnemonic.LEGACY_PROGRAM)
 program = hashlib.sha256(b"opeq test program").digest()
+v2sk0, v2pub0 = mnemonic.tree_seeds(master, 0, program)
+v3seed = bytes(range(100, 116))
+v2sk1, v2pub1 = mnemonic.tree_seeds(master, 1, program, v3seed)
 aid = P.account_id(tree.pub_seed, tree.root)
 state, sbump = P.state_pda(aid, program)
 wallet, wbump = P.wallet_pda(aid, program)
@@ -36,6 +39,7 @@ out = {
     "master": master.hex(),
     "words": " ".join(mnemonic.to_words(master)),
     "sk0": tree.sk_seed.hex(), "pub0": tree.pub_seed.hex(), "root0": tree.root.hex(),
+    "v2_sk0": v2sk0.hex(), "v2_pub0": v2pub0.hex(), "v2_sk1": v2sk1.hex(), "v2_pub1": v2pub1.hex(),
     "root1": tree1.root.hex(), "pub1": tree1.pub_seed.hex(),
     "leaf5": tree.levels[0][5].hex(),
     "program": program.hex(), "program_b58": b58encode(program),

@@ -60,6 +60,9 @@ export function checkForward(old, r) {
   if (r.epoch < old.epoch || (r.epoch === old.epoch && r.next_leaf < old.next_leaf)) {
     throw new Error("refusing to move the one-time key counter backwards");
   }
+  if (r.epoch === old.epoch && old.active === false && r.active === true) {
+    throw new Error("refusing to re-activate a copy without a rekey");
+  }
 }
 
 export class MemoryStore {

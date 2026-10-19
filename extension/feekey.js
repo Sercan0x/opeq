@@ -1,11 +1,13 @@
 import { b58encode, compact, concat } from "./lib/solana.js";
+import { isLegacy } from "./lib/mnemonic.js";
 
 const PKCS8_ED25519 = new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]);
 const TAG = new TextEncoder().encode("opeq/fee/v1");
+const TAG2 = new TextEncoder().encode("opeq/fee/v2");
 const unb64url = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
-export async function feePayer(master) {
-  const input = concat(TAG, master);
+export async function feePayer(master, program) {
+  const input = isLegacy(program) ? concat(TAG, master) : concat(TAG2, program, master);
   const seed = new Uint8Array(await crypto.subtle.digest("SHA-256", input));
   input.fill(0);
   const pkcs8 = concat(PKCS8_ED25519, seed);

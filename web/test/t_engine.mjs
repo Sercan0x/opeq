@@ -2,6 +2,7 @@ import { Engine, Session, Inactive, EXEC_LIMIT, RESTORE_GAP } from "../lib/engin
 import { MemoryStore, withLock } from "../lib/vaultstore.js";
 import { localCompute } from "../lib/compute.js";
 import * as P from "../lib/protocol.js";
+import * as M from "../lib/mnemonic.js";
 import { pubkey, unhex, hex, concat, u32, u64, SYSTEM, u64 as U64 } from "../lib/solana.js";
 import { SIG_LEN, PATH_LEN } from "../lib/wots.js";
 
@@ -15,7 +16,7 @@ globalThis.navigator = { locks: { async request(name, opts, fn) {
   try { return await fn({ name }); } finally { held.delete(name); }
 } } };
 
-const PROGRAM = "424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN";
+const PROGRAM = process.env.OPEQ_TEST_PROGRAM || "424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN";
 const prog = pubkey(PROGRAM);
 let failures = 0;
 const ok = (cond, name) => { console.log(`${cond ? "PASS" : "FAIL"} ${name}`); if (!cond) failures++; };
@@ -193,6 +194,41 @@ await sB.put(r2);
 await throws(() => sB.exec(pay(sB, 19)), /rekey now/, `exec stops at ${EXEC_LIMIT} so a takeover always fits`);
 await sB.rekey();
 ok(chain.state.epoch === 2 && chain.state.next === 0, "rekey from the reserve works");
+
+if (!M.isLegacy(prog)) {
+  const marker = sB;
+  chain.mode = "neterr";
+  await throws(() => marker.rekey(), /network error/, "rekey whose broadcast fails leaves a rekeying marker");
+  chain.mode = "land";
+  ok(!!(await storeB.get(recB.id)).rekeying, "marker is still recorded");
+  const storeC = new MemoryStore();
+  const Cc = mkEngine(storeC);
+  const recC = await Cc.recover(words.join(" "), pw);
+  await Cc.save(recC);
+  const sC = await Cc.unlock(recC, pw);
+  await sC.takeover();
+  ok((await storeC.get(recC.id)).active === true, "new device took over");
+  await throws(() => marker.exec(pay(marker, 21)), /Inactive|another device/, "C1: stale marker does not adopt another device's takeover");
+  ok((await storeB.get(recB.id)).active === false, "old copy stays inactive");
+  await sC.exec(pay(sC, 22));
+  const storeD = new MemoryStore();
+  const Dd = mkEngine(storeD);
+  const recD = await Dd.recover(words.join(" "), pw);
+  await Dd.save(recD);
+  const sD = await Dd.unlock(recD, pw);
+  const both = await Promise.allSettled([sC.rekey(), sD.takeover()]);
+  const actives = [(await storeC.get(recC.id)).active, (await storeD.get(recD.id)).active].filter(Boolean).length;
+  ok(actives <= 1, `C3: after a rekey/takeover race at most one copy is active (${both.map((x) => x.status).join(",")})`);
+  const winner = (await storeC.get(recC.id)).active ? sC : sD, loser = winner === sC ? sD : sC;
+  await throws(() => loser.exec(pay(loser, 23)), /Inactive|another device|not active/, "C3: the losing copy refuses to sign");
+  await winner.exec(pay(winner, 24));
+  const r0 = await (winner === sC ? storeC : storeD).get(winner.id);
+  const flip = structuredClone(await (loser === sC ? storeC : storeD).get(loser.id));
+  if (flip.epoch === r0.epoch) {
+    flip.active = true;
+    await throws(() => (loser === sC ? storeC : storeD).put(flip), /re-activate/, "store refuses to re-activate a copy without a rekey");
+  }
+}
 
 chain.rent = 50 * 10 ** 9;
 const C = mkEngine(new MemoryStore());

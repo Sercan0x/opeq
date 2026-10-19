@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.devnet.solana.com; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
-<title>OPEQ Wallet (Devnet)</title>
+<title data-only="devnet">OPEQ Wallet (Devnet)</title><title data-only="mainnet">OPEQ Wallet</title>
 <meta name="theme-color" content="#070b11">
 <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="app.css">
@@ -34,8 +34,8 @@
 
 <header class="bar">
   <a class="brand" href="https://opeq.io" target="_blank" rel="noopener noreferrer"><img src="assets/logo.svg" alt="opeq" width="88" height="28"></a>
-  <span class="drive mono" id="drive"><i></i><span id="drive-text">drive mounted, devnet</span></span>
-  <span class="devnet mono">devnet only, never send real SOL here</span>
+  <span class="drive mono" id="drive"><i></i><span id="drive-text">drive mounted</span></span>
+  <span class="devnet mono" data-only="devnet">devnet only, never send real SOL here</span><span class="devnet mono" data-only="mainnet">beta, start with small amounts</span>
   <a class="back" href="https://opeq.io" target="_blank" rel="noopener noreferrer">opeq.io</a>
 </header>
 
@@ -69,7 +69,7 @@
         <p>Create a quantum-proof wallet, or recover one from your 24 words.</p>
         <ol class="steps">
           <li>Plug in a new wallet on the left, write down the 24 words, set a password.</li>
-          <li>Send a little devnet SOL to the activation address it shows. Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>.</li>
+          <li data-only="devnet">Send a little devnet SOL to the activation address it shows. Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>.</li><li data-only="mainnet">Send a little SOL to the activation address it shows.</li>
           <li>Activate. The setup costs about 0.0015 SOL and the rest moves into your opeq wallet.</li>
           <li>Send SOL, hold tokens and swap, each signed with a one-time quantum-proof key.</li>
         </ol>
@@ -169,7 +169,7 @@
     </div>
 <div class="card hidden" id="w-init-box">
         <h2 class="silk"><span>PCIE_0</span><b>activate on chain</b></h2>
-        <p class="hint">One-time setup. Send at least 0.01 devnet SOL to this activation address from any wallet or from <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>
+        <p class="hint" data-only="devnet">One-time setup. Send at least 0.01 devnet SOL to this activation address from any wallet or from <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p><p class="hint" data-only="mainnet">One-time setup. Send at least 0.01 SOL to this activation address from any wallet. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>
         <p class="mono addr" id="i-addr"></p>
         <p class="hint" id="i-bal"></p>
         <div class="row"><button class="btn btn-line" id="i-copy" type="button">Copy activation address</button><button class="btn btn-line" id="i-check" type="button">Check balance</button><button class="btn btn-solid" id="w-init" type="button">Activate</button></div>
@@ -221,10 +221,10 @@
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-receive" aria-labelledby="tab-receive">
           <div>          <h2 class="silk"><span>PCIE_1</span><b>receive</b></h2>
-          <p class="hint">Send devnet SOL or tokens to this address from any wallet. It stays the same when the keys rotate. Your mainnet opeq address will be different.</p>
+          <p class="hint" data-only="devnet">Send devnet SOL or tokens to this address from any wallet. It stays the same when the keys rotate. Your mainnet opeq address will be different.</p><p class="hint" data-only="mainnet">Send SOL or tokens to this address from any wallet. It stays the same when the keys rotate.</p>
           <p class="mono addr" id="v-addr"></p>
           <div class="row"><button class="btn btn-line" id="v-copy" type="button">Copy address</button></div>
-          <p class="hint">Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a></p>
+          <p class="hint" data-only="devnet">Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a></p>
         </div>
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-keys" aria-labelledby="tab-keys">

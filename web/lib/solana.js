@@ -193,6 +193,7 @@ export class Rpc {
   async lookupTable(addr) {
     const acc = await this.account(addr);
     if (!acc) throw new Error("lookup table not found");
+    if (b58encode(acc.owner) !== "AddressLookupTab1e1111111111111111111111111") throw new Error("account is not an address lookup table");
     const addresses = [];
     for (let o = 56; o + 32 <= acc.data.length; o += 32) addresses.push(acc.data.slice(o, o + 32));
     return { key: addr, addresses };

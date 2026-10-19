@@ -5,8 +5,9 @@ import { Rpc, pubkey, b58encode, SYSTEM, concat, u32, u64, eq, isOnCurve, unhex 
 import * as T from "./lib/tokens.js";
 import { feePayer } from "./feekey.js";
 import * as keep from "./keep.js";
+import { NET } from "./net.js";
 
-const PROGRAM = "424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN";
+const PROGRAM = NET.program;
 const EXPLORER = "https://explorer.solana.com";
 const LAMPORTS = 1000000000;
 const FEE_LOW = 5000000;
@@ -62,9 +63,10 @@ class WorkerCompute {
   }
 }
 
-const rpc = new Rpc("https://api.devnet.solana.com");
+const rpc = new Rpc(NET.rpc);
 const store = new IdbStore();
 const engine = new Engine({ rpc, program: PROGRAM, store, compute: new WorkerCompute(), payer: null });
+engine.genesis = NET.genesis;
 engine.priceFor = async (cuLimit, keys) => {
   try {
     const recent = await rpc.call("getRecentPrioritizationFees", [keys.slice(0, 128).map(b58encode)]);
@@ -103,7 +105,7 @@ function log(text, cls) {
   if (sig) {
     line.append(text.slice(0, sig.index));
     const a = document.createElement("a");
-    a.href = `${EXPLORER}/tx/${sig[1]}?cluster=devnet`;
+    a.href = `${EXPLORER}/tx/${sig[1]}${NET.explorerQuery}`;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     a.textContent = short(sig[1]);
@@ -136,7 +138,7 @@ const sol = (lamports) => (Number(lamports) / LAMPORTS).toLocaleString("en-US", 
 function needPayer() { if (!engine.payer || !session) throw new Error("unlock a wallet first"); }
 
 async function startSession(s) {
-  engine.payer = await feePayer(s.master);
+  engine.payer = await feePayer(s.master, engine.program);
   session = s;
   await keep.save(s.id, s.master, s.macRaw);
   $("fee-none").classList.add("hidden");
@@ -307,7 +309,7 @@ function initTabs() {
 
 async function showWallet() {
   show("v-wallet");
-  setDrive("on", "wallet unlocked, devnet");
+  setDrive("on", `wallet unlocked, ${NET.name}`);
   await refreshWallet();
   refreshPorts();
 }
@@ -318,7 +320,7 @@ async function refreshWallet() {
   $("w-addr").textContent = session.id;
   $("v-addr").textContent = session.id;
   $("i-addr").textContent = engine.payer.address;
-  $("w-explorer").href = `${EXPLORER}/address/${session.id}?cluster=devnet`;
+  $("w-explorer").href = `${EXPLORER}/address/${session.id}${NET.explorerQuery}`;
   const [bal, info] = await Promise.all([rpc.balance(session.wallet), session.status()]);
   const st = info.st;
   const inactive = info.state === "inactive";
@@ -363,6 +365,7 @@ function signing(on, text) {
 let tokens = [];
 let altCache = null;
 async function lookupTables() {
+  if (!NET.swap) return [];
   if (!altCache) altCache = [await rpc.lookupTable(T.DEMO.alt)];
   return altCache;
 }
@@ -373,7 +376,7 @@ async function refreshTokens() {
   tokens = (await rpc.tokenAccounts(session.wallet)).filter((t) => t.amount > 0n || t.mint === b58encode(T.DEMO.mint));
   const list = $("t-list"), sel = $("t-sel");
   list.textContent = ""; sel.textContent = "";
-  if (!tokens.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = "No tokens yet. Try a swap."; list.append(p); }
+  if (!tokens.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = NET.swap ? "No tokens yet. Try a swap." : "No tokens yet. Anyone can send tokens to your address."; list.append(p); }
   tokens.forEach((t, i) => {
     const row = document.createElement("div"); row.className = "tok";
     const left = document.createElement("div");
@@ -388,6 +391,7 @@ async function refreshTokens() {
 
 let quoteTimer = null;
 function scheduleQuote() {
+  if (!NET.swap) return;
   clearTimeout(quoteTimer);
   quoteTimer = setTimeout(async () => {
     const q = $("x-quote");
@@ -666,7 +670,7 @@ function initWallet() {
     const amount = $("s-amt").value.trim();
     const warn = await checkRecipient(to, false);
     const low = await solCheck(lamports);
-    if (!(await ask(`Send ${amount} devnet SOL from your opeq wallet to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_SEND))} SOL${await topupNote()}${low}${warn}`, "Send"))) return;
+    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${amount} ${NET.sol} from your opeq wallet to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_SEND))} SOL${await topupNote()}${low}${warn}`, "Send"))) return;
     const inner = [[SYSTEM, [[session.wallet, true, true], [to, false, true]], concat(u32(2), u64(lamports))]];
     const sig = await run("reserving a key, grinding the signature", inner, { spend: lamports });
     $("s-ok").textContent = `sent ${amount} SOL`;
@@ -686,7 +690,7 @@ function initWallet() {
     const prog = pubkey(t.program), mint = pubkey(t.mint);
     const hasAta = !!(await rpc.account(T.ata(to, mint, prog)));
     const rent = hasAta ? "" : "\nThe receiver has no account for this token yet, so your wallet also pays its rent, about 0.002 SOL.";
-    if (!(await ask(`Send ${shown} ${name} (devnet) to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_TOKEN))} SOL${rent}${await topupNote()}${warn}`, "Send"))) return;
+    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${shown} ${name}${NET.mainnet ? "" : " (devnet)"} to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_TOKEN))} SOL${rent}${await topupNote()}${warn}`, "Send"))) return;
     const inner = [T.createAtaIdempotent(session.wallet, to, mint, prog),
       T.transferChecked(prog, pubkey(t.account), mint, T.ata(to, mint, prog), session.wallet, amount, t.decimals)];
     const tables = await lookupTables();
@@ -699,6 +703,7 @@ function initWallet() {
   $("x-amt").addEventListener("input", scheduleQuote);
   $("x-dir").addEventListener("change", scheduleQuote);
   $("x-go").addEventListener("click", () => guard("x-err", "x-ok", async () => {
+    if (!NET.swap) throw new Error("swaps are not available in this version");
     needPayer();
     const buy = $("x-dir").value === "buy";
     const amt = T.parseAmount($("x-amt").value, buy ? 9 : T.DEMO.decimals);
@@ -707,7 +712,7 @@ function initWallet() {
     const shown = $("x-amt").value.trim();
     const label = buy ? `${shown} SOL for about ${T.formatAmount(out, T.DEMO.decimals)} DEMO` : `${shown} DEMO for about ${T.formatAmount(out, 9)} SOL`;
     if (buy) await solCheck(amt + 4200000n);
-    if (!(await ask(`Swap ${label} (devnet)? You get at least 99% of that or the swap is cancelled.\nNetwork fee: about ${sol(await networkFee(CU_SWAP))} SOL. If you hold no DEMO account yet, your wallet pays its rent, about 0.002 SOL.${await topupNote()}`, "Swap"))) return;
+    if (!(await ask(`Swap ${label}${NET.mainnet ? "" : " (devnet)"}? You get at least 99% of that or the swap is cancelled.\nNetwork fee: about ${sol(await networkFee(CU_SWAP))} SOL. If you hold no DEMO account yet, your wallet pays its rent, about 0.002 SOL.${await topupNote()}`, "Swap"))) return;
     const tables = await lookupTables();
     const sig = await run("signing the swap", T.swapInner(session.wallet, session.wallet, buy, amt, minOut), { cu: CU_SWAP, tables, spend: (buy ? amt : 0n) + 4200000n });
     $("x-ok").textContent = `swapped ${label}`;
@@ -756,7 +761,7 @@ async function refreshFee() {
   const bal = await rpc.balance(engine.payer.key());
   $("fee-bal").textContent = `${sol(bal)} SOL for fees`;
   $("t-fee-addr").textContent = engine.payer.address;
-  $("t-fee-bal").textContent = bal >= 2 * (TX_FEE + MAX_PRIORITY) ? `${sol(bal)} SOL, enough for this step` : `${sol(bal)} SOL. Send it 0.01 devnet SOL first, then choose Use on this device.`;
+  $("t-fee-bal").textContent = bal >= 2 * (TX_FEE + MAX_PRIORITY) ? `${sol(bal)} SOL, enough for this step` : `${sol(bal)} SOL. Send it 0.01 ${NET.sol} first, then choose Use on this device.`;
   $("i-bal").textContent = `Activation address balance: ${sol(bal)} SOL`;
   const activated = $("w-init-box").classList.contains("hidden");
   $("w-fe").classList.toggle("hidden", !session || bal >= 2 * (TX_FEE + MAX_PRIORITY) || !activated);
@@ -785,12 +790,13 @@ function watchLock() {
 }
 
 async function init() {
+  if (!NET.swap) { $("tab-swap").remove(); $("pane-swap").classList.add("hidden"); }
   watchLock();
   initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
   const kept = await keep.load(IDLE_MS);
   if (kept) {
     const r = await store.get(kept.id);
-    if (r) {
+    if (r && r.program === PROGRAM) {
       try {
         const s = new Session(engine, kept.id, kept.master, await macKeyFrom(kept.macRaw));
         s.macRaw = kept.macRaw;

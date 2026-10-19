@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.devnet.solana.com; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
-<title>OPEQ Wallet (Devnet)</title>
+<title data-only="devnet">OPEQ Wallet (Devnet)</title><title data-only="mainnet">OPEQ Wallet</title>
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="ext.css">
 <link rel="stylesheet" href="popup.css">
@@ -15,7 +15,7 @@
 
 <header class="pbar">
   <img class="plogo" src="assets/logo.svg" alt="opeq" width="66" height="21">
-  <span class="drive mono" id="drive"><i></i><span id="drive-text">devnet</span></span>
+  <span class="drive mono" id="drive"><i></i><span id="drive-text">wallet</span></span>
   <button class="icon-btn" id="p-wallets" type="button" aria-expanded="false" aria-controls="p-panel" title="Wallets">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="13" height="6" rx="3"/><rect x="16" y="10" width="5" height="4" rx="1"/></svg>
     <span class="sr">Wallets</span>
@@ -25,7 +25,7 @@
     <span class="sr">Open in a tab</span>
   </button>
 </header>
-<p class="pnet mono">devnet only, never send real SOL here</p>
+<p class="pnet mono" data-only="devnet">devnet only, never send real SOL here</p><p class="pnet mono" data-only="mainnet">beta, start with small amounts</p>
 
 <section class="panel hidden" id="p-panel" aria-label="Wallets in this browser">
   <div id="ports" class="ports"></div>
@@ -128,11 +128,11 @@
     </div>
     <div class="card hidden" id="w-init-box">
       <h2 class="silk"><span>PCIE_0</span><b>activate on chain</b></h2>
-      <p class="hint">Send at least 0.01 devnet SOL to this activation address. About 0.0015 SOL goes to rent, 0.005 SOL stays for fees and the rest moves into your wallet.</p>
+      <p class="hint">Send at least 0.01 SOL to this activation address. About 0.0015 SOL goes to rent, 0.005 SOL stays for fees and the rest moves into your wallet.</p>
       <p class="mono addr" id="i-addr"></p>
       <p class="hint" id="i-bal"></p>
       <div class="row"><button class="btn btn-line btn-sm" id="i-copy" type="button">Copy</button><button class="btn btn-line btn-sm" id="i-check" type="button">Check</button><button class="btn btn-solid btn-sm" id="w-init" type="button">Activate</button></div>
-      <p class="hint"><a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">Free devnet SOL</a></p>
+      <p class="hint" data-only="devnet"><a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">Free devnet SOL</a></p>
       <p class="err" id="i-err" role="alert"></p>
     </div>
 
@@ -154,9 +154,9 @@
         <p class="hint hidden" id="send-off">Activate the wallet first.</p>
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-receive" aria-labelledby="tab-receive">
-        <p class="hint">Send devnet SOL or tokens to this address from any wallet. It stays the same when the keys rotate. Your mainnet opeq address will be different.</p>
+        <p class="hint" data-only="devnet">Send devnet SOL or tokens to this address from any wallet. It stays the same when the keys rotate. Your mainnet opeq address will be different.</p><p class="hint" data-only="mainnet">Send SOL or tokens to this address from any wallet. It stays the same when the keys rotate.</p>
         <p class="mono addr boxed" id="v-addr"></p>
-        <div class="row"><button class="btn btn-line btn-sm" id="v-copy" type="button">Copy address</button><a class="btn btn-quiet btn-sm" href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">Free devnet SOL</a></div>
+        <div class="row"><button class="btn btn-line btn-sm" id="v-copy" type="button">Copy address</button><a class="btn btn-quiet btn-sm" data-only="devnet" href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">Free devnet SOL</a></div>
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-swap" aria-labelledby="tab-swap">
         <p class="hint">Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
@@ -210,7 +210,7 @@
             <div class="row"><button class="btn btn-quiet btn-sm" id="k-hide" type="button">Hide</button></div>
           </div>
         </div>
-        <p class="hint sub">Devnet beta. The opeq program can still be upgraded by the developer's own quantum-safe admin wallet.</p>
+        <p class="hint sub">Beta. The OPEQ program can still be upgraded by the developer's own quantum-safe admin wallet.</p>
         <div class="row">
           <a class="btn btn-line btn-sm" id="w-explorer" rel="noopener noreferrer" target="_blank">Explorer</a>
           <button class="btn btn-line btn-sm" id="w-refresh" type="button">Refresh</button>

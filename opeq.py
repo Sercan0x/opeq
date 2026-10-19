@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import struct
 import sys
 import tempfile
@@ -28,6 +29,7 @@ NETS = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainn
 EXPIRY_SLOTS = 150
 RESTORE_GAP = 64
 REKEY_WARN = 32
+EXEC_LIMIT = P.EXEC_LEAF_LIMIT - RESTORE_GAP
 BUFFER_META = 37
 PROGRAMDATA_META = 45
 
@@ -116,7 +118,7 @@ class Vault:
             seed = bytes.fromhex(self.raw["master"] if self.has_master else self.raw["sk_seed"])
         if self.has_master:
             self.master = seed
-            sk_seed, pub_seed = mnemonic.tree_seeds(seed, self.raw.get("epoch", 0))
+            sk_seed, pub_seed = mnemonic.tree_seeds(seed, self.raw.get("epoch", 0), self.program, bytes.fromhex(self.raw["pub_seed"]))
             if pub_seed.hex() != self.raw["pub_seed"]:
                 raise SystemExit("vault tree does not match its master seed, refusing to sign")
             seed = sk_seed
@@ -145,16 +147,21 @@ class Vault:
             self.raw["mac"] = keystore.mac(self._mac_key, self.raw)
         write_json_atomic(self.path, self.raw)
 
+    def is_active(self):
+        if "active" in self.raw:
+            return self.raw["active"] is True
+        return bytes(self.program) == mnemonic.LEGACY_PROGRAM
+
     def reserve_leaf(self, chain_next, limit):
         leaf = max(self.raw.get("next_leaf", 0), chain_next)
         if leaf >= limit:
-            if limit == P.EXEC_LEAF_LIMIT:
-                raise SystemExit(f"leaf {leaf}: only the rekey reserve is left, run `rekey` now")
+            if limit < wots.LEAVES:
+                raise SystemExit(f"leaf {leaf}: this key tree is used up for transactions, run `rekey` now")
             raise SystemExit("tree fully used, wallet can no longer be rekeyed")
         self.raw["next_leaf"] = leaf + 1
         self.save()
-        if limit == P.EXEC_LEAF_LIMIT and leaf >= P.EXEC_LEAF_LIMIT - REKEY_WARN:
-            print(f"NOTE: {P.EXEC_LEAF_LIMIT - leaf - 1} signatures left before a rekey is required")
+        if limit == EXEC_LIMIT and leaf >= EXEC_LIMIT - REKEY_WARN:
+            print(f"NOTE: {EXEC_LIMIT - leaf - 1} signatures left before a rekey is required")
         return leaf
 
     def pending_files(self):
@@ -212,20 +219,35 @@ def recover_pending(rpc, v, st, quiet=False):
             print("removed a rekey attempt that expired without landing")
 
 
+def own_rekey(v, st):
+    mark = v.raw.get("rekeying")
+    if not mark or int(mark.get("epoch", -1)) != st["epoch"]:
+        return False
+    if not mnemonic.chain_seeded(v.program, st["epoch"]):
+        return True
+    return mark.get("pub_seed") == st["pub_seed"].hex()
+
+
 def sync_epoch(v, st):
     if not v.has_master or st["epoch"] == v.raw.get("epoch", 0):
         return
     if st["epoch"] < v.raw.get("epoch", 0):
         raise SystemExit("on-chain epoch is behind this vault file, refusing to sign")
-    new = mnemonic.tree(v.master, st["epoch"])
+    if not own_rekey(v, st):
+        v.raw["active"] = False
+        v.save()
+        raise SystemExit("this wallet was rekeyed from another copy, so this copy stopped signing. Run `takeover` to make this copy the only one that signs")
+    new = mnemonic.tree(v.master, st["epoch"], v.program, st["pub_seed"])
     if new.root != st["root"]:
         raise SystemExit("on-chain tree is not derived from this vault's master seed, refusing to sign")
     v.raw.update(v.tree_fields(new))
     v.raw["epoch"] = st["epoch"]
     v.raw["next_leaf"] = 0
+    v.raw["active"] = True
+    v.raw.pop("rekeying", None)
     v._key = None
     v.save()
-    print(f"vault now uses tree {st['epoch']} (a rekey landed)")
+    print(f"vault now uses tree {st['epoch']} (this copy's rekey landed)")
 
 
 def preflight(rpc, v):
@@ -235,6 +257,8 @@ def preflight(rpc, v):
     key = v.unlock()
     recover_pending(rpc, v, st)
     sync_epoch(v, st)
+    if not v.is_active():
+        raise SystemExit("this copy of the wallet is not active. Run `takeover` to make it the only copy that signs")
     key = v.unlock()
     if st["root"] != v.root or st["pub_seed"].hex() != v.raw["pub_seed"]:
         raise SystemExit("on-chain root differs from this vault file, refusing to sign")
@@ -349,7 +373,7 @@ def burn(rpc, payer, v, key, failed_leaf, fmt):
 def send_exec(rpc, payer, v, inner, extra_accounts=(), cu_limit=400_000, tables=None):
     st, key = preflight(rpc, v)
     fmt = program_format(rpc, v.program)
-    leaf = v.reserve_leaf(st["next"], P.EXEC_LEAF_LIMIT)
+    leaf = v.reserve_leaf(st["next"], EXEC_LIMIT)
     expiry, salt, r, sig, path, cost = sign_exec(rpc, v, key, st, leaf, inner, fmt)
     v.raw["inflight"] = {"leaf": leaf, "expiry": expiry}
     v.save()
@@ -404,13 +428,13 @@ def quiz_words(words):
             raise SystemExit("that word does not match, nothing was saved. Run keygen again.")
 
 
-def new_master_vault(path, program, master, password, epoch, root_check=None, next_leaf=0):
-    tree = mnemonic.tree(master, epoch)
+def new_master_vault(path, program, master, password, epoch, root_check=None, next_leaf=0, pub_seed=None, active=True):
+    tree = mnemonic.tree(master, epoch, pk(program), pub_seed)
     if root_check is not None and tree.root != root_check:
         raise SystemExit("these words do not control this wallet's current tree")
-    tree0 = tree if epoch == 0 else mnemonic.tree(master, 0)
+    tree0 = tree if epoch == 0 else mnemonic.tree(master, 0, pk(program))
     aid = P.account_id(tree0.pub_seed, tree0.root)
-    raw = {**tree.to_json(), "seed_type": "master", "program": program, "aid": aid.hex(), "next_leaf": next_leaf, "epoch": epoch}
+    raw = {**tree.to_json(), "seed_type": "master", "program": program, "aid": aid.hex(), "next_leaf": next_leaf, "epoch": epoch, "active": active}
     del raw["sk_seed"]
     if password is None:
         raw["master"] = master.hex()
@@ -454,10 +478,11 @@ def cmd_recover(rpc, args):
         master = mnemonic.from_words(text)
     except ValueError as e:
         raise SystemExit(str(e)) from None
-    tree0 = mnemonic.tree(master, 0)
+    tree0 = mnemonic.tree(master, 0, program)
     aid = P.account_id(tree0.pub_seed, tree0.root)
     state = P.state_pda(aid, program)[0]
     acc = rpc.account(state)
+    chain_seed = None
     if acc is None:
         epoch, root, next_leaf = 0, None, 0
         print("this wallet was never initialized on chain")
@@ -465,15 +490,15 @@ def cmd_recover(rpc, args):
         if acc["owner"] != program:
             raise SystemExit("state account is not owned by the program")
         st = P.unpack_state(acc["data"])
-        epoch, root = st["epoch"], st["root"]
-        next_leaf = st["next"] + RESTORE_GAP
-        if next_leaf >= wots.LEAVES:
+        epoch, root, chain_seed = st["epoch"], st["root"], st["pub_seed"]
+        next_leaf = st["next"]
+        if next_leaf + RESTORE_GAP >= wots.LEAVES:
             raise SystemExit(f"refusing to recover: the current tree has fewer than {RESTORE_GAP} unused keys, so a lost copy could have "
                              f"signed with the last key. Rekey from the original wallet copy if you still have it, or wait for its "
                              f"in-flight rekey to land, then recover again")
     password = None if args.plaintext else keystore.ask_password(confirm=True)
-    new_master_vault(args.vault, args.program, master, password, epoch, root, next_leaf)
-    print(f"recovered wallet {ps(P.wallet_pda(aid, program)[0])} at tree {epoch}; counter set to {next_leaf} so no key from a lost copy is ever reused")
+    new_master_vault(args.vault, args.program, master, password, epoch, root, next_leaf, chain_seed, active=False)
+    print(f"recovered wallet {ps(P.wallet_pda(aid, program)[0])} at tree {epoch}. This copy does not sign yet: run `takeover` to make it the only copy that signs; any other copy then stops")
 
 
 def cmd_encrypt(args):
@@ -523,7 +548,8 @@ def cmd_status(rpc, payer, v, args):
     print("state   ", ps(v.state))
     if st:
         print("on-chain next leaf", st["next"], "epoch", st["epoch"], "root match", st["root"] == v.root)
-        print("signatures left before rekey", max(0, P.EXEC_LEAF_LIMIT - max(st["next"], v.raw.get("next_leaf", 0))))
+        print("signatures left before rekey", max(0, EXEC_LIMIT - max(st["next"], v.raw.get("next_leaf", 0))))
+        print("this copy signs:", "yes" if v.is_active() else "no, run `takeover` to use it here")
     else:
         print("not initialized")
     print("local next leaf", v.raw.get("next_leaf"), "| pending rekey files", len(v.pending_files()))
@@ -556,13 +582,53 @@ def cmd_restore(rpc, payer, v, args):
 
 def cmd_rekey(rpc, payer, v, args):
     st, key = preflight(rpc, v)
-    fmt = program_format(rpc, v.program)
     leaf = v.reserve_leaf(st["next"], wots.LEAVES)
+    do_rekey(rpc, payer, v, st, key, leaf)
+
+
+def cmd_takeover(rpc, payer, v, args):
+    if not v.has_master:
+        raise SystemExit("takeover needs a vault made from recovery words")
+    st = chain_state(rpc, v)
+    if st is None:
+        raise SystemExit("vault not initialized")
+    v.unlock()
+    genesis = rpc.call("getGenesisHash")
+    if v.raw.get("cluster") not in (None, genesis):
+        raise SystemExit("this vault was created on a different cluster (genesis hash mismatch), refusing")
+    if st["epoch"] < v.raw.get("epoch", 0):
+        raise SystemExit("on-chain epoch is behind this vault file, refusing to sign")
+    if st["epoch"] != v.raw.get("epoch", 0):
+        cur = mnemonic.tree(v.master, st["epoch"], v.program, st["pub_seed"])
+        if cur.root != st["root"]:
+            raise SystemExit("on-chain tree is not derived from this vault's master seed, refusing to sign")
+        v.raw.update(v.tree_fields(cur))
+        v.raw.update({"epoch": st["epoch"], "next_leaf": st["next"], "active": False})
+        v.raw.pop("rekeying", None)
+        v.raw.pop("inflight", None)
+        v._key = None
+        v.save()
+    lo = max(v.raw.get("next_leaf", 0), st["next"] + RESTORE_GAP)
+    if lo >= wots.LEAVES:
+        raise SystemExit("the current key tree is too far used to take over safely; take over from the copy that is active")
+    confirm(args, "make this copy the only one that signs (one rekey transaction; every other copy stops signing)")
+    leaf = lo + secrets.randbelow(wots.LEAVES - lo)
+    v.raw["next_leaf"] = leaf + 1
+    v.raw["cluster"] = genesis
+    v.save()
+    do_rekey(rpc, payer, v, st, v.unlock(), leaf)
+
+
+def do_rekey(rpc, payer, v, st, key, leaf):
+    fmt = program_format(rpc, v.program)
     check_leaf_key(key, leaf)
     expiry = rpc.call("getSlot", [{"commitment": "confirmed"}]) + EXPIRY_SLOTS
     pend_path = None
     if v.has_master:
-        new = mnemonic.tree(v.master, st["epoch"] + 1)
+        seed = os.urandom(wots.N) if mnemonic.chain_seeded(v.program, st["epoch"] + 1) else None
+        new = mnemonic.tree(v.master, st["epoch"] + 1, v.program, seed)
+        v.raw["rekeying"] = {"epoch": st["epoch"] + 1, "pub_seed": new.pub_seed.hex(), "leaf": leaf, "expiry": expiry}
+        v.save()
     else:
         new = wots.TreeKey.generate()
         pend = {**v.tree_fields(new), "expiry": expiry}
@@ -586,7 +652,7 @@ def cmd_rekey(rpc, payer, v, args):
         sync_epoch(v, st)
     else:
         recover_pending(rpc, v, st, quiet=True)
-    print("rekeyed, vault now uses the new tree", tx)
+    print("rekeyed, this copy now signs with the new tree", tx)
 
 
 def programdata_of(program):
@@ -627,10 +693,16 @@ def cmd_upgrade(rpc, payer, v, args):
     elf = open(args.elf, "rb").read()
     if upgrade_authority(rpc, target) != v.wallet:
         raise SystemExit("this vault is not the upgrade authority of the target program")
+    if not re.search(rb"opeq/\d+\.\d+", elf):
+        raise SystemExit("the elf carries no opeq/<version> tag; refusing to upgrade to an unknown program")
+    pd = rpc.account(programdata_of(target))
+    if len(elf) > len(pd["data"]) - deploy.PROGRAMDATA_META:
+        raise SystemExit("the elf is larger than the program's reserved size (max_len); refusing")
     if args.buffer:
         buf_key = pk(args.buffer)
     else:
         buf = deploy.write_buffer(rpc, payer, elf)
+        confirm(args, f"hand buffer {ps(buf.pub)} to the vault and upgrade {ps(target)} to {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()[:16]})")
         rpc.send([(LOADER, [(buf.pub, False, True), (payer.pub, True, False), (v.wallet, False, False)], u32(4))], [payer])
         buf_key = buf.pub
     acc = rpc.account(buf_key)
@@ -650,7 +722,7 @@ def cmd_upgrade(rpc, payer, v, args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["keygen", "backup", "recover", "encrypt", "init", "status", "send", "burn", "restore", "rekey", "set-authority", "hand-authority", "upgrade"])
+    ap.add_argument("cmd", choices=["keygen", "backup", "recover", "encrypt", "init", "status", "send", "burn", "restore", "rekey", "takeover", "set-authority", "hand-authority", "upgrade"])
     ap.add_argument("--net", default="devnet", choices=list(NETS))
     ap.add_argument("--payer", default=os.path.join(HERE, "devnet-key.json"))
     ap.add_argument("--vault", default=os.path.join(HERE, "vault.json"))
@@ -677,7 +749,7 @@ def main():
     v = Vault(args.vault, lock=args.cmd != "status")
     try:
         {"init": cmd_init, "status": cmd_status, "send": cmd_send, "burn": cmd_burn, "restore": cmd_restore,
-         "rekey": cmd_rekey, "set-authority": cmd_set_authority, "hand-authority": cmd_hand_authority, "upgrade": cmd_upgrade}[args.cmd](rpc, payer, v, args)
+         "rekey": cmd_rekey, "takeover": cmd_takeover, "set-authority": cmd_set_authority, "hand-authority": cmd_hand_authority, "upgrade": cmd_upgrade}[args.cmd](rpc, payer, v, args)
     except (RpcError, Failed) as e:
         msg = str(e)
         failed = re.findall(r"Program (\w+) failed: custom program error: (0x[0-9a-f]+)", msg)

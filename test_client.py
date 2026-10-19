@@ -326,12 +326,12 @@ def main():
 
     v = opeq.Vault(path, lock=True)
     v.unlock()
-    v.raw["next_leaf"] = P.EXEC_LEAF_LIMIT - 1
+    v.raw["next_leaf"] = opeq.EXEC_LIMIT - 1
     v.save()
     opeq.cmd_send(rpc, payer, v, args)
-    check("send at last normal leaf 1007", opeq.chain_state(rpc, v)["next"] == P.EXEC_LEAF_LIMIT)
+    check(f"send at last normal leaf {opeq.EXEC_LIMIT - 1}", opeq.chain_state(rpc, v)["next"] == opeq.EXEC_LIMIT)
     ok, msg = expect_exit(lambda: opeq.cmd_send(rpc, payer, v, args), "rekey")
-    check(f"leaf 1008 refused for sends ({msg})", ok)
+    check(f"leaf {opeq.EXEC_LIMIT} refused for sends ({msg})", ok)
     opeq.cmd_rekey(rpc, payer, v, args)
     st = opeq.chain_state(rpc, v)
     check(f"rekey from the reserve works (epoch {st['epoch']}, next {st['next']})", st["epoch"] == 3 and st["next"] == 0)
@@ -339,6 +339,7 @@ def main():
     check("restore skips 64 leaves", v.raw["next_leaf"] == 64)
     words = mnemonic.to_words(v.master)
     wallet = v.wallet
+    orig_path = path
     os.close(v.lock_fd)
 
     rec = os.path.join(tmp, "recovered.json")
@@ -347,12 +348,22 @@ def main():
     opeq.cmd_recover(rpc, rargs)
     r = opeq.Vault(rec, lock=True)
     st = opeq.chain_state(rpc, r)
-    check(f"recovered same wallet at tree {r.raw['epoch']} with counter {r.raw['next_leaf']}",
-          r.wallet == wallet and r.raw["epoch"] == st["epoch"] == 3 and r.raw["next_leaf"] == st["next"] + opeq.RESTORE_GAP)
+    check(f"recovered same wallet at tree {r.raw['epoch']}, not active yet",
+          r.wallet == wallet and r.raw["epoch"] == st["epoch"] == 3 and r.raw["active"] is False)
+    ok, msg = expect_exit(lambda: opeq.cmd_send(rpc, payer, r, rargs), "takeover")
+    check(f"recovered copy refuses to sign before takeover ({msg})", ok)
+    opeq.cmd_takeover(rpc, payer, r, rargs)
+    st = opeq.chain_state(rpc, r)
+    check(f"takeover moved the wallet to tree {st['epoch']} and made this copy active", st["epoch"] == 4 and r.raw["active"] is True)
     bal = chain.acc(bob)["lamports"]
     opeq.cmd_send(rpc, payer, r, rargs)
-    check("recovered vault can send", chain.acc(bob)["lamports"] == bal + 10_000_000)
+    check("recovered vault can send after takeover", chain.acc(bob)["lamports"] == bal + 10_000_000)
     os.close(r.lock_fd)
+    old = opeq.Vault(orig_path, lock=True)
+    ok, msg = expect_exit(lambda: opeq.cmd_send(rpc, payer, old, args), "takeover")
+    check(f"the original copy stops signing after the takeover ({msg})", ok)
+    check("the original copy marked itself inactive", json.load(open(orig_path))["active"] is False)
+    os.close(old.lock_fd)
     bad = list(words)
     bad[7] = "zoo" if bad[7] != "zoo" else "abandon"
     os.environ["OPEQ_WORDS"] = " ".join(bad)

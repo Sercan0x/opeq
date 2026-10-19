@@ -39,12 +39,14 @@ export class Engine {
     this.payer = payer;
     this.priceFor = null;
     this.maxPriority = 100000;
+    this.genesis = null;
+    this._genesisOk = false;
     this.log = () => {};
   }
 
   async create(password, progress) {
     const master = M.newMaster();
-    const t = await this.compute.run("treeFor", { master, epoch: 0 }, progress);
+    const t = await this.compute.run("treeFor", { master, epoch: 0, program: this.program }, progress);
     const aid = P.accountId(t.pubSeed, t.root);
     const record = await this._record(master, password, aid, 0, t, 0, true);
     return { record, words: M.toWords(master) };
@@ -52,7 +54,7 @@ export class Engine {
 
   async recover(words, password, progress, existing = null) {
     const master = M.fromWords(words);
-    const t0 = await this.compute.run("treeFor", { master, epoch: 0 }, progress && ((p) => progress(p * 0.5)));
+    const t0 = await this.compute.run("treeFor", { master, epoch: 0, program: this.program }, progress && ((p) => progress(p * 0.5)));
     const aid = P.accountId(t0.pubSeed, t0.root);
     const acc = await this.rpc.account(P.statePda(aid, this.program).key);
     let epoch = 0, next = 0, t = t0;
@@ -61,7 +63,7 @@ export class Engine {
       const st = P.unpackState(acc.data);
       epoch = st.epoch;
       next = existing && existing.aid && existing.epoch === epoch ? Math.max(existing.next_leaf, st.next) : st.next;
-      if (epoch > 0) t = await this.compute.run("treeFor", { master, epoch }, progress && ((p) => progress(0.5 + p * 0.5)));
+      if (epoch > 0) t = await this.compute.run("treeFor", { master, epoch, program: this.program, pubSeed: st.pubSeed }, progress && ((p) => progress(0.5 + p * 0.5)));
       if (!eq(t.root, st.root)) throw new Error("these words do not control this wallet's current tree");
     }
     if (existing && existing.epoch > epoch) throw new Error("this browser already holds a newer copy of this wallet");
@@ -85,7 +87,7 @@ export class Engine {
     const { master, macKey, macRaw } = await V.unlock(record.enc, password, aid);
     await V.checkRecord(macKey, record);
     if (record.program !== b58encode(this.program)) throw new Error("this wallet belongs to a different opeq program");
-    const seeds = M.treeSeeds(master, record.epoch);
+    const seeds = M.treeSeeds(master, record.epoch, this.program, unhex(record.pub_seed));
     if (hex(seeds.pubSeed) !== record.pub_seed) throw new Error("wallet tree does not match its master seed");
     const session = new Session(this, record.id, master, macKey);
     session.macRaw = macRaw;
@@ -112,6 +114,13 @@ export class Engine {
       if (st && hex(st.root) === record.root) return "already-initialized";
       throw e;
     }
+  }
+
+  async checkCluster() {
+    if (!this.genesis || this._genesisOk) return;
+    const g = await this.rpc.call("getGenesisHash", []);
+    if (g !== this.genesis) throw new Error("the RPC is connected to a different Solana cluster than this wallet expects, refusing to sign");
+    this._genesisOk = true;
   }
 
   async chainState(record) {
@@ -215,6 +224,7 @@ export class Session {
     const r = await this.e.store.get(this.id);
     if (!r) throw new Error("wallet not found in this browser");
     await V.checkRecord(this.macKey, r);
+    if (r.program !== b58encode(this.e.program)) throw new Error("this wallet belongs to a different opeq program");
     return r;
   }
 
@@ -228,15 +238,21 @@ export class Session {
     return V.withLock(`opeq:${this.id}`, fn, { wait });
   }
 
+  ownRekey(r, st) {
+    if (!r.rekeying || Number(r.rekeying.epoch) !== st.epoch) return false;
+    if (!M.chainSeeded(this.e.program, st.epoch)) return true;
+    return typeof r.rekeying.pub_seed === "string" && r.rekeying.pub_seed === hex(st.pubSeed);
+  }
+
   async adopt(r, st) {
     if (st.epoch === r.epoch) return r;
     if (st.epoch < r.epoch) throw new Error("on-chain epoch is behind this wallet, refusing to sign");
-    const own = r.rekeying && Number(r.rekeying.epoch) === st.epoch;
+    const own = this.ownRekey(r, st);
     if (!own) {
       if (r.active) { r.active = false; await this.put(r); }
       throw new Inactive("This wallet was rekeyed from another device or browser, so this copy stopped signing. To use it here, choose Use on this device.");
     }
-    const t = await this.e.compute.run("treeFor", { master: this.master, epoch: st.epoch });
+    const t = await this.e.compute.run("treeFor", { master: this.master, epoch: st.epoch, program: this.e.program, pubSeed: st.pubSeed });
     if (!eq(t.root, st.root)) throw new Error("on-chain tree is not derived from this wallet's words");
     Object.assign(r, { epoch: st.epoch, next_leaf: 0, pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), active: true });
     delete r.rekeying;
@@ -245,6 +261,7 @@ export class Session {
   }
 
   async preflight(isBurn = false) {
+    await this.e.checkCluster();
     let r = await this.load();
     const st = await this.e.chainState(r);
     if (!st) throw new Error("wallet is not initialized on chain yet");
@@ -262,7 +279,7 @@ export class Session {
     const r = await this.load();
     const st = await this.e.chainState(r);
     if (!st) return { state: "uninitialized", r, st };
-    if (st.epoch > r.epoch && !(r.rekeying && Number(r.rekeying.epoch) === st.epoch)) return { state: "inactive", r, st };
+    if (st.epoch > r.epoch && !this.ownRekey(r, st)) return { state: "inactive", r, st };
     if (st.epoch === r.epoch && !r.active) return { state: "inactive", r, st };
     return { state: "active", r, st };
   }
@@ -327,7 +344,7 @@ export class Session {
     try {
       const rnd = crypto.getRandomValues(new Uint8Array(P.R_LEN));
       const s = await this.e.compute.run("signExec", {
-        master: this.master, epoch: r.epoch, leaves: unb64(r.leaves), leaf, program: this.e.program, aid, expiry, inner, r: rnd,
+        master: this.master, epoch: r.epoch, leaves: unb64(r.leaves), pubSeed: unhex(r.pub_seed), leaf, program: this.e.program, aid, expiry, inner, r: rnd,
       }, progress);
       const data = P.buildExec(leaf, expiry, s.salt, rnd, s.sig, s.path, inner, outer);
       this.e.log(`leaf ${leaf}, ${s.cost} on-chain hash steps`);
@@ -407,16 +424,17 @@ export class Session {
       if (st.epoch < r.epoch) throw new Error("on-chain epoch is behind this wallet, refusing to sign");
       if (st.next + RESTORE_GAP >= LEAVES) throw new Error("the current key tree is too far used to take over safely; take over from the device that is active, or wait for it to rekey");
       if (st.epoch !== r.epoch) {
-        const t = await this.e.compute.run("treeFor", { master: this.master, epoch: st.epoch }, progress && ((p) => progress(p * 0.4)));
+        const t = await this.e.compute.run("treeFor", { master: this.master, epoch: st.epoch, program: this.e.program, pubSeed: st.pubSeed }, progress && ((p) => progress(p * 0.4)));
         if (!eq(t.root, st.root)) throw new Error("on-chain tree is not derived from this wallet's words");
         Object.assign(r, { epoch: st.epoch, next_leaf: st.next, pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), active: false });
         delete r.inflight;
         delete r.rekeying;
         r = await this.put(r);
       }
-      const jitter = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
-      const leaf = Math.max(r.next_leaf, Math.min(st.next + RESTORE_GAP + jitter, LEAVES - 1));
-      if (leaf >= LEAVES) throw new Error("tree fully used");
+      const lo = Math.max(r.next_leaf, st.next + RESTORE_GAP);
+      if (lo >= LEAVES) throw new Error("tree fully used");
+      const span = LEAVES - lo;
+      const leaf = lo + (crypto.getRandomValues(new Uint32Array(1))[0] % span);
       r.next_leaf = leaf + 1;
       await this.put(r);
       return this._rekey(r, st, leaf, progress && ((p) => progress(0.4 + p * 0.6)));
@@ -429,12 +447,14 @@ export class Session {
     const metas = [[state, false, true], [this.wallet, false, false]];
     const price = await this.e.price(400000, [state]);
     await this.e.payerCovers(this.e.feeFor(400000, price));
+    const newPubSeed = M.chainSeeded(this.e.program, st.epoch + 1) ? crypto.getRandomValues(new Uint8Array(16)) : undefined;
     r.rekeying = { epoch: st.epoch + 1, leaf, expiry };
+    if (newPubSeed) r.rekeying.pub_seed = hex(newPubSeed);
     await this.put(r);
     const rnd = crypto.getRandomValues(new Uint8Array(P.R_LEN));
     const aid = unhex(r.aid);
     const s = await this.e.compute.run("signRekey", {
-      master: this.master, epoch: r.epoch, leaves: unb64(r.leaves), leaf, program: this.e.program, aid, expiry, r: rnd,
+      master: this.master, epoch: r.epoch, leaves: unb64(r.leaves), pubSeed: unhex(r.pub_seed), newPubSeed, leaf, program: this.e.program, aid, expiry, r: rnd,
     }, progress);
     const data = P.buildRekey(leaf, expiry, s.salt, rnd, s.sig, s.path, s.newPubSeed, s.newRoot);
     let sig;
