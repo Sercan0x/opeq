@@ -528,11 +528,21 @@ function fillSwap() {
   if ([...toSel.options].some((o) => o.value === t)) toSel.value = t;
   else toSel.value = fromSel.value === SOL_MINT ? SWAP_TO[0] || SOL_MINT : SOL_MINT;
   $("j-mint").classList.toggle("hidden", toSel.value !== "other");
+  amountLabel();
+}
+
+function amountLabel() {
+  const from = $("j-from").value;
+  if (!from) return;
+  const held = from === SOL_MINT ? null : tokens.find((x) => x.mint === from);
+  const have = from === SOL_MINT ? $("w-bal").textContent : held ? T.formatAmount(held.amount, held.decimals) : "0";
+  $("j-amt-l").textContent = `Amount in ${symOf(from)} (you have ${have})`;
 }
 
 let jupTimer = null, jupSeq = 0;
 function scheduleJup() {
   if (!NET.jupiter) return;
+  amountLabel();
   $("j-mint").classList.toggle("hidden", $("j-to").value !== "other");
   clearTimeout(jupTimer);
   const seq = ++jupSeq;
