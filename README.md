@@ -9,21 +9,22 @@ Solana wallets built to resist quantum computers, usable with any Solana program
 
 Every Solana wallet today is protected by Ed25519. A large enough quantum computer running Shor's algorithm recovers an Ed25519 private key from its public key, and on Solana the address *is* the public key. opeq replaces that signature with a hash-based one whose security rests only on SHA-256, without any change to the Solana protocol.
 
-> **Status: devnet only.** The program and the wallet have been through internal adversarial reviews and a full test suite. The program is still upgradeable by a single admin wallet (see below). Do not put real funds in it.
+> **Status: mainnet beta.** The program and the wallet have been through repeated internal adversarial reviews and a full test suite, but no external audit yet. The program can still be upgraded by a single admin opeq wallet with no timelock (see below). Start with small amounts.
 
 ## What it does
 
 - **A normal Solana address.** Your opeq wallet is a program-derived address with no Ed25519 private key behind it. The only secret is your 24 recovery words, which produce hash-based keys. It receives SOL, holds SPL and Token-2022 tokens, and other programs see it as an ordinary signer.
-- **Any program, one signature.** One hash-based signature authorizes a list of instructions to any programs. Tested on devnet: SOL transfers, SPL Token, Token-2022, Memo, Associated Token Account creation, and Raydium CPMM swaps.
+- **Any program, one signature.** One hash-based signature authorizes a list of instructions to any programs. Tested: SOL transfers, SPL Token, Token-2022, Memo, Associated Token Account creation, Raydium CPMM swaps on devnet, and Jupiter swaps on mainnet.
 - **Stable address.** One key tree signs 688 wallet transactions (the program accepts up to 1008; the wallet keeps the rest for safe rekeys and device takeovers). A rekey moves the wallet to a fresh tree; the address and balances stay the same.
 - **24 recovery words.** Every tree is derived from one 256-bit master seed shown as standard BIP39 words. The words never change, even after many rekeys, and restore the wallet with no files.
-- **Quantum-safe upgrades.** The program's upgrade authority is itself an opeq wallet, so a broken Ed25519 key cannot change the code. On devnet that authority is one admin wallet held by the developer, which means the developer can still upgrade the program. Mainnet governance is an open decision (see Before mainnet).
+- **Quantum-safe upgrades.** The program's upgrade authority is itself an opeq wallet, so a broken Ed25519 key cannot change the code. On mainnet that authority is `6KX8M2fwCGyMTFodAL2HE1gbhwM5vYzfia2rsjhuHPU8`, the wallet of an admin opeq vault held by the developer on the immutable governance program `2UpwhLHUUS1Uqij7KVdXxLRWjt8yCssdFjB2QG4saRAj`. The developer can upgrade the program and there is no timelock yet.
 
 ## Browser extension
 
-**OPEQ Wallet (Devnet)** is on the Chrome Web Store. The source is in `extension/` and shares `web/lib` with the opeq.io web wallet.
+**OPEQ Wallet** (mainnet) and **OPEQ Wallet (Devnet)** are Chrome extensions. The source is in `extension/` and shares `web/lib` with the opeq.io web wallet.
 
-- Toolbar popup and a full-tab view, no permissions except `storage` (in-memory session only)
+- Toolbar popup and a full-tab view, two permissions: `storage` (encrypted vault in IndexedDB, unlocked session in memory, activity log and RPC setting in local storage) and `alarms` (locks an idle session after 10 minutes)
+- Mainnet swaps go through Jupiter; the wallet checks every returned instruction against the quote and a pinned pool list, and simulates the signed transaction before sending it
 - Network fees are paid by a small Ed25519 fee key derived from the same 24 words. It has no power over the wallet; the wallet tops it up from inside its own signed transactions
 - One active copy per wallet: a recovered copy must choose *Use on this device* (a rekey) before it signs, and any other copy then stops signing. This prevents two installs from ever signing the same one-time key
 - Build: `python3 build_extension.py` (output in `build/extension`, `--zip` for the store package)
@@ -94,6 +95,19 @@ python3 opeq.py recover --program <PROGRAM_ID> --vault restored.json
 
 The vault file holds the encrypted master seed. Keep one copy in use at a time: two machines signing from the same file can reuse a one-time key. `recover` reads the on-chain counter and skips 64 keys, and `restore` does the same for an older copy of a vault file.
 
+## Mainnet deployment
+
+| | Address |
+|---|---|
+| Program | `HL598vrersxS5AUUV6NyzHgpSyK31xAmqMsqUhxzeKm8` |
+| Upgrade authority (an opeq wallet) | `6KX8M2fwCGyMTFodAL2HE1gbhwM5vYzfia2rsjhuHPU8` |
+| Governance program (immutable) | `2UpwhLHUUS1Uqij7KVdXxLRWjt8yCssdFjB2QG4saRAj` |
+| Admin vault state | `3AMt6BShy2aigE8hRAAnrHsPR4kedNjbtGo2tCxKuJTp` |
+| Swap lookup table (frozen) | `FqmZkMZWoA3Z5c5epD9M1PSDts44iBojrqGyxE6xcJEq` |
+| Program code sha256 | `b16442593877287bd4078207ef663a79cc1f3e555f957db39d547db5750e7893` |
+
+The code is reproducible: `python3 -c "import program, hashlib; print(hashlib.sha256(program.build().elf()).hexdigest())"` prints the hash above, and the on-chain program data matches it byte for byte.
+
 ## Devnet deployment
 
 | | Address |
@@ -101,10 +115,11 @@ The vault file holds the encrypted master seed. Keep one copy in use at a time: 
 | Program | `424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN` |
 | Upgrade authority (an opeq wallet) | `FoWCn5Rj4jPuMLqpUSQ7KkQrMK5RhFNNhzs6ZLsxxzdm` |
 
-## Before mainnet
+## Open items
 
-- final decision on upgrade governance (immutable, or quantum-safe multisig with a timelock)
-- deploy mainnet with a fresh program keypair, never the devnet one (`deploy.py` refuses a key that already exists on devnet); a vault binds itself to the cluster it first signs on and refuses other clusters
+- upgrade governance: a timelock or an immutable program
+- an external audit
+- done 2026-10-19: mainnet deployed with fresh program keys; the governance program is immutable and holds the admin vault
 - done 2026-10-12: the live devnet program runs v1.1, which caps a signature's expiry at 300 slots ahead on chain so no client can ever emit a non-expiring authorization. It was upgraded through its own quantum-signed exec (transaction `5fYWB4XrtyUvStFVPU5qD9c8iWjpFtBJ4LqSFJzthN7Swd6svEcdB7jJ6AVbakG9fevstDLJMbT55amsvMLw8GAD`), after the same self-upgrade path was rehearsed on test program `9MPeZzh3rdpJA88AtZ26j5yrDwcsdzWCzJ4jWoEQhBnG`
 
 ## License

@@ -828,6 +828,8 @@ function initUnlock() {
     $("u-pw").value = "";
     if (!(await ask("Remove this wallet from this browser? Its funds stay on chain, but you can only get it back with your 24 recovery words. Make sure you have them written down.", "Remove"))) return;
     await engine.remove(current);
+    try { await chrome.storage.local.remove(`opeq:log:${current}`); } catch {}
+    try { if (localStorage.getItem("opeq:last") === current) localStorage.removeItem("opeq:last"); } catch {}
     current = null; session = null;
     show("v-welcome");
     refreshPorts();

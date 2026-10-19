@@ -24,7 +24,7 @@
   <p class="meta">Last updated 19 October 2026. Applies to the OPEQ Wallet browser extension, both the mainnet build ("OPEQ Wallet") and the test build ("OPEQ Wallet (Devnet)"), and to the website opeq.io.</p>
 
   <h2>1. Summary</h2>
-  <p>OPEQ has no user accounts, no analytics, no advertising and no tracking. Your recovery words, password and keys are created and kept on your device and are never sent to OPEQ or anyone else. The only server OPEQ runs for the wallet is a pass-through connection to the Solana network, and OPEQ keeps no logs of it. The only personal data OPEQ stores is what you choose to enter on the waitlist.</p>
+  <p>OPEQ has no user accounts, no analytics, no advertising and no tracking. Your recovery words, password and keys are created and kept on your device and are never sent to OPEQ or anyone else. The only server OPEQ runs for the wallet is a pass-through connection to the Solana network, and OPEQ keeps no logs of it. The only personal data OPEQ stores is the waitlist data described in section 5.</p>
 
   <h2>2. Who is responsible</h2>
   <p>OPEQ is an independent project run by an individual developer. For any privacy question or request, write to <a href="mailto:hello@opeq.io">hello@opeq.io</a>.</p>
@@ -38,7 +38,7 @@
     <li><b>Preferences.</b> The address of the wallet you used last, and the RPC address if you enter your own, are kept in local storage.</li>
     <li><b>Password.</b> Your password is never stored. It is used only to derive the encryption key.</li>
   </ul>
-  <p>Removing the extension, or choosing "Remove from this browser", deletes the wallet from the browser. Funds stay on the Solana blockchain and can be recovered with the 24 words.</p>
+  <p>Removing the extension, or choosing "Remove from this browser", deletes the wallet and its activity history from the browser. Funds stay on the Solana blockchain and can be recovered with the 24 words.</p>
 
   <h2>4. Data sent over the network</h2>
   <ul>
@@ -47,7 +47,7 @@
     <li><b>Swap prices.</b> When you use the Swap tab, the extension asks Jupiter (jup.ag) for a price and a route. The request contains the two tokens, the amount and your wallet address. Jupiter can see your IP address and the request, under its own privacy policy. The wallet checks every instruction Jupiter returns before it signs, and it only signs swaps that go through Jupiter's program and a fixed list of known pools.</li>
     <li><b>Your own RPC.</b> If you enter your own RPC address in the Keys tab, the extension sends these requests there instead, and that provider's privacy policy applies.</li>
     <li><b>The blockchain.</b> Transactions you confirm are published on the Solana blockchain. Blockchain data is public and permanent and cannot be deleted by anyone, including OPEQ. Your fee key signs every transaction as the fee payer, so transactions of one wallet can be linked to each other.</li>
-    <li><b>Links you open.</b> Explorer, faucet, website and X links open third-party sites only when you click them.</li>
+    <li><b>Links you open.</b> Explorer and website links (and, in the test build, the faucet link) open third-party sites only when you click them.</li>
     <li>The extension sends nothing else. It contains no analytics, crash reporting or remote code.</li>
   </ul>
 
@@ -62,16 +62,17 @@
   <p>The extension requests two permissions: "storage", for the data described above, and "alarms", for the timer that deletes an unlocked session after 10 minutes. It does not read web pages, does not run on websites and has no access to your browsing history, tabs or other extensions.</p>
 
   <h2>7. Transactions the wallet signs</h2>
-  <p>Every payment is shown to you in a confirmation window before it is signed: recipient, amount, token mint, network fee, and any SOL moved to your fee key. Three kinds of transaction are signed without a separate window, and none of them sends funds to anyone else:</p>
+  <p>Every payment is shown to you in a confirmation window before it is signed: recipient, amount, token mint, network fee, and any SOL moved to your fee key. Four kinds of transaction are signed without a separate window, and none of them sends funds to anyone else:</p>
   <ul>
-    <li><b>Activation.</b> After you press Activate, the SOL left on the activation address is moved into your own wallet.</li>
+    <li><b>Activation.</b> After you press Activate, the wallet signs the activation and then moves the SOL left on the activation address into your own wallet.</li>
+    <li><b>Fee key sweep.</b> When you press Move to wallet, SOL above 0.005 on the fee key is moved into your own opeq wallet.</li>
     <li><b>Separate fee top-up.</b> When the confirmation window says a top-up goes as a separate transaction, it is signed just before your payment.</li>
     <li><b>Burn after a failed send.</b> If a payment fails after it was signed, the wallet uses up that one-time key with an empty transaction, so the failed signature can never be replayed. It costs only the network fee.</li>
   </ul>
 
   <h2>8. Security and how the program is governed</h2>
   <p>Keys are generated and used only inside your browser, and the extension's content security policy blocks remote code. OPEQ on mainnet is a beta: start with small amounts. If you lose both your password and your 24 words, nobody can recover the wallet.</p>
-  <p>The OPEQ program on mainnet can be upgraded. The upgrade key is itself an OPEQ wallet, protected by hash-based signatures, held by the developer. An upgrade can change how the program behaves, including how it handles funds in OPEQ wallets. Upgrades are used only to fix problems and will be announced on <a href="https://x.com/opeqio" rel="noopener noreferrer" target="_blank">@opeqio</a>. The program that holds this key cannot be changed by anyone.</p>
+  <p>The OPEQ program on mainnet can be upgraded. The upgrade key is itself an OPEQ wallet, protected by hash-based signatures, held by the developer. An upgrade can change how the program behaves, including how it handles funds in OPEQ wallets. There is no timelock: an upgrade takes effect as soon as it is made. Upgrades will be announced on <a href="https://x.com/opeqio" rel="noopener noreferrer" target="_blank">@opeqio</a>. The program that holds this key cannot be changed by anyone.</p>
 
   <h2>9. What OPEQ never does</h2>
   <ul>

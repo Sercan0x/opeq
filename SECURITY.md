@@ -1,6 +1,6 @@
 # Security
 
-opeq is a devnet beta. Do not use it with real funds.
+opeq is a mainnet beta. Start with small amounts. There has been no external audit yet.
 
 ## Reporting a vulnerability
 
@@ -14,5 +14,7 @@ Useful areas to look at:
 
 ## Scope notes
 
-- The devnet program's upgrade authority is a single opeq wallet held by the developer. This is known and will be decided before mainnet.
+- The mainnet program's upgrade authority is a single opeq wallet held by the developer, with no timelock. This is a known trust assumption.
+- Swaps rely on Jupiter's public API for routes. The wallet does not trust it: every instruction is checked and the signed transaction is simulated before it is sent.
+- If two devices both try *Use on this device* at the same time and both attempts fail to land, they can pick the same one-time key (about 1 in 256). Retry on the device you started on.
 - Never share your 24 recovery words. opeq will never ask for them.
