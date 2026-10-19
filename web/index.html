@@ -63,7 +63,7 @@
   <dl>
     <div><dt>Signature</dt><dd>448 bytes</dd></div>
     <div><dt>Security per key</dt><dd>128-bit classical, 64-bit quantum</dd></div>
-    <div><dt>Signatures per tree</dt><dd>1008, then rekey</dd></div>
+    <div><dt>Signatures per tree</dt><dd>688, then rekey</dd></div>
     <div><dt>Cost of a transfer</dt><dd>about 160k compute units</dd></div>
     <div><dt>Protocol changes</dt><dd>none</dd></div>
   </dl>
@@ -113,7 +113,7 @@
       <dl class="features">
         <div><dt>A normal address</dt><dd>Receive SOL, hold SPL and Token-2022 tokens, share it like any other address. Other programs see an ordinary signer.</dd></div>
         <div><dt>Works with any app</dt><dd>One signature authorizes a list of instructions to any programs. Tested with transfers, tokens, token accounts, Memo and Raydium swaps.</dd></div>
-        <div><dt>Same address forever</dt><dd>One key tree signs 1008 transactions. A rekey moves to a fresh tree. Your address, balances and token accounts never change.</dd></div>
+        <div><dt>Same address forever</dt><dd>One key tree signs 688 transactions. A rekey moves to a fresh tree in one click. Your address, balances and token accounts never change.</dd></div>
         <div><dt>24 recovery words</dt><dd>Standard BIP39 words. Every key tree is derived from them, so the words stay valid after any number of rekeys.</dd></div>
         <div><dt>No protocol change</dt><dd>Runs on Solana as it is today. No new chain, no fork, no waiting for a network upgrade.</dd></div>
         <div><dt>Quantum-safe upgrades</dt><dd>The program's own upgrade key is an opeq wallet. Even the code can't be changed with a broken Ed25519 key.</dd></div>
@@ -336,7 +336,7 @@
         <details><summary>Where are my keys stored?</summary><p>In your browser, encrypted with your password (PBKDF2 with 600,000 rounds and AES-256-GCM). They never leave your device and are never sent to any server. The site loads nothing from third parties. An open wallet locks itself after 10 minutes without activity, and showing the 24 words always asks for the password again.</p></details>
         <details><summary>What if I clear my browser or lose my device?</summary><p>Use your 24 words on the Recover screen. The client rebuilds your keys, finds your current tree on chain and skips ahead 64 keys to stay safe.</p></details>
         <details><summary>Can I use the same words on two devices?</summary><p>For recovery, yes. Don't sign from two devices at the same time: each device tracks which keys it used, and two devices can't see each other's counters until a transaction lands.</p></details>
-        <details><summary>What happens after 1008 transactions?</summary><p>You rekey. The wallet moves to a fresh tree of 1024 keys derived from the same words. Your address, balances and words stay the same. The last 16 keys of every tree are reserved for this, so you can never get locked out.</p></details>
+        <details><summary>What happens after 688 transactions?</summary><p>You rekey. The wallet moves to a fresh tree of 1024 keys derived from the same words. Your address, balances and words stay the same. The remaining keys of every tree are held back for rekeys and for moving the wallet to a new device, so you can never get locked out.</p></details>
         <details><summary>How much does it cost?</summary><p>The normal 5000 lamport fee. A transfer uses about 160,000 compute units, well inside Solana's limits. When priority fees apply, they scale with compute units, so a busy network costs a little more than a plain transfer.</p></details>
         <details><summary>Why are the signatures so big?</summary><p>Hash-based signatures trade size for safety. 288 bytes of signature plus 160 bytes of Merkle path, 448 bytes in total, against 64 bytes for Ed25519. It still fits in one transaction, together with a swap.</p></details>
         <details><summary>Which apps work?</summary><p>Any program that accepts a signer. Tested: system transfers, SPL Token, Token-2022, associated token accounts, Memo and Raydium CPMM. Large transactions need address lookup tables, which opeq supports. Programs that demand an Ed25519 signature from the wallet itself can't work with any program-based wallet.</p></details>
