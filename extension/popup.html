@@ -159,6 +159,18 @@
         <div class="row"><button class="btn btn-line btn-sm" id="v-copy" type="button">Copy address</button><a class="btn btn-quiet btn-sm" data-only="devnet" href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">Free devnet SOL</a></div>
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-swap" aria-labelledby="tab-swap">
+        <div id="j-box" class="hidden">
+          <label class="f" for="j-from">From</label><select id="j-from"></select>
+          <label class="f" for="j-to">To</label><select id="j-to"></select>
+          <input type="text" id="j-mint" class="hidden" spellcheck="false" autocomplete="off" placeholder="Token mint address" aria-label="Token mint address">
+          <label class="f" for="j-amt">Amount</label><input type="text" id="j-amt" inputmode="decimal" autocomplete="off">
+          <label class="f" for="j-slip">Cancel if the price moves more than</label><select id="j-slip"><option value="50">0.5%</option><option value="100" selected>1%</option><option value="300">3%</option></select>
+          <p class="quote" id="j-quote">&nbsp;</p>
+          <div class="row"><button class="btn btn-solid wide" id="j-go" type="button">Review swap</button></div>
+          <p class="ok" id="j-ok"></p><p class="err" id="j-err" role="alert"></p>
+          <p class="hint">Prices and routes come from Jupiter. The wallet checks every instruction before it signs.</p>
+        </div>
+        <div id="x-box">
         <p class="hint" data-only="devnet">Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
         <label class="f" for="x-dir">Direction</label>
         <select id="x-dir"><option value="buy">SOL to DEMO</option><option value="sell">DEMO to SOL</option></select>
@@ -166,6 +178,7 @@
         <p class="quote mono" id="x-quote">&nbsp;</p>
         <div class="row"><button class="btn btn-solid wide" id="x-go" type="button">Sign and swap</button></div>
         <p class="ok" id="x-ok"></p><p class="err" id="x-err" role="alert"></p>
+        </div>
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-tokens" aria-labelledby="tab-tokens">
         <div id="w-tokens-box"><div id="t-list" class="toks"></div></div>

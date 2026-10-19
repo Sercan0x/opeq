@@ -30,7 +30,7 @@
 .ask-v { font-size: 14px; color: var(--text); }
 .ask-addr { display: block; font-family: var(--mono); font-size: 12px; line-height: 1.5; padding: 7px 9px; border-radius: 6px; background: #070b11; border: 1px solid #2e3c50; word-break: break-all; }
 .ask p.ask-note { white-space: normal; font-size: 12.5px; line-height: 1.5; color: var(--text-2); padding-left: 10px; border-left: 2px solid var(--rule-2); }
-.ask p.ask-note.warn { border-left-color: var(--gold); color: var(--text); }
+.ask p.ask-note.caution { border-left-color: var(--gold); color: var(--text); }
 .ask .row { margin-top: 16px; }
 .bus summary { display: flex; align-items: center; gap: 10px; }
 .bus summary em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--muted); }

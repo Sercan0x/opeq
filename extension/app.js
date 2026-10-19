@@ -3,6 +3,7 @@ import { Engine, Session, Inactive, EXEC_LIMIT } from "./lib/engine.js";
 import { IdbStore, macKeyFrom } from "./lib/vaultstore.js";
 import { Rpc, pubkey, b58encode, SYSTEM, concat, u32, u64, eq, isOnCurve, unhex } from "./lib/solana.js";
 import * as T from "./lib/tokens.js";
+import * as J from "./lib/jupiter.js";
 import { feePayer } from "./feekey.js";
 import * as keep from "./keep.js";
 import { NET } from "./net.js";
@@ -50,7 +51,7 @@ function ask(msg, yes = "Confirm") {
       r.append(el("span", "ask-k", k), el(addr ? "code" : "span", addr ? "ask-v ask-addr" : "ask-v", v));
       box.append(r);
     }
-    for (const n of msg.notes || []) box.append(el("p", n.warn ? "ask-note warn" : "ask-note", n.text));
+    for (const n of msg.notes || []) box.append(el("p", n.warn ? "ask-note caution" : "ask-note", n.text));
   }
   $("ask-yes").textContent = yes;
   d.showModal();
@@ -182,6 +183,8 @@ function friendly(e) {
   if (m && P.ERRORS[m[1]] && e.program === PROGRAM) msg += `: ${P.ERRORS[m[1]]}`;
   if (/insufficient lamports|0x1\b/.test(msg + (e.logs || []).join(" "))) msg += "\nNot enough SOL in the wallet for this amount.";
   if (/User rejected|rejected the request/i.test(msg)) msg = "You rejected the request in your wallet.";
+  if (/0x1771|SlippageToleranceExceeded/.test(msg + (e.logs || []).join(" "))) msg = "The price moved more than you allowed, so the swap was cancelled. Only the network fee was spent.";
+  else if (/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed/.test((e.logs || []).join(" "))) msg = "The pool turned the swap down, usually because its price changed a moment ago. Nothing was swapped and only the network fee was spent. Try again.";
   return msg;
 }
 
@@ -478,6 +481,80 @@ async function refreshTokens() {
     sel.append(o);
   });
   if (tokens.some((t) => t.mint === chosen)) sel.value = chosen;
+  fillSwap();
+}
+
+const CU_JUP = 1400000;
+const SOL_MINT = J.SOL_MINT;
+const SWAP_TO = NET.mainnet ? ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", "9tpHqTJ2d8jMZJjZzsf9MCfnCEmbAjsqjPJ56PzSpump"] : [];
+const mints = new Map();
+
+const jcache = { mints: new Map(), table: null };
+
+async function mintInfo(mint) {
+  const info = await J.mintInfo(rpc, mint, jcache);
+  if (mint !== SOL_MINT && !labels.has(mint) && !KNOWN.has(pubkey(mint).join(","))) labels.set(mint, await T.tokenLabel(rpc, pubkey(mint), info.prog).catch(() => ""));
+  return info;
+}
+
+const symOf = (mint) => (mint === SOL_MINT ? "SOL" : tokenName(mint));
+const buildLeg = (from, to, amount, slip) => J.buildLeg(rpc, session, from, to, amount, slip, jcache);
+
+async function swapPlan(from, to, amount, slip) {
+  await mintInfo(from); await mintInfo(to);
+  try { return await J.swapPlan(rpc, session, from, to, amount, slip, jcache); }
+  catch (e) { throw new Error(String(e.message).replace(/\{(\w+)\}/g, (_, m) => symOf(m))); }
+}
+
+function swapInputs() {
+  const from = $("j-from").value;
+  let to = $("j-to").value;
+  if (to === "other") { to = $("j-mint").value.trim(); pubkey(to); }
+  if (!from || !to) throw new Error("choose the tokens to swap");
+  return { from, to, slip: Number($("j-slip").value) };
+}
+
+function fillSwap() {
+  if (!NET.jupiter) return;
+  const fromSel = $("j-from"), toSel = $("j-to"), f = fromSel.value, t = toSel.value;
+  fromSel.textContent = ""; toSel.textContent = "";
+  const opt = (sel, v, text) => { const o = el("option", "", text); o.value = v; sel.append(o); };
+  opt(fromSel, SOL_MINT, "SOL");
+  for (const tk of tokens) opt(fromSel, tk.mint, `${tokenName(tk.mint)} (${T.formatAmount(tk.amount, tk.decimals)})`);
+  const seen = new Set();
+  for (const m of [SOL_MINT, ...SWAP_TO, ...tokens.map((x) => x.mint)]) if (!seen.has(m)) { seen.add(m); opt(toSel, m, symOf(m)); }
+  opt(toSel, "other", "Other token (paste mint)");
+  if ([...fromSel.options].some((o) => o.value === f)) fromSel.value = f;
+  if ([...toSel.options].some((o) => o.value === t)) toSel.value = t;
+  else toSel.value = fromSel.value === SOL_MINT ? SWAP_TO[0] || SOL_MINT : SOL_MINT;
+  $("j-mint").classList.toggle("hidden", toSel.value !== "other");
+}
+
+let jupTimer = null, jupSeq = 0;
+function scheduleJup() {
+  if (!NET.jupiter) return;
+  $("j-mint").classList.toggle("hidden", $("j-to").value !== "other");
+  clearTimeout(jupTimer);
+  const seq = ++jupSeq;
+  jupTimer = setTimeout(async () => {
+    const out = $("j-quote");
+    try {
+      if (!$("j-amt").value.trim()) { out.textContent = " "; return; }
+      const { from, to, slip } = swapInputs();
+      const fi = await mintInfo(from), ti = await mintInfo(to);
+      const amount = T.parseAmount($("j-amt").value, fi.decimals);
+      let q, via = false;
+      try { q = await J.quote(pubkey(from), pubkey(to), amount, slip, 28, true); }
+      catch (e) {
+        if (!/no routes/i.test(e.message) || from === SOL_MINT || to === SOL_MINT) throw e;
+        const a = await J.quote(pubkey(from), T.WSOL, amount, slip, 28, true);
+        q = await J.quote(T.WSOL, pubkey(to), J.minOut(a), slip, 28, true);
+        via = true;
+      }
+      if (seq !== jupSeq) return;
+      out.textContent = `About ${T.formatAmount(BigInt(q.outAmount), ti.decimals)} ${symOf(to)}, at least ${T.formatAmount(J.minOut(q), ti.decimals)}. ${via ? "Two swaps through SOL." : `Via ${J.labels(q).join(", ")}.`}`;
+    } catch (e) { if (seq === jupSeq) out.textContent = String(e.message || e).slice(0, 120); }
+  }, 700);
 }
 
 let quoteTimer = null;
@@ -813,6 +890,58 @@ function initWallet() {
     $("t-amt").value = "";
     await refreshWallet();
   }));
+  if (NET.jupiter) {
+    for (const id of ["j-from", "j-to", "j-slip"]) $(id).addEventListener("change", scheduleJup);
+    for (const id of ["j-amt", "j-mint"]) $(id).addEventListener("input", scheduleJup);
+    $("j-go").addEventListener("click", () => guard("j-err", "j-ok", async () => {
+      needPayer();
+      const { from, to, slip } = swapInputs();
+      const fi = await mintInfo(from), ti = await mintInfo(to);
+      const amount = T.parseAmount($("j-amt").value, fi.decimals);
+      if (from !== SOL_MINT) {
+        const held = tokens.find((x) => x.mint === from);
+        if (!held || held.amount < amount) throw new Error(`not enough ${symOf(from)} in the wallet`);
+      }
+      signing(true, "finding a route on Jupiter");
+      let plan;
+      try { plan = await swapPlan(from, to, amount, slip); } finally { signing(false); }
+      const ntx = plan.legs.reduce((n, l) => n + l.txs.length, 0);
+      const rent = plan.legs.reduce((n, l) => n + l.rent, 0n);
+      const spend = (from === SOL_MINT ? amount : 0n) + rent + BigInt(ntx) * 200000n;
+      const low = from === SOL_MINT ? await solCheck(amount + rent) : "";
+      const ext = ti.prog.join(",") === T.TOKEN22.join(",") ? await T.mintWarnings(rpc, pubkey(to), ti.prog) : "";
+      const first = plan.legs[0];
+      const topPlan = await planTopup(first.txs[0], first.tables, spend);
+      const shown = $("j-amt").value.trim();
+      const route = plan.via ? `${symOf(from)} to SOL to ${symOf(to)}` : J.labels(first.q).join(", ");
+      const rows = [["You get about", `${T.formatAmount(plan.out, ti.decimals)} ${symOf(to)}`], ["At least", `${T.formatAmount(plan.min, ti.decimals)} ${symOf(to)}`], ["Route", `${route} (Jupiter)`]];
+      if (to !== SOL_MINT && !KNOWN.has(pubkey(to).join(","))) rows.push(["Token mint", to, true]);
+      rows.push(["Network fee", `about ${sol((await networkFee(CU_JUP)) * ntx)} SOL${ntx > 1 ? ` for ${ntx} transactions` : ""}`]);
+      if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Swap ${shown} ${symOf(from)} for ${symOf(to)}`, rows,
+        notes: notes(`If the price moves more than ${slip / 100}%, the swap is cancelled and only the network fee is spent.`,
+          rent ? `This creates a token account for ${symOf(to)} in your wallet. Its rent is about ${sol(rent)} SOL, paid once.` : "",
+          plan.via ? "There is no direct pool, so this is two swaps through SOL. If the price moves between them, the second swap is skipped and you keep the SOL." : "",
+          ntx > (plan.via ? 2 : 1) ? "The route is large, so the wallet prepares your token accounts in a separate transaction first." : "",
+          ext, topPlan.note, low) }, "Swap"))) return;
+      let topup = topPlan, sig = "";
+      for (let li = 0; li < plan.legs.length; li++) {
+        let leg = plan.legs[li];
+        if (li === 1) {
+          leg = await buildLeg(SOL_MINT, to, J.minOut(plan.legs[0].q), slip);
+          if (leg.noRoute || J.minOut(leg.q) < plan.min) throw new Error("the price moved after the first swap, so the second one was not signed. You now hold SOL instead");
+        }
+        for (const tx of leg.txs) {
+          sig = await run(plan.legs.length > 1 ? `signing swap ${li + 1} of 2` : "signing the swap", tx, topup, { cu: CU_JUP, tables: leg.tables, spend });
+          topup = { amount: 0n, note: "" };
+        }
+      }
+      $("j-ok").textContent = `swapped ${shown} ${symOf(from)}`;
+      log(`swapped ${shown} ${symOf(from)} for about ${T.formatAmount(plan.out, ti.decimals)} ${symOf(to)}: ${sig}`, "ok");
+      $("j-amt").value = "";
+      $("j-quote").textContent = " ";
+      await refreshWallet();
+    }));
+  }
   $("x-amt").addEventListener("input", scheduleQuote);
   $("x-dir").addEventListener("change", scheduleQuote);
   $("x-go").addEventListener("click", () => guard("x-err", "x-ok", async () => {
@@ -954,7 +1083,8 @@ function initNetwork() {
 async function init() {
   await loadRpc();
   initNetwork();
-  if (!NET.swap) { $("tab-swap").remove(); $("pane-swap").classList.add("hidden"); }
+  if (NET.jupiter) { $("j-box").classList.remove("hidden"); $("x-box").classList.add("hidden"); fillSwap(); }
+  else if (!NET.swap) { $("tab-swap").remove(); $("pane-swap").classList.add("hidden"); }
   watchLock();
   initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
   const kept = await keep.load(IDLE_MS);

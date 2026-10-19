@@ -186,6 +186,17 @@ export class Rpc {
     return { owner: pubkey(v.owner), lamports: v.lamports, executable: v.executable === true, data: Uint8Array.from(atob(v.data[0]), (c) => c.charCodeAt(0)) };
   }
 
+  async executables(keys) {
+    const out = new Map();
+    for (let i = 0; i < keys.length; i += 100) {
+      const part = keys.slice(i, i + 100);
+      const r = await this.call("getMultipleAccounts", [part.map(b58encode), { encoding: "base64", dataSlice: { offset: 0, length: 0 }, commitment: "confirmed" }]);
+      if (!r || !Array.isArray(r.value) || r.value.length !== part.length) throw new Error("the RPC returned a malformed account list");
+      r.value.forEach((v, j) => out.set(b58encode(part[j]), !!(v && v.executable === true)));
+    }
+    return out;
+  }
+
   async balance(k) { return (await this.call("getBalance", [b58encode(k), { commitment: "confirmed" }])).value; }
   async slot() { return this.call("getSlot", [{ commitment: "confirmed" }]); }
   async blockhash() { return b58decode((await this.call("getLatestBlockhash", [{ commitment: "confirmed" }])).value.blockhash); }

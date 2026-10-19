@@ -1,5 +1,5 @@
 const METHODS = new Set([
-  "getAccountInfo", "getBalance", "getGenesisHash", "getLatestBlockhash", "getMinimumBalanceForRentExemption",
+  "getAccountInfo", "getBalance", "getMultipleAccounts", "getGenesisHash", "getLatestBlockhash", "getMinimumBalanceForRentExemption",
   "getRecentPrioritizationFees", "getSignatureStatuses", "getSlot", "getTokenAccountBalance", "getTokenAccountsByOwner",
   "sendTransaction",
 ]);

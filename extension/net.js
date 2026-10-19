@@ -7,4 +7,5 @@ export const NET = {
   explorerQuery: "?cluster=devnet",
   sol: "devnet SOL",
   swap: true,
+  jupiter: false,
 };

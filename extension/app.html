@@ -210,6 +210,18 @@
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-swap" aria-labelledby="tab-swap">
           <div>          <h2 class="silk"><span>PCIE_4</span><b>swap</b></h2>
+          <div id="j-box" class="hidden">
+            <label class="f" for="j-from">From</label><select id="j-from"></select>
+            <label class="f" for="j-to">To</label><select id="j-to"></select>
+            <input type="text" id="j-mint" class="hidden" spellcheck="false" autocomplete="off" placeholder="Token mint address" aria-label="Token mint address">
+            <label class="f" for="j-amt">Amount</label><input type="text" id="j-amt" inputmode="decimal" autocomplete="off">
+            <label class="f" for="j-slip">Cancel if the price moves more than</label><select id="j-slip"><option value="50">0.5%</option><option value="100" selected>1%</option><option value="300">3%</option></select>
+            <p class="quote" id="j-quote">&nbsp;</p>
+            <div class="row"><button class="btn btn-solid" id="j-go" type="button">Review swap</button></div>
+            <p class="ok" id="j-ok"></p><p class="err" id="j-err" role="alert"></p>
+            <p class="hint">Prices and routes come from Jupiter. The wallet checks every instruction before it signs.</p>
+          </div>
+          <div id="x-box">
           <p class="hint" data-only="devnet">Swaps through a Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
           <label class="f" for="x-dir">Direction</label>
           <select id="x-dir"><option value="buy">SOL to DEMO</option><option value="sell">DEMO to SOL</option></select>
@@ -217,6 +229,7 @@
           <p class="quote mono" id="x-quote">&nbsp;</p>
           <div class="row"><button class="btn btn-solid" id="x-go" type="button">Sign and swap</button></div>
           <p class="ok" id="x-ok"></p><p class="err" id="x-err" role="alert"></p>
+          </div>
         </div>
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-receive" aria-labelledby="tab-receive">
