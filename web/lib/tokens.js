@@ -26,7 +26,49 @@ export const DEMO = {
 export const KNOWN = new Map([[DEMO.mint.join(","), "DEMO"], [WSOL.join(","), "wSOL"]]);
 export const KNOWN_MAINNET = new Map([[WSOL.join(","), "wSOL"],
   [pubkey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v").join(","), "USDC"],
-  [pubkey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB").join(","), "USDT"]]);
+  [pubkey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB").join(","), "USDT"],
+  [pubkey("9tpHqTJ2d8jMZJjZzsf9MCfnCEmbAjsqjPJ56PzSpump").join(","), "OPEQ"]]);
+
+const METAPLEX = pubkey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+function readStr(d, o, max) {
+  if (o + 4 > d.length) return null;
+  const n = (d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24)) >>> 0;
+  if (n > max || o + 4 + n > d.length) return null;
+  return [new TextDecoder("utf-8", { fatal: false }).decode(d.slice(o + 4, o + 4 + n)), o + 4 + n];
+}
+
+export function cleanLabel(s) {
+  if (typeof s !== "string") return "";
+  return s.replace(/[^\p{L}\p{N} $._-]/gu, "").trim().slice(0, 12);
+}
+
+export function metaplexLabel(d) {
+  if (!d || d.length < 70 || d[0] !== 4) return "";
+  const name = readStr(d, 65, 64);
+  if (!name) return "";
+  const sym = readStr(d, name[1], 32);
+  return cleanLabel(sym && sym[0]) || cleanLabel(name[0]);
+}
+
+export function token22Label(d) {
+  const m = mintExtensions(d).get(19);
+  if (!m) return "";
+  const name = readStr(m, 64, 200);
+  if (!name) return "";
+  const sym = readStr(m, name[1], 64);
+  return cleanLabel(sym && sym[0]) || cleanLabel(name[0]);
+}
+
+export async function tokenLabel(rpc, mint, tokenProgram) {
+  if (tokenProgram.join(",") === TOKEN22.join(",")) {
+    const acc = await rpc.account(mint);
+    const l = acc ? token22Label(acc.data) : "";
+    if (l) return l;
+  }
+  const acc = await rpc.account(findPda([enc.encode("metadata"), METAPLEX, mint], METAPLEX).key);
+  return acc && acc.owner.join(",") === METAPLEX.join(",") ? metaplexLabel(acc.data) : "";
+}
 
 export function mintExtensions(data) {
   const out = new Map();

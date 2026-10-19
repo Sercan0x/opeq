@@ -380,11 +380,24 @@ async function lookupTables() {
   return altCache;
 }
 const KNOWN = NET.mainnet ? T.KNOWN_MAINNET : T.KNOWN;
-const tokenName = (mint) => KNOWN.get(pubkey(mint).join(",")) || short(mint);
+const KNOWN_NAMES = new Set([...KNOWN.values(), "SOL", "USDC", "USDT", "OPEQ"].map((x) => x.toUpperCase()));
+const labels = new Map();
+const tokenName = (mint) => {
+  const known = KNOWN.get(pubkey(mint).join(","));
+  if (known) return known;
+  const l = labels.get(mint);
+  if (!l) return short(mint);
+  return KNOWN_NAMES.has(l.toUpperCase()) ? `${l} (unverified)` : l;
+};
 
 async function refreshTokens() {
   if (!session) return;
-  tokens = (await rpc.tokenAccounts(session.wallet)).filter((t) => t.amount > 0n || (NET.swap && t.mint === b58encode(T.DEMO.mint)));
+  const fresh = await rpc.tokenAccounts(session.wallet);
+  for (const t of fresh.slice(0, 30)) {
+    if (labels.has(t.mint) || KNOWN.has(pubkey(t.mint).join(","))) continue;
+    labels.set(t.mint, await T.tokenLabel(rpc, pubkey(t.mint), pubkey(t.program)).catch(() => ""));
+  }
+  tokens = fresh.filter((t) => t.amount > 0n || (NET.swap && t.mint === b58encode(T.DEMO.mint)));
   const list = $("t-list"), sel = $("t-sel"), chosen = sel.value;
   list.textContent = ""; sel.textContent = "";
   if (!tokens.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = NET.swap ? "No tokens yet. Try a swap." : "No tokens yet. Anyone can send tokens to your address."; list.append(p); }
@@ -396,7 +409,9 @@ async function refreshTokens() {
     left.append(nm, m);
     const right = document.createElement("div"); right.className = "mono amt"; right.textContent = T.formatAmount(t.amount, t.decimals);
     row.append(left, right); list.append(row);
-    const o = document.createElement("option"); o.value = t.mint; o.textContent = `${tokenName(t.mint)} (${T.formatAmount(t.amount, t.decimals)})`; sel.append(o);
+    const o = document.createElement("option"); o.value = t.mint;
+    o.textContent = `${tokenName(t.mint)}${KNOWN.has(pubkey(t.mint).join(",")) || !labels.get(t.mint) ? "" : ` ${short(t.mint)}`} (${T.formatAmount(t.amount, t.decimals)})`;
+    sel.append(o);
   });
   if (tokens.some((t) => t.mint === chosen)) sel.value = chosen;
 }
@@ -437,7 +452,7 @@ function hideWords() {
 }
 
 const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000;
-let lastActive = Date.now(), hiddenAt = null;
+let lastActive = Date.now(), hiddenAt = null, lastRefresh = Date.now();
 
 function wipeInputs() {
   for (const id of ["u-pw", "c-pw", "c-pw2", "r-pw", "r-pw2", "r-words", "k-pw"]) $(id).value = "";
@@ -477,6 +492,12 @@ function initAutoLock() {
     hiddenAt = null;
     touch();
   });
+  setInterval(() => {
+    if (session && !busy && !document.hidden && Date.now() - lastRefresh > 20000) {
+      lastRefresh = Date.now();
+      refreshWallet().catch(() => {});
+    }
+  }, 5000);
   setInterval(() => {
     if (!session && !busy && Date.now() - lastActive > IDLE_MS && (pending || $("r-words").value || $("c-words").textContent)) {
       hideWords(); wipeInputs();
