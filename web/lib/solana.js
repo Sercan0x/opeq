@@ -186,19 +186,22 @@ export class Rpc {
     return { owner: pubkey(v.owner), lamports: v.lamports, executable: v.executable === true, data: Uint8Array.from(atob(v.data[0]), (c) => c.charCodeAt(0)) };
   }
 
-  async simulate(tx, addresses) {
+  async simulate(tx, addresses, minContextSlot = 0) {
     const b64 = btoa(String.fromCharCode(...tx));
-    const r = await this.call("simulateTransaction", [b64, { encoding: "base64", sigVerify: true, commitment: "processed", accounts: { encoding: "base64", addresses: addresses.map(b58encode) } }]);
+    const r = await this.call("simulateTransaction", [b64, { encoding: "base64", sigVerify: true, commitment: "processed", minContextSlot, accounts: { encoding: "base64", addresses: addresses.map(b58encode) } }]);
     const v = r && r.value;
+    if (!r || !r.context || !(r.context.slot >= minContextSlot)) throw new Error("the RPC simulated on an older state than the balance snapshot");
     if (!v || !Array.isArray(v.accounts) || v.accounts.length !== addresses.length) throw new Error("the RPC returned a malformed simulation");
     return { err: v.err, logs: Array.isArray(v.logs) ? v.logs.filter((l) => typeof l === "string").slice(0, 80) : [],
       accounts: v.accounts.map((a) => (a ? { lamports: BigInt(a.lamports), data: Uint8Array.from(atob(a.data[0]), (c) => c.charCodeAt(0)) } : null)) };
   }
 
   async snapshot(addresses) {
-    const r = await this.call("getMultipleAccounts", [addresses.map(b58encode), { encoding: "base64", commitment: "confirmed" }]);
+    const r = await this.call("getMultipleAccounts", [addresses.map(b58encode), { encoding: "base64", commitment: "processed" }]);
     if (!r || !Array.isArray(r.value) || r.value.length !== addresses.length) throw new Error("the RPC returned a malformed account list");
-    return r.value.map((a) => (a ? { lamports: BigInt(a.lamports), data: Uint8Array.from(atob(a.data[0]), (c) => c.charCodeAt(0)) } : null));
+    const out = r.value.map((a) => (a ? { lamports: BigInt(a.lamports), data: Uint8Array.from(atob(a.data[0]), (c) => c.charCodeAt(0)) } : null));
+    out.slot = r.context && r.context.slot ? r.context.slot : 0;
+    return out;
   }
 
   async executables(keys) {

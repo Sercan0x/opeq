@@ -133,7 +133,8 @@ function anchorDisc(name) {
 }
 
 export function amountError(t, decimals) {
-  if (!t) return "enter an amount";
+  if (!t || t === ".") return "enter an amount";
+  if (t.endsWith(".")) return "add digits after the dot, like 1.5";
   if (t.includes(",")) return "use a dot for decimals, like 0.25";
   if (!/^\d*\.?\d*$/.test(t)) return "enter a plain number, like 0.25";
   const f = t.split(".")[1] || "";

@@ -716,6 +716,36 @@ def pending_rekey(rpc, v, st):
         raise SystemExit("an earlier rekey from this copy may still land; wait about a minute, then try again")
 
 
+def failed_leaves(rpc, v):
+    sigs = rpc.call("getSignaturesForAddress", [ps(v.state), {"limit": 300, "commitment": "confirmed"}]) or []
+    failed = [s for s in sigs if s.get("err")]
+    if len(failed) > 100:
+        raise SystemExit("too many recent failed transactions to check safely; take over from the copy that is active")
+    out = set()
+    for s in failed:
+        tx = None
+        for _ in range(4):
+            try:
+                tx = rpc.call("getTransaction", [s["signature"], {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}])
+            except RpcError:
+                tx = None
+            if tx:
+                break
+            time.sleep(1.5)
+        if not tx:
+            raise SystemExit("could not read an earlier failed transaction of this wallet; try again in a minute")
+        meta = tx.get("meta") or {}
+        loaded = meta.get("loadedAddresses") or {}
+        keys = tx["transaction"]["message"]["accountKeys"] + loaded.get("writable", []) + loaded.get("readonly", [])
+        for ix in tx["transaction"]["message"]["instructions"]:
+            if keys[ix["programIdIndex"]] != ps(v.program):
+                continue
+            d = b58decode(ix["data"])
+            if len(d) >= 5 and d[0] in (1, 2):
+                out.add(int.from_bytes(d[1:5], "little"))
+    return out
+
+
 def cmd_takeover(rpc, payer, v, args):
     if not v.has_master:
         raise SystemExit("takeover needs a vault made from recovery words")
@@ -739,7 +769,7 @@ def cmd_takeover(rpc, payer, v, args):
         v.save()
     pending_rekey(rpc, v, st)
     t = v.raw.get("takeover") or {}
-    used = sorted(set((t.get("used", []) if t.get("epoch") == st["epoch"] else []) + takeover_used(v.raw["aid"], st["epoch"])))
+    used = sorted(set((t.get("used", []) if t.get("epoch") == st["epoch"] else []) + takeover_used(v.raw["aid"], st["epoch"])) | failed_leaves(rpc, v))
     nl = v.raw.get("next_leaf", 0)
     lo = max(TAKEOVER_FLOOR, st["next"] + RESTORE_GAP, nl if nl > TAKEOVER_FLOOR else 0)
     free = [l for l in range(lo, wots.LEAVES) if l not in used]
@@ -818,6 +848,7 @@ def prove_vault(rpc, path):
             raise SystemExit("the new authority must be an encrypted vault made from recovery words")
         print(f"unlock the vault that will receive the authority ({path})")
         nv.unlock()
+        program_format(rpc, nv.program)
         genesis = rpc.call("getGenesisHash")
         if nv.raw.get("cluster") != genesis:
             raise SystemExit("the new authority vault has never signed on this cluster; run `burn` with it once first")
@@ -957,7 +988,9 @@ def main():
         raise SystemExit("on mainnet type the password and words at the prompt; unset OPEQ_PASSWORD and OPEQ_WORDS")
     if args.net == "mainnet" and args.plaintext:
         raise SystemExit("plaintext vaults are not allowed on mainnet")
-    PRIORITY[0] = max(0, args.priority_fee)
+    if not 0 <= args.priority_fee <= 100000:
+        raise SystemExit("--priority-fee is in micro-lamports per compute unit and must be between 0 and 100000")
+    PRIORITY[0] = args.priority_fee
     args.vault = args.vault or os.path.join(HERE, "vault.json")
     args.payer = args.payer or os.path.join(HERE, "devnet-key.json")
     if args.cmd == "keygen":

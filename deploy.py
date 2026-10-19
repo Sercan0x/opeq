@@ -154,6 +154,8 @@ def main():
     ap.add_argument("--authority")
     ap.add_argument("--authority-vault")
     args = ap.parse_args()
+    if args.net == "mainnet" and (os.environ.get("OPEQ_PASSWORD") or os.environ.get("OPEQ_WORDS")):
+        raise SystemExit("on mainnet type passwords at the prompt; unset OPEQ_PASSWORD and OPEQ_WORDS")
     if args.key is None:
         if args.net == "mainnet":
             raise SystemExit("on mainnet pass --key <payer keypair file> explicitly")

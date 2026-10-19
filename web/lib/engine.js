@@ -488,9 +488,15 @@ export class Session {
     const sigs = await this.e.rpc.call("getSignaturesForAddress", [b58encode(state), { limit: 300, commitment: "confirmed" }]);
     if (!Array.isArray(sigs)) throw new Error("the RPC returned a malformed signature list");
     const out = new Set();
-    for (const s of sigs.filter((x) => x && x.err).slice(0, 40)) {
-      const tx = await this.e.rpc.call("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
-      if (!tx || !tx.transaction) throw new Error("could not read an earlier failed transaction of this wallet; try again");
+    const failed = sigs.filter((x) => x && x.err);
+    if (failed.length > 100) throw new Error("this wallet has too many recent failed transactions to check safely; take over from the device that is active, or wait for it to rekey");
+    for (const s of failed) {
+      let tx = null;
+      for (let i = 0; i < 4 && !tx; i++) {
+        tx = await this.e.rpc.call("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
+        if (!tx) await new Promise((r) => setTimeout(r, 1500));
+      }
+      if (!tx || !tx.transaction) throw new Error("could not read an earlier failed transaction of this wallet; try again in a minute");
       const keys = [...tx.transaction.message.accountKeys, ...((tx.meta && tx.meta.loadedAddresses && [...tx.meta.loadedAddresses.writable, ...tx.meta.loadedAddresses.readonly]) || [])];
       for (const ix of tx.transaction.message.instructions) {
         if (keys[ix.programIdIndex] !== b58encode(this.e.program)) continue;
@@ -538,7 +544,11 @@ export class Session {
       sig = "landed";
     }
     if (sig !== "landed" && !M.chainSeeded(this.e.program, st.epoch + 1)) {
-      const tx = await this.e.rpc.call("getTransaction", [sig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
+      let tx = null;
+      for (let i = 0; i < 6 && !(tx && tx.meta); i++) {
+        tx = await this.e.rpc.call("getTransaction", [sig, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
+        if (!(tx && tx.meta)) await new Promise((r) => setTimeout(r, 3000));
+      }
       if (!(tx && tx.meta && tx.meta.err === null)) throw new Error("could not confirm this rekey on chain; refresh in a minute");
     }
     if (sig !== "landed") {

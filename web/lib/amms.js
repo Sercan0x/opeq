@@ -19,7 +19,6 @@ export const AMMS = new Map([
   ["DSwpgjMvXhtGn6BsbqmacdBZyfLj6jSWf3HJpdJtmg6N", "DexLab"],
   ["dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN", "Dynamic Bonding Curve"],
   ["FLiNTXPwppyoJabCoxc2uiiRygAHpmMXajiDXo2Ub1z", "Flint"],
-  ["FLUX6xBayGxLX9UcimVRxXFMHH6q43mAbRvDzSpCsvfK", "Flux"],
   ["FLUXubRmkEi2q6K3Y9kBPg9248ggaZVsoSFhtJHSrm1X", "FluxBeam"],
   ["gatorLx9aC1e5ZWAXscv5QRKiLXnLPLXjftVc81h1Hr", "GatorSwap"],
   ["srAMMzfVHVAtgSJc8iH6CfKzuWuUTzLHVCE81QU1rgi", "Gavel"],

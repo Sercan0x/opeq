@@ -322,7 +322,7 @@ async function guard(errId, okId, fn) {
   if (okId) $(okId).textContent = "";
   try { await fn(); }
   catch (e) { if (errId) $(errId).textContent = friendly(e); log(friendly(e), "err", !!(e.sent || e.maybeLanded)); }
-  finally { busy = false; buttons.forEach((b) => (b.disabled = false)); }
+  finally { busy = false; buttons.forEach((b) => (b.disabled = false)); if (NET.jupiter && $("j-flip")) flipState(); }
 }
 
 function setDrive(state, text) {
@@ -791,7 +791,9 @@ function initRecover() {
     setProgress("r-prog", 0);
     const words = $("r-words").value;
     let record = await engine.recover(words, pw, (p) => setProgress("r-prog", p));
-    if (!(await engine.chainState(record).catch(() => null))) {
+    let onChain;
+    try { onChain = await engine.chainState(record); } catch { onChain = undefined; }
+    if (onChain === null) {
       setProgress("r-prog", null);
       if (!(await ask("This wallet has never been activated on chain. If you expected funds in it, one of the words is probably wrong. Continue anyway?", "Continue"))) return;
     }
@@ -1034,8 +1036,9 @@ function initWallet() {
           const verify = tx.includes(leg.ix.swap) ? await J.balanceGuard(rpc, leg.ctx, J.minOut(leg.q), leg.rent + (leg.ix.pump ? 5000000n : 0n), tx) : null;
           try { sig = await run(plan.legs.length > 1 ? `signing swap ${li + 1} of 2` : "signing the swap", tx, topupNone, { cu: CU_JUP, tables: leg.tables, spend, verify }); }
           catch (e) {
-            if (/failed in simulation/.test(e.message)) {
-              jcache.bad = [...new Set([...(jcache.bad || []), ...J.labels(leg.q)])];
+            if (/failed in simulation/.test(e.message) && /Custom/.test(e.message) && !/6001|1771/.test(e.message + (e.logs || []).join(" "))) {
+              jcache.bad = jcache.bad || {};
+              for (const l of J.labels(leg.q)) jcache.bad[l] = Date.now() + 10 * 60 * 1000;
               e.message += `. The ${J.labels(leg.q).join(", ")} pool failed, so the next try will avoid it.`;
             }
             if (li === 1) { $("j-amt").value = ""; refreshWallet().catch(() => {}); throw new Error(`Swap 1 of 2 went through and you now hold the SOL. Swap 2 did not complete: ${friendly(e)}`); }
@@ -1164,6 +1167,7 @@ function setRpc(u) {
   jcache.mints.clear();
   jcache.table = null;
   jcache.ataRent = null;
+  jcache.bad = {};
   labels.clear();
   $("n-now").textContent = u === NET.rpc ? `Connected through ${hostOf(u)} (default).` : `Connected through your RPC at ${hostOf(u)}.`;
 }

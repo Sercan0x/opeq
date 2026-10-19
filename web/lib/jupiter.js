@@ -158,7 +158,8 @@ export async function buildLeg(rpc, session, from, to, amount, slip, cache) {
   const fi = await mintInfo(rpc, from, cache), ti = await mintInfo(rpc, to, cache);
   const ctx = { wallet: session.wallet, inMint: pubkey(from), outMint: pubkey(to), inProg: fi.prog, outProg: ti.prog, amount };
   let last = new Error("no swap route found");
-  const exclude = [...(cache.bad || [])];
+  const now = Date.now();
+  const exclude = Object.entries(cache.bad || {}).filter(([, until]) => until > now).map(([l]) => l);
   for (const max of [28, 28, 28, 20]) {
     let q;
     try { q = await quote(ctx.inMint, ctx.outMint, amount, slip, max, true, exclude); }
@@ -211,7 +212,7 @@ export async function balanceGuard(rpc, ctx, min, allowance, tx) {
   const fromSol = eq(inMint, T.WSOL), toSol = eq(outMint, T.WSOL);
   return async (signed) => {
     const pre = await rpc.snapshot(addrs);
-    const sim = await rpc.simulate(signed, addrs);
+    const sim = await rpc.simulate(signed, addrs, pre.slot);
     if (sim.err) { const e = new Error(`the swap failed in simulation, so the wallet stopped it and retires its key: ${JSON.stringify(sim.err).slice(0, 120)}`); e.logs = sim.logs; throw e; }
     const bad = (why) => { throw new Error(`simulation shows ${why}, so the wallet stopped this swap and retires its key`); };
     const at = (k) => addrs.findIndex((x) => eq(x, k));

@@ -56,6 +56,8 @@ class FakeChain:
         if method == "getSlot":
             self.slot += 7
             return self.slot
+        if method == "getSignaturesForAddress":
+            return []
         if method == "getGenesisHash":
             return "FakeChainGenesisHash11111111111111111111111"
         if method == "getLatestBlockhash":
