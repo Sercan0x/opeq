@@ -8,7 +8,9 @@ import {
 
 export const EXPIRY_SLOTS = 150;
 export const RESTORE_GAP = 64;
-export const EXEC_LIMIT = P.EXEC_LEAF_LIMIT - RESTORE_GAP;
+export const TAKEOVER_FLOOR = 768;
+export const SIGN_LIMIT = TAKEOVER_FLOOR;
+export const EXEC_LIMIT = TAKEOVER_FLOOR - RESTORE_GAP - 16;
 export const TX_LIMIT = 1232;
 export const BASE_FEE = 5000;
 const RENT_MIN = 1000000, RENT_MAX = 2000000;
@@ -67,15 +69,17 @@ export class Engine {
       if (!eq(t.root, st.root)) throw new Error("these words do not control this wallet's current tree");
     }
     if (existing && existing.epoch > epoch) throw new Error("this browser already holds a newer copy of this wallet");
-    return this._record(master, password, aid, epoch, t, next, false);
+    const keep = {};
+    if (existing && existing.epoch === epoch) for (const k of ["takeover", "inflight", "rekeying"]) if (existing[k]) keep[k] = existing[k];
+    return this._record(master, password, aid, epoch, t, next, false, keep);
   }
 
-  async _record(master, password, aid, epoch, t, next, active = true) {
+  async _record(master, password, aid, epoch, t, next, active = true, keep = {}) {
     const { blob, macKey } = await V.seal(master, password, aid);
     const wallet = P.walletPda(aid, this.program).key;
     const record = {
       id: b58encode(wallet), v: 1, program: b58encode(this.program), aid: hex(aid), epoch, next_leaf: next,
-      pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), enc: blob, created: Date.now(), active,
+      pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), enc: blob, created: Date.now(), active, ...keep,
     };
     return V.signRecord(macKey, record);
   }
@@ -243,7 +247,7 @@ export class Session {
 
   ownRekey(r, st) {
     if (!r.rekeying || Number(r.rekeying.epoch) !== st.epoch) return false;
-    if (!M.chainSeeded(this.e.program, st.epoch)) return true;
+    if (!M.chainSeeded(this.e.program, st.epoch)) return false;
     return typeof r.rekeying.pub_seed === "string" && r.rekeying.pub_seed === hex(st.pubSeed);
   }
 
@@ -259,6 +263,8 @@ export class Session {
     if (!eq(t.root, st.root)) throw new Error("on-chain tree is not derived from this wallet's words");
     Object.assign(r, { epoch: st.epoch, next_leaf: 0, pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), active: true });
     delete r.rekeying;
+    delete r.takeover;
+    delete r.inflight;
     this.e.log(`wallet moved to tree ${st.epoch}`);
     return this.put(r);
   }
@@ -318,7 +324,7 @@ export class Session {
   async reserve(r, st, limit) {
     const leaf = Math.max(r.next_leaf, st.next);
     if (leaf >= limit) {
-      throw new Error(limit === EXEC_LIMIT ? "this key tree is used up for transactions; rekey now" : "tree fully used");
+      throw new Error(limit === EXEC_LIMIT ? "this key tree is used up for transactions; rekey now" : "no keys left for a rekey on this tree; choose Use on this device to move to a new tree");
     }
     r.next_leaf = leaf + 1;
     await this.put(r);
@@ -338,7 +344,7 @@ export class Session {
     if (size > TX_LIMIT) throw new Failed(`this transaction would be ${size} bytes, over the ${TX_LIMIT} byte limit; nothing was signed`);
     const price = await this.e.price(cuLimit, metas.filter((m) => m[2]).map((m) => m[0]));
     await this.e.payerCovers(2 * this.e.feeFor(cuLimit, price));
-    const leaf = await this.reserve(r, st, isBurn ? LEAVES - P.REKEY_RESERVE : EXEC_LIMIT);
+    const leaf = await this.reserve(r, st, isBurn ? SIGN_LIMIT : EXEC_LIMIT);
     const expiry = (await this.e.rpc.slot()) + EXPIRY_SLOTS;
     const prev = r.inflight;
     r.inflight = prev ? { leaf: Math.min(Number(prev.leaf), leaf), expiry: Math.max(Number(prev.expiry), expiry) } : { leaf, expiry };
@@ -415,7 +421,8 @@ export class Session {
   rekey(progress) {
     return this.lock(async () => {
       const { r, st } = await this.preflight();
-      return this._rekey(r, st, await this.reserve(r, st, LEAVES), progress);
+      await this.pendingRekey(r, st);
+      return this._rekey(r, st, await this.reserve(r, st, SIGN_LIMIT), progress);
     });
   }
 
@@ -435,14 +442,23 @@ export class Session {
         delete r.rekeying;
         r = await this.put(r);
       }
-      const lo = Math.max(r.next_leaf, st.next + RESTORE_GAP, P.EXEC_LEAF_LIMIT);
-      if (lo >= LEAVES) throw new Error("tree fully used");
-      const span = LEAVES - lo;
-      const leaf = lo + (crypto.getRandomValues(new Uint32Array(1))[0] % span);
-      r.next_leaf = leaf + 1;
+      await this.pendingRekey(r, st);
+      const used = r.takeover && r.takeover.epoch === st.epoch ? r.takeover.used : [];
+      const lo = Math.max(TAKEOVER_FLOOR, st.next + RESTORE_GAP, r.next_leaf > TAKEOVER_FLOOR ? r.next_leaf : 0);
+      const free = [];
+      for (let l = lo; l < LEAVES; l++) if (!used.includes(l)) free.push(l);
+      if (!free.length) throw new Error("no unused takeover keys left on this tree; take over from the device that is active, or wait for it to rekey");
+      const leaf = free[crypto.getRandomValues(new Uint32Array(1))[0] % free.length];
+      r.takeover = { epoch: st.epoch, used: [...used, leaf] };
       await this.put(r);
       return this._rekey(r, st, leaf, progress && ((p) => progress(0.4 + p * 0.6)));
     });
+  }
+
+  async pendingRekey(r, st) {
+    const m = r.rekeying;
+    if (m && Number(m.epoch) === st.epoch + 1 && (await this.e.rpc.slot()) <= Number(m.expiry) + 2)
+      throw new Error("an earlier rekey from this copy may still land; wait about a minute, then try again");
   }
 
   async _rekey(r, st, leaf, progress) {
@@ -465,6 +481,7 @@ export class Session {
     try {
       sig = await this.e.submit([this.e.program, metas, data], expiry, 400000, [], price);
     } catch (err) {
+      if (!M.chainSeeded(this.e.program, st.epoch + 1)) throw err;
       const after = await this.e.chainState(await this.load()).catch(() => null);
       if (!(after && after.epoch === st.epoch + 1 && eq(after.root, s.newRoot))) throw err;
       sig = "landed";
@@ -473,6 +490,7 @@ export class Session {
     Object.assign(fresh, { epoch: r.epoch + 1, next_leaf: 0, pub_seed: hex(s.newPubSeed), root: hex(s.newRoot), leaves: b64(s.newLeaves), active: true });
     delete fresh.rekeying;
     delete fresh.inflight;
+    delete fresh.takeover;
     await this.put(fresh);
     return sig;
   }

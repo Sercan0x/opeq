@@ -1,6 +1,6 @@
 import * as P from "./lib/protocol.js";
 import { Engine, Session, Inactive, EXEC_LIMIT } from "./lib/engine.js";
-import { IdbStore, macKeyFrom } from "./lib/vaultstore.js";
+import { IdbStore, macKeyFrom, withLock } from "./lib/vaultstore.js";
 import { Rpc, pubkey, b58encode, SYSTEM, concat, u32, u64, eq, isOnCurve, unhex } from "./lib/solana.js";
 import * as T from "./lib/tokens.js";
 import { feePayer } from "./feekey.js";
@@ -571,11 +571,12 @@ function initRecover() {
     if (existing) {
       setProgress("r-prog", null);
       if (!(await ask("This wallet already exists in this browser. Replace its password with the new one? Its key counter is kept.", "Replace"))) return;
-      record = await engine.recover(words, pw, (p) => setProgress("r-prog", p), existing);
-      await store.del(record.id);
-    }
+      await withLock(`opeq:${record.id}`, async () => {
+        record = await engine.recover(words, pw, (p) => setProgress("r-prog", p), await store.get(record.id));
+        await engine.save(record);
+      });
+    } else await engine.save(record);
     setProgress("r-prog", null);
-    await engine.save(record);
     await startSession(await engine.unlock(record, pw));
     current = session.id;
     remember(current);
@@ -678,7 +679,9 @@ function initWallet() {
   $("w-take").addEventListener("click", () => guard("w-take-err", null, async () => {
     needPayer();
     if (!(await ask("Use this wallet on this device? This sends one rekey transaction. After it, any other browser or device that has these words stops signing until you choose Use on this device there.", "Use here"))) return;
-    const sig = await signed("taking over on this device", (pr) => session.takeover(pr));
+    let sig;
+    try { sig = await signed("taking over on this device", (pr) => session.takeover(pr)); }
+    catch (e) { throw new Error(`${friendly(e)}\nThe takeover did not complete. Try again here, on this device, until it does. Do not start a takeover on another device meanwhile.`); }
     log(`this device now signs for the wallet: ${sig}`, "ok");
     await refreshWallet();
   }));

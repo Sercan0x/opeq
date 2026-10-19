@@ -30,7 +30,9 @@ NETS = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainn
 EXPIRY_SLOTS = 150
 RESTORE_GAP = 64
 REKEY_WARN = 32
-EXEC_LIMIT = P.EXEC_LEAF_LIMIT - RESTORE_GAP
+TAKEOVER_FLOOR = 768
+SIGN_LIMIT = TAKEOVER_FLOOR
+EXEC_LIMIT = TAKEOVER_FLOOR - RESTORE_GAP - 16
 BUFFER_META = 37
 PROGRAMDATA_META = 45
 
@@ -163,14 +165,14 @@ class Vault:
     def is_active(self):
         if "active" in self.raw:
             return self.raw["active"] is True
-        return bytes(self.program) == mnemonic.LEGACY_PROGRAM
+        return bytes(self.program) == mnemonic.LEGACY_PROGRAM and not self.has_master
 
     def reserve_leaf(self, chain_next, limit):
         leaf = max(self.raw.get("next_leaf", 0), chain_next)
         if leaf >= limit:
-            if limit < wots.LEAVES:
+            if limit == EXEC_LIMIT:
                 raise SystemExit(f"leaf {leaf}: this key tree is used up for transactions, run `rekey` now")
-            raise SystemExit("tree fully used, wallet can no longer be rekeyed")
+            raise SystemExit("no keys left for a rekey on this tree; run `takeover` to move to a new tree")
         self.raw["next_leaf"] = leaf + 1
         self.save()
         if limit == EXEC_LIMIT and leaf >= EXEC_LIMIT - REKEY_WARN:
@@ -252,7 +254,7 @@ def own_rekey(v, st):
     if not mark or int(mark.get("epoch", -1)) != st["epoch"]:
         return False
     if not mnemonic.chain_seeded(v.program, st["epoch"]):
-        return True
+        return False
     return mark.get("pub_seed") == st["pub_seed"].hex()
 
 
@@ -273,6 +275,7 @@ def sync_epoch(v, st):
     v.raw["next_leaf"] = 0
     v.raw["active"] = True
     v.raw.pop("rekeying", None)
+    v.raw.pop("takeover", None)
     v._key = None
     v.save()
     print(f"vault now uses tree {st['epoch']} (this copy's rekey landed)")
@@ -389,7 +392,7 @@ def burn(rpc, payer, v, key, failed_leaf, fmt):
     if st["next"] > failed_leaf:
         return True
     try:
-        leaf = v.reserve_leaf(st["next"], P.EXEC_LEAF_LIMIT)
+        leaf = v.reserve_leaf(st["next"], SIGN_LIMIT)
     except SystemExit:
         print(f"WARNING: no free leaf to burn {failed_leaf} with; it stays replayable until slot expiry")
         return False
@@ -631,8 +634,15 @@ def cmd_restore(rpc, payer, v, args):
 
 def cmd_rekey(rpc, payer, v, args):
     st, key = preflight(rpc, v)
-    leaf = v.reserve_leaf(st["next"], wots.LEAVES)
+    pending_rekey(rpc, v, st)
+    leaf = v.reserve_leaf(st["next"], SIGN_LIMIT)
     do_rekey(rpc, payer, v, st, key, leaf)
+
+
+def pending_rekey(rpc, v, st):
+    m = v.raw.get("rekeying")
+    if m and int(m.get("epoch", -1)) == st["epoch"] + 1 and rpc.call("getSlot", [{"commitment": "confirmed"}]) <= int(m.get("expiry", 0)) + 2:
+        raise SystemExit("an earlier rekey from this copy may still land; wait about a minute, then try again")
 
 
 def cmd_takeover(rpc, payer, v, args):
@@ -655,12 +665,17 @@ def cmd_takeover(rpc, payer, v, args):
         v.raw.pop("inflight", None)
         v._key = None
         v.save()
-    lo = max(v.raw.get("next_leaf", 0), st["next"] + RESTORE_GAP, P.EXEC_LEAF_LIMIT)
-    if lo >= wots.LEAVES:
-        raise SystemExit("the current key tree is too far used to take over safely; take over from the copy that is active")
+    pending_rekey(rpc, v, st)
+    t = v.raw.get("takeover") or {}
+    used = t.get("used", []) if t.get("epoch") == st["epoch"] else []
+    nl = v.raw.get("next_leaf", 0)
+    lo = max(TAKEOVER_FLOOR, st["next"] + RESTORE_GAP, nl if nl > TAKEOVER_FLOOR else 0)
+    free = [l for l in range(lo, wots.LEAVES) if l not in used]
+    if not free:
+        raise SystemExit("no unused takeover keys left on this tree; take over from the copy that is active, or wait for it to rekey")
     confirm(args, "make this copy the only one that signs (one rekey transaction; every other copy stops signing)")
-    leaf = lo + secrets.randbelow(wots.LEAVES - lo)
-    v.raw["next_leaf"] = leaf + 1
+    leaf = free[secrets.randbelow(len(free))]
+    v.raw["takeover"] = {"epoch": st["epoch"], "used": used + [leaf]}
     v.raw["cluster"] = genesis
     v.save()
     try:
@@ -700,7 +715,14 @@ def do_rekey(rpc, payer, v, st, key, leaf):
         raise
     st = chain_state(rpc, v)
     if v.has_master:
-        sync_epoch(v, st)
+        if st["epoch"] != v.raw.get("epoch", 0) + 1 or st["root"] != new.root:
+            raise SystemExit("the rekey confirmed but the chain does not show the new tree yet; run `status` in a minute")
+        v.raw.update(v.tree_fields(new))
+        v.raw.update({"epoch": st["epoch"], "next_leaf": 0, "active": True})
+        for k in ("rekeying", "takeover", "inflight"):
+            v.raw.pop(k, None)
+        v._key = None
+        v.save()
     else:
         recover_pending(rpc, v, st, quiet=True)
     print("rekeyed, this copy now signs with the new tree", tx)

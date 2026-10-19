@@ -316,9 +316,12 @@ def main():
         pass
     opeq.submit = real_submit
     chain.mode = "ok"
+    ok, msg = expect_exit(lambda: opeq.cmd_rekey(rpc, payer, v, args), "may still land")
+    check(f"rekey retry refused while the first may still land ({msg})", ok)
+    chain.slot += 400
     opeq.cmd_rekey(rpc, payer, v, args)
     st = opeq.chain_state(rpc, v)
-    check(f"rekey retried while the first is in flight (epoch {st['epoch']})", st["epoch"] == 2 and st["root"] == v.root)
+    check(f"rekey retried after the first expired (epoch {st['epoch']})", st["epoch"] == 2 and st["root"] == v.root)
     landed = chain.release_held()
     st = opeq.chain_state(rpc, v)
     check(f"stale first rekey cannot land afterwards (landed={landed}, epoch {st['epoch']})", landed == 0 and st["epoch"] == 2)
