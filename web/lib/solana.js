@@ -186,6 +186,21 @@ export class Rpc {
     return { owner: pubkey(v.owner), lamports: v.lamports, executable: v.executable === true, data: Uint8Array.from(atob(v.data[0]), (c) => c.charCodeAt(0)) };
   }
 
+  async simulate(tx, addresses) {
+    const b64 = btoa(String.fromCharCode(...tx));
+    const r = await this.call("simulateTransaction", [b64, { encoding: "base64", sigVerify: true, commitment: "confirmed", accounts: { encoding: "base64", addresses: addresses.map(b58encode) } }]);
+    const v = r && r.value;
+    if (!v || !Array.isArray(v.accounts) || v.accounts.length !== addresses.length) throw new Error("the RPC returned a malformed simulation");
+    return { err: v.err, logs: Array.isArray(v.logs) ? v.logs.filter((l) => typeof l === "string").slice(0, 80) : [],
+      accounts: v.accounts.map((a) => (a ? { lamports: BigInt(a.lamports), data: Uint8Array.from(atob(a.data[0]), (c) => c.charCodeAt(0)) } : null)) };
+  }
+
+  async snapshot(addresses) {
+    const r = await this.call("getMultipleAccounts", [addresses.map(b58encode), { encoding: "base64", commitment: "confirmed" }]);
+    if (!r || !Array.isArray(r.value) || r.value.length !== addresses.length) throw new Error("the RPC returned a malformed account list");
+    return r.value.map((a) => (a ? { lamports: BigInt(a.lamports), data: Uint8Array.from(atob(a.data[0]), (c) => c.charCodeAt(0)) } : null));
+  }
+
   async executables(keys) {
     const out = new Map();
     for (let i = 0; i < keys.length; i += 100) {

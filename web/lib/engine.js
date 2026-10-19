@@ -193,12 +193,15 @@ export class Engine {
     return unsignedTx(message, 1).length;
   }
 
-  async submit(ix, expiry, cuLimit, tables = [], price = 0) {
+  async submit(ix, expiry, cuLimit, tables = [], price = 0, verify = null) {
     await this.checkCluster();
     const { message, signers } = compileV0(this.payer.key(), [...this.budget(cuLimit, price), ix], await this.rpc.blockhash(), tables);
     if (signers.length !== 1) throw new Error("unexpected extra signer");
     const signed = await this.payer.sign(unsignedTx(message, 1));
     if (signed.length > TX_LIMIT) throw new Failed(`transaction too large: ${signed.length} bytes`);
+    if (verify) {
+      try { await verify(signed); } catch (e) { const f = new Failed(e.message); f.sent = true; f.logs = e.logs; throw f; }
+    }
     let sig;
     try {
       sig = await this.rpc.sendRaw(signed);
@@ -352,11 +355,11 @@ export class Session {
     return leaf;
   }
 
-  exec(inner, cuLimit = 400000, progress, tables = []) {
-    return this.lock(() => this._exec(inner, cuLimit, progress, true, tables));
+  exec(inner, cuLimit = 400000, progress, tables = [], verify = null) {
+    return this.lock(() => this._exec(inner, cuLimit, progress, true, tables, false, verify));
   }
 
-  async _exec(inner, cuLimit, progress, burnOnFail, tables = [], isBurn = false) {
+  async _exec(inner, cuLimit, progress, burnOnFail, tables = [], isBurn = false, verify = null) {
     const { r, st } = await this.preflight(isBurn);
     const aid = unhex(r.aid);
     const state = P.statePda(aid, this.e.program).key;
@@ -378,7 +381,7 @@ export class Session {
       }, progress);
       const data = P.buildExec(leaf, expiry, s.salt, rnd, s.sig, s.path, inner, outer);
       this.e.log(`leaf ${leaf}, ${s.cost} on-chain hash steps`);
-      sig = await this.e.submit([this.e.program, metas, data], expiry, cuLimit, tables, price);
+      sig = await this.e.submit([this.e.program, metas, data], expiry, cuLimit, tables, price, verify);
     } catch (err) {
       if (!err.sent) {
         const back = await this.load();

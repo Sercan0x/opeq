@@ -281,10 +281,10 @@ async function topup(plan, spend) {
   return [];
 }
 
-async function run(text, inner, plan, { cu = CU_SEND, tables = [], spend = 0n } = {}) {
+async function run(text, inner, plan, { cu = CU_SEND, tables = [], spend = 0n, verify = null } = {}) {
   needPayer();
   const extra = await topup(plan, spend);
-  const sig = await signed(text, (pr) => session.exec([...inner, ...extra], cu, pr, tables));
+  const sig = await signed(text, (pr) => session.exec([...inner, ...extra], cu, pr, tables, verify));
   refreshFee().catch(() => {});
   return sig;
 }
@@ -973,12 +973,11 @@ function initWallet() {
       let topup = topPlan, sig = "";
       for (let li = 0; li < plan.legs.length; li++) {
         let leg = plan.legs[li];
-        if (li === 1) {
-          leg = await buildLeg(SOL_MINT, to, J.minOut(plan.legs[0].q), slip);
-          if (leg.noRoute || J.minOut(leg.q) < plan.min) throw new Error("the price moved after the first swap, so the second one was not signed. You now hold SOL instead");
-        }
+        if (li === 1) leg = await J.secondLeg(rpc, session, to, J.minOut(plan.legs[0].q), plan.min, jcache);
         for (const tx of leg.txs) {
-          sig = await run(plan.legs.length > 1 ? `signing swap ${li + 1} of 2` : "signing the swap", tx, topup, { cu: CU_JUP, tables: leg.tables, spend });
+          await J.check(rpc, leg.q, leg.ctx, leg.ix);
+          const verify = tx.includes(leg.ix.swap) ? await J.balanceGuard(rpc, leg.ctx, J.minOut(leg.q), leg.rent + 5000000n) : null;
+          sig = await run(plan.legs.length > 1 ? `signing swap ${li + 1} of 2` : "signing the swap", tx, topup, { cu: CU_JUP, tables: leg.tables, spend, verify });
           topup = { amount: 0n, note: "" };
         }
       }
