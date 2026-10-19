@@ -42,6 +42,7 @@ class WorkerCompute {
 const rpc = new Rpc(RPC_URL);
 const store = new IdbStore();
 const engine = new Engine({ rpc, program: PROGRAM, store, compute: new WorkerCompute(), payer: null });
+engine.genesis = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 let session = null;
 let current = null;
 let busy = false;
@@ -645,8 +646,9 @@ function initWallet() {
     const amount = T.parseAmount($("t-amt").value, t.decimals);
     if (amount > t.amount) throw new Error("not enough of this token in the wallet");
     const name = tokenName(t.mint);
-    if (!confirm(`Send ${$("t-amt").value.trim()} ${name} to ${b58encode(to)}?`)) return;
     const prog = pubkey(t.program), mint = pubkey(t.mint);
+    const ext = await T.mintWarnings(rpc, mint, prog);
+    if (!confirm(`Send ${$("t-amt").value.trim()} ${name}\nToken mint: ${t.mint}\nto ${b58encode(to)}?${ext}`)) return;
     const inner = [T.createAtaIdempotent(engine.payer.key(), to, mint, prog),
       T.transferChecked(prog, pubkey(t.account), mint, T.ata(to, mint, prog), session.wallet, amount, t.decimals)];
     setProgress("t-prog", 0);

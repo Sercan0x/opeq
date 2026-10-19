@@ -815,7 +815,10 @@ function mount() {
 function watchLock() {
   if (!(globalThis.chrome && chrome.storage && chrome.storage.onChanged)) return;
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "session" && changes["opeq:session"] && !changes["opeq:session"].newValue && session) lockVault("Locked from another opeq window.");
+    if (!(area === "session" && changes["opeq:session"] && !changes["opeq:session"].newValue && session)) return;
+    const go = () => { if (session) lockVault("Locked from another opeq window."); };
+    if (!busy) return go();
+    const wait = setInterval(() => { if (!busy) { clearInterval(wait); go(); } }, 500);
   });
 }
 

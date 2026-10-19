@@ -219,7 +219,7 @@ def main():
 
     ok, msg = expect_exit(lambda: opeq.Vault(path, lock=True), "in use")
     check(f"second process blocked by lock ({msg})", ok)
-    os.close(v.lock_fd)
+    v.close()
 
     raw = json.load(open(path))
     raw["next_leaf"] = 0
@@ -227,7 +227,7 @@ def main():
     v = opeq.Vault(path, lock=True)
     ok, msg = expect_exit(v.unlock, "integrity")
     check(f"rolled-back counter detected ({msg})", ok)
-    os.close(v.lock_fd)
+    v.close()
     raw["next_leaf"] = 1
     raw["mac"] = keystore.mac(keystore.unlock(raw["sk_enc"], "client-test-password", bytes.fromhex(raw["aid"]))[1], raw)
     json.dump(raw, open(path, "w"))
@@ -268,7 +268,7 @@ def main():
     bal = chain.acc(bob)["lamports"]
     opeq.cmd_send(rpc, payer, v, args)
     check("retry after expiry sends exactly once", chain.acc(bob)["lamports"] == bal + 10_000_000)
-    os.close(v.lock_fd)
+    v.close()
 
     v = opeq.Vault(path, lock=True)
     real_submit = opeq.submit
@@ -283,14 +283,14 @@ def main():
     except KeyboardInterrupt:
         pass
     opeq.submit = real_submit
-    os.close(v.lock_fd)
+    v.close()
     check("rekey crashed after landing, no pending file needed", not glob_pending(path))
     v = opeq.Vault(path, lock=True)
     opeq.cmd_send(rpc, payer, v, args)
     st = opeq.chain_state(rpc, v)
     check(f"next command re-derived the landed tree (epoch {st['epoch']}, root match {st['root'] == v.root})",
           st["epoch"] == 1 and st["root"] == v.root)
-    os.close(v.lock_fd)
+    v.close()
 
     v = opeq.Vault(path, lock=True)
 
@@ -325,7 +325,7 @@ def main():
     landed = chain.release_held()
     st = opeq.chain_state(rpc, v)
     check(f"stale first rekey cannot land afterwards (landed={landed}, epoch {st['epoch']})", landed == 0 and st["epoch"] == 2)
-    os.close(v.lock_fd)
+    v.close()
 
     v = opeq.Vault(path, lock=True)
     v.unlock()
@@ -343,7 +343,7 @@ def main():
     words = mnemonic.to_words(v.master)
     wallet = v.wallet
     orig_path = path
-    os.close(v.lock_fd)
+    v.close()
 
     rec = os.path.join(tmp, "recovered.json")
     rargs = SimpleNamespace(vault=rec, program=ps(prog), plaintext=False, yes=True, to=ps(bob), sol="0.01")
@@ -361,12 +361,12 @@ def main():
     bal = chain.acc(bob)["lamports"]
     opeq.cmd_send(rpc, payer, r, rargs)
     check("recovered vault can send after takeover", chain.acc(bob)["lamports"] == bal + 10_000_000)
-    os.close(r.lock_fd)
+    r.close()
     old = opeq.Vault(orig_path, lock=True)
     ok, msg = expect_exit(lambda: opeq.cmd_send(rpc, payer, old, args), "takeover")
     check(f"the original copy stops signing after the takeover ({msg})", ok)
     check("the original copy marked itself inactive", json.load(open(orig_path))["active"] is False)
-    os.close(old.lock_fd)
+    old.close()
     bad = list(words)
     bad[7] = "zoo" if bad[7] != "zoo" else "abandon"
     os.environ["OPEQ_WORDS"] = " ".join(bad)

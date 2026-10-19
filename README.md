@@ -15,7 +15,7 @@ Every Solana wallet today is protected by Ed25519. A large enough quantum comput
 
 - **A normal Solana address.** Your opeq wallet is a program-derived address with no Ed25519 private key behind it. The only secret is your 24 recovery words, which produce hash-based keys. It receives SOL, holds SPL and Token-2022 tokens, and other programs see it as an ordinary signer.
 - **Any program, one signature.** One hash-based signature authorizes a list of instructions to any programs. Tested on devnet: SOL transfers, SPL Token, Token-2022, Memo, Associated Token Account creation, and Raydium CPMM swaps.
-- **Stable address.** One key tree signs 1008 transactions. A rekey moves the wallet to a fresh tree; the address and balances stay the same.
+- **Stable address.** One key tree signs 688 wallet transactions (the program accepts up to 1008; the wallet keeps the rest for safe rekeys and device takeovers). A rekey moves the wallet to a fresh tree; the address and balances stay the same.
 - **24 recovery words.** Every tree is derived from one 256-bit master seed shown as standard BIP39 words. The words never change, even after many rekeys, and restore the wallet with no files.
 - **Quantum-safe upgrades.** The program's upgrade authority is itself an opeq wallet, so a broken Ed25519 key cannot change the code. On devnet that authority is one admin wallet held by the developer, which means the developer can still upgrade the program. Mainnet governance is an open decision (see Before mainnet).
 

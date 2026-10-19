@@ -71,7 +71,7 @@ export class Engine {
     if (existing && existing.epoch > epoch) throw new Error("this browser already holds a newer copy of this wallet");
     const keep = {};
     if (existing && existing.epoch === epoch) for (const k of ["takeover", "inflight", "rekeying"]) if (existing[k]) keep[k] = existing[k];
-    return this._record(master, password, aid, epoch, t, next, false, keep);
+    return this._record(master, password, aid, epoch, t, next, !!(existing && existing.active === true && existing.epoch === epoch), keep);
   }
 
   async _record(master, password, aid, epoch, t, next, active = true, keep = {}) {

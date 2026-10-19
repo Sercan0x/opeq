@@ -22,7 +22,7 @@ export const ERRORS = {
   9: "self cpi", 10: "bad meta flags", 11: "signer escalation", 12: "malformed inner instructions",
   13: "bad signature", 14: "state not writable", 15: "init address mismatch", 16: "too many slices",
   17: "account index out of range", 18: "payer must sign", 19: "already initialized", 20: "bad system program",
-  21: "too many metas", 22: "rekey to the current root",
+  21: "too many metas", 22: "rekey to the current root", 23: "expiry too far in the future",
 };
 
 export function accountId(pubSeed, root) {
@@ -82,7 +82,7 @@ function header(tag, leaf, expiry, salt, r) {
 function checkInner(inner) {
   if (inner.length > 255) throw new Error("too many inner instructions");
   for (const [, metas, data] of inner) {
-    if (metas.length > 255) throw new Error("too many accounts in an inner instruction");
+    if (metas.length > 64) throw new Error("too many accounts in an inner instruction");
     if (data.length > 0xffff) throw new Error("inner instruction data too long");
   }
 }

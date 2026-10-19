@@ -40,14 +40,14 @@ def config(args):
     u = urlparse(args.rpc or "")
     if u.scheme != "https" or u.username or u.password or not HOST.match(u.netloc or "") or any(x in u.netloc for x in ("devnet", "testnet")):
         raise SystemExit("a mainnet build needs --rpc https://<mainnet rpc host>/... without credentials in the host part")
-    for k in ("authority", "gov"):
+    for k in ("authority", "gov", "admin_state"):
         v = getattr(args, k)
         if not v or not B58.match(v):
-            raise SystemExit(f"a mainnet build needs --{k} <address>")
+            raise SystemExit(f"a mainnet build needs --{k.replace('_', '-')} <address>")
         CHECK[k] = v
     if args.skip_chain_check:
         raise SystemExit("--skip-chain-check is not allowed for a mainnet build")
-    if (u.query or "key" in u.path.lower()) and not args.allow_rpc_key:
+    if (u.query or "key" in u.path.lower() or re.search(r"[A-Za-z0-9_-]{16,}", u.path)) and not args.allow_rpc_key:
         raise SystemExit("the --rpc url carries a key that every user can read from the extension; use a proxy or pass --allow-rpc-key")
     if not args.version or not re.match(r"^\d+\.\d+\.\d+$", args.version):
         raise SystemExit("a mainnet build needs an explicit --version like 1.0.0")
@@ -103,6 +103,19 @@ def check_mainnet(cfg):
     graw = base64.b64decode(rpc_call(cfg["rpc"], "getAccountInfo", [gov["data"]["parsed"]["info"]["programData"], {"encoding": "base64"}])["value"]["data"][0])
     if graw[12] != 0:
         raise SystemExit("the gov program still has an upgrade authority, it must be immutable")
+    gcode = graw[45:]
+    if gcode[:len(elf)] != elf or any(gcode[len(elf):]):
+        raise SystemExit("the gov program does not run the same opeq code as build/opeq-1.1.elf")
+    import sys
+    sys.path.insert(0, ROOT)
+    import protocol as P
+    from solkit import pk
+    st = rpc_call(cfg["rpc"], "getAccountInfo", [CHECK["admin_state"], {"encoding": "base64"}])["value"]
+    if not st or st["owner"] != CHECK["gov"]:
+        raise SystemExit("the --admin-state account is not an opeq state account on the gov program")
+    aid = P.unpack_state(base64.b64decode(st["data"][0]))["id"]
+    if P.state_pda(aid, pk(CHECK["gov"]))[0] != pk(CHECK["admin_state"]) or b58(P.wallet_pda(aid, pk(CHECK["gov"]))[0]) != CHECK["authority"]:
+        raise SystemExit("--authority is not the wallet of the admin vault on --gov")
     print("mainnet check ok: genesis, executable program, code sha256", hashlib.sha256(elf).hexdigest()[:16], "upgrade authority", b58(auth), "gov immutable")
 
 
@@ -198,6 +211,7 @@ if __name__ == "__main__":
     ap.add_argument("--skip-chain-check", action="store_true")
     ap.add_argument("--authority")
     ap.add_argument("--gov")
+    ap.add_argument("--admin-state")
     ap.add_argument("--allow-rpc-key", action="store_true")
     args = ap.parse_args()
     dist, cfg, version = build(args)

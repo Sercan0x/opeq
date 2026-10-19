@@ -14,6 +14,7 @@ SYSTEM = pk("11111111111111111111111111111111")
 RENT = pk("SysvarRent111111111111111111111111111111111")
 CLOCK = pk("SysvarC1ock11111111111111111111111111111111")
 NETS = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainnet-beta.solana.com"}
+GENESIS = {"devnet": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG", "mainnet": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"}
 CHUNK = 900
 BUFFER_META = 37
 PROGRAM_LEN = 36
@@ -84,17 +85,41 @@ def upgrade(rpc, payer, elf, program):
     ], u32(3))], [payer], cu_limit=400_000)
 
 
-def vault_authority(rpc, path):
+def elf_version(elf):
+    m = re.search(rb"opeq/(\d+)\.(\d+)", elf)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def check_elf(elf, sha):
+    import hashlib
+    if elf[:4] != b"\x7fELF" or not elf_version(elf):
+        raise SystemExit("the elf is not an opeq program build (no ELF header or opeq/<version> tag)")
+    if sha is not None and hashlib.sha256(elf).hexdigest() != sha.lower():
+        raise SystemExit("the elf sha256 does not match --sha256")
+
+
+def code_of(rpc, program):
+    pd = rpc.account(find_pda([program], LOADER))
+    if pd is None:
+        raise SystemExit(f"{ps(program)} has no program data on this cluster")
+    return bytes(pd["data"])
+
+
+def vault_authority(rpc, path, elf=None):
     import opeq
     import protocol as P
+    if not os.path.isfile(path):
+        raise SystemExit(f"vault file {path} not found")
     raw = json.load(open(path))
     gov, aid = pk(raw["program"]), bytes.fromhex(raw["aid"])
     acc = rpc.account(gov)
     if acc is None or acc["owner"] != LOADER or not acc.get("executable", True):
         raise SystemExit(f"the vault's program {ps(gov)} is not a deployed program on this cluster")
-    pd = rpc.account(find_pda([gov], LOADER))
-    if bytes(pd["data"])[12] != 0:
+    pd = code_of(rpc, gov)
+    if pd[12] != 0:
         raise SystemExit(f"the vault's program {ps(gov)} still has an upgrade authority; the admin vault must live on an immutable program")
+    if elf is not None and (pd[PROGRAMDATA_META:PROGRAMDATA_META + len(elf)] != elf or any(pd[PROGRAMDATA_META + len(elf):])):
+        raise SystemExit(f"the vault's program {ps(gov)} does not run the same opeq code as --elf")
     state, wallet = P.state_pda(aid, gov)[0], P.wallet_pda(aid, gov)[0]
     st = rpc.account(state)
     if st is None or st["owner"] != gov:
@@ -113,9 +138,13 @@ def confirm_typed(text, expect):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["newkey", "airdrop", "balance", "deploy", "upgrade"])
+    ap.add_argument("cmd", choices=["newkey", "airdrop", "balance", "deploy", "upgrade", "close-buffer"])
     ap.add_argument("--net", default="devnet", choices=list(NETS))
-    ap.add_argument("--key", default=os.path.join(HERE, "devnet-key.json"))
+    ap.add_argument("--rpc")
+    ap.add_argument("--priority-fee", type=int, default=0)
+    ap.add_argument("--sha256")
+    ap.add_argument("--buffer")
+    ap.add_argument("--key")
     ap.add_argument("--elf")
     ap.add_argument("--program-key")
     ap.add_argument("--program")
@@ -123,12 +152,20 @@ def main():
     ap.add_argument("--authority")
     ap.add_argument("--authority-vault")
     args = ap.parse_args()
-    rpc = Rpc(NETS[args.net])
+    if args.key is None:
+        if args.net == "mainnet":
+            raise SystemExit("on mainnet pass --key <payer keypair file> explicitly")
+        args.key = os.path.join(HERE, "devnet-key.json")
+    rpc = Rpc(args.rpc or NETS[args.net], priority=args.priority_fee)
     if args.cmd == "newkey":
         kp = Keypair.generate()
         kp.save(args.key)
         print(ps(kp.pub))
         return
+    genesis = rpc.call("getGenesisHash")
+    if genesis != GENESIS[args.net]:
+        raise SystemExit(f"the RPC is not {args.net} (genesis {genesis})")
+    print("rpc", (args.rpc or NETS[args.net]).split("?")[0], "network", args.net, "(genesis checked)")
     payer = load_keypair(args.key)
     if args.cmd == "balance":
         print(ps(payer.pub), rpc.balance(payer.pub) / 1e9, "SOL")
@@ -140,13 +177,23 @@ def main():
                 break
             time.sleep(1.5)
         print(ps(payer.pub), rpc.balance(payer.pub) / 1e9, "SOL")
+    elif args.cmd == "close-buffer":
+        buf = pk(args.buffer)
+        acc = rpc.account(buf)
+        if acc is None or acc["owner"] != LOADER or bytes(acc["data"])[:4] != u32(1):
+            raise SystemExit("that address is not a loader buffer")
+        d = bytes(acc["data"])
+        if d[4] != 1 or d[5:37] != payer.pub:
+            raise SystemExit("the buffer's authority is not this payer; close it from the vault that owns it")
+        print("closed", rpc.send([(LOADER, [(buf, False, True), (payer.pub, False, True), (payer.pub, True, False)], u32(5))], [payer]))
     elif args.cmd == "deploy":
+        if not args.elf or not os.path.isfile(args.elf):
+            raise SystemExit("pass --elf <program file>")
         elf = open(args.elf, "rb").read()
-        if elf[:4] != b"\x7fELF" or not re.search(rb"opeq/\d+\.\d+", elf):
-            raise SystemExit("the elf is not an opeq program build (no ELF header or opeq/<version> tag)")
+        check_elf(elf, args.sha256)
         if args.net == "mainnet":
-            if "--key" not in sys.argv or not args.program_key or not args.max_len:
-                raise SystemExit("a mainnet deploy needs explicit --key, --program-key and --max-len")
+            if not args.program_key or not args.max_len or not args.sha256:
+                raise SystemExit("a mainnet deploy needs explicit --program-key, --max-len and --sha256")
             if args.authority not in (None, "none"):
                 raise SystemExit("on mainnet pass --authority none (immutable) or --authority-vault <admin vault file>, never a typed address")
             if bool(args.authority) == bool(args.authority_vault):
@@ -158,15 +205,13 @@ def main():
                                  f"or signatures made on one could be replayed on the other. Use a fresh --program-key for mainnet.")
         else:
             prog = Keypair.generate()
-            if args.program_key:
-                prog.save(args.program_key)
         if args.net == "mainnet" and Rpc(NETS["devnet"]).account(prog.pub) is not None:
             raise SystemExit("refusing: this program id exists on devnet")
         if rpc.account(prog.pub) is not None:
             raise SystemExit(f"program {ps(prog.pub)} already exists on {args.net}")
         max_len = max(args.max_len, len(elf))
         if args.authority_vault:
-            auth = vault_authority(rpc, args.authority_vault)
+            auth = vault_authority(rpc, args.authority_vault, elf)
         else:
             auth = None if not args.authority else ("none" if args.authority == "none" else pk(args.authority))
         import hashlib
@@ -174,9 +219,17 @@ def main():
         print("upgrade authority after deploy:", "NONE, immutable forever" if auth == "none" else ps(auth) if auth else f"the payer {ps(payer.pub)}")
         if args.net == "mainnet":
             confirm_typed("check every line above", "IMMUTABLE" if auth == "none" else ps(auth)[-8:])
+        if args.program_key and not os.path.exists(args.program_key):
+            prog.save(args.program_key)
         print("deployed", deploy(rpc, payer, elf, prog, max_len, auth))
     elif args.cmd == "upgrade":
+        if not args.elf or not os.path.isfile(args.elf) or not args.program:
+            raise SystemExit("pass --elf <program file> and --program <id>")
         elf = open(args.elf, "rb").read()
+        check_elf(elf, args.sha256)
+        pd = code_of(rpc, pk(args.program))
+        if pd[12] != 1 or pd[13:45] != payer.pub:
+            raise SystemExit("the payer is not this program's upgrade authority; upgrade it with `opeq.py upgrade` through the admin vault")
         print("upgraded", upgrade(rpc, payer, elf, pk(args.program)))
 
 

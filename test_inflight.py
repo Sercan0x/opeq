@@ -33,7 +33,7 @@ def setup():
 
 
 def reopen(v, path):
-    os.close(v.lock_fd)
+    v.close()
     return opeq.Vault(path, lock=True)
 
 
@@ -66,7 +66,7 @@ def scenario_landed_then_retry():
 
     opeq.cmd_send(rpc, payer, v, args)
     check("deliberate second send after status works exactly once", chain.acc(bob)["lamports"] == 2 * 500_000_000)
-    os.close(v.lock_fd)
+    v.close()
 
 
 def scenario_interrupted_before_send():
@@ -95,7 +95,7 @@ def scenario_interrupted_before_send():
     opeq.cmd_send(rpc, payer, v, args)
     check("after expiry the note clears itself and the send goes through once", chain.acc(bob)["lamports"] == 500_000_000)
     check("note gone after a clean send", "inflight" not in json.load(open(path)))
-    os.close(v.lock_fd)
+    v.close()
 
 
 def scenario_cross_cluster():
@@ -114,7 +114,7 @@ def scenario_cross_cluster():
     ok, msg = expect_exit(lambda: opeq.cmd_send(rpc, payer, v, args), "different cluster")
     check(f"signing against another cluster refused ({msg[:50]}...)", ok)
     chain.call = real_call
-    os.close(v.lock_fd)
+    v.close()
 
 
 if __name__ == "__main__":

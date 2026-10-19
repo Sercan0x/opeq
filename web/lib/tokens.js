@@ -29,16 +29,19 @@ export const KNOWN_MAINNET = new Map([[WSOL.join(","), "wSOL"],
   [pubkey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB").join(","), "USDT"]]);
 
 export function mintExtensions(data) {
-  const out = new Set();
+  const out = new Map();
   if (data.length <= 166 || data[165] !== 1) return out;
   for (let i = 166; i + 4 <= data.length;) {
     const type = data[i] | (data[i + 1] << 8), len = data[i + 2] | (data[i + 3] << 8);
     if (type === 0) break;
-    if (type !== 14 || data.slice(i + 36, i + 68).some((b) => b !== 0)) out.add(type);
+    const body = data.slice(i + 4, i + 4 + len);
+    if (type !== 14 || data.slice(i + 36, i + 68).some((b) => b !== 0)) out.set(type, body);
     i += 4 + len;
   }
   return out;
 }
+
+const nonzero = (b) => b.some((x) => x !== 0);
 
 export async function mintWarnings(rpc, mint, tokenProgram) {
   if (tokenProgram.join(",") !== TOKEN22.join(",")) return "";
@@ -47,9 +50,13 @@ export async function mintWarnings(rpc, mint, tokenProgram) {
   const ext = mintExtensions(acc.data);
   if (ext.has(14)) throw new Error("this token runs extra program code on every transfer (transfer hook), which this wallet does not support yet");
   if (ext.has(9)) throw new Error("this token cannot be transferred (non-transferable)");
+  if (ext.has(26) && ext.get(26)[32] === 1) throw new Error("transfers of this token are paused by its issuer right now");
   let w = "";
-  if (ext.has(1)) w += "\nThis token charges a transfer fee, so the receiver gets less than the amount sent.";
-  if (ext.has(12)) w += "\nThis token has a permanent delegate that can move or burn anyone's balance of it.";
+  const fee = ext.get(1);
+  if (fee && (fee.length < 108 || nonzero(fee.slice(88, 90)) || nonzero(fee.slice(106, 108)))) w += "\nThis token charges a transfer fee, so the receiver gets less than the amount sent.";
+  if (ext.has(12) && nonzero(ext.get(12).slice(0, 32))) w += "\nThis token has a permanent delegate that can move or burn anyone's balance of it.";
+  if (ext.has(6) && ext.get(6)[0] === 2) w += "\nNew accounts for this token start frozen. If the receiver has no account yet, the transfer may fail.";
+  if (ext.has(25) || ext.has(10)) w += "\nThis token's displayed balance is scaled by its issuer; the amount here is the raw amount and other wallets may show a different number.";
   return w;
 }
 

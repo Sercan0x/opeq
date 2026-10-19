@@ -19,7 +19,7 @@ import mnemonic
 import protocol as P
 import v0
 import wots
-from solkit import COMPUTE_BUDGET, RpcError, Rpc, b58decode, compact, find_pda, load_keypair, pk, ps, u8, u32
+from solkit import COMPUTE_BUDGET, RpcError, Rpc, b58decode, compact, find_pda, load_keypair, on_curve, pk, ps, u8, u32
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SYSTEM = pk("11111111111111111111111111111111")
@@ -27,6 +27,8 @@ LOADER = pk("BPFLoaderUpgradeab1e11111111111111111111111")
 RENT = pk("SysvarRent111111111111111111111111111111111")
 CLOCK = pk("SysvarC1ock11111111111111111111111111111111")
 NETS = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainnet-beta.solana.com"}
+GENESIS = {"devnet": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG", "mainnet": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"}
+LOCK_DIR = os.path.join(os.path.expanduser("~"), ".opeq", "locks")
 EXPIRY_SLOTS = 150
 RESTORE_GAP = 64
 REKEY_WARN = 32
@@ -92,6 +94,13 @@ class Vault:
             except BlockingIOError:
                 raise SystemExit("vault is in use by another opeq process, try again when it finishes") from None
         self.raw = json.load(open(path))
+        if lock:
+            os.makedirs(LOCK_DIR, mode=0o700, exist_ok=True)
+            self.aid_lock_fd = os.open(os.path.join(LOCK_DIR, re.sub(r"[^0-9a-f]", "", self.raw["aid"])[:64] + ".lock"), os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(self.aid_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SystemExit("this wallet is in use by another opeq process (maybe through a copy of the vault file), try again when it finishes") from None
         self._gen = self.raw.get("gen", 0)
         self.program = pk(self.raw["program"])
         self.aid = bytes.fromhex(self.raw["aid"])
@@ -100,6 +109,12 @@ class Vault:
         self._key = None
         self._password = None
         self._mac_key = None
+
+    def close(self):
+        for fd in (self.lock_fd, getattr(self, "aid_lock_fd", None)):
+            if fd is not None:
+                os.close(fd)
+        self.lock_fd = self.aid_lock_fd = None
 
     @property
     def encrypted(self):
@@ -499,6 +514,7 @@ def cmd_keygen(args):
     if os.path.exists(args.vault):
         raise SystemExit(f"{args.vault} already exists, refusing to overwrite")
     pk(args.program)
+    password = None if args.plaintext else keystore.ask_password(confirm=True)
     master = mnemonic.new_master()
     words = mnemonic.to_words(master)
     show_words(words)
@@ -506,7 +522,6 @@ def cmd_keygen(args):
         input("press Enter when the words are written down...")
         print("\033[3J\033[2J\033[H", end="", flush=True)
         quiz_words(words)
-    password = None if args.plaintext else keystore.ask_password(confirm=True)
     aid = new_master_vault(args.vault, args.program, master, password, 0)
     print("quantum wallet address:", ps(P.wallet_pda(aid, pk(args.program))[0]), "(PLAINTEXT key file)" if args.plaintext else "(encrypted)")
 
@@ -762,12 +777,21 @@ def cmd_hand_authority(rpc, payer, v, args):
         if upgrade_authority(rpc, target) is not None:
             raise SystemExit("the program still has an upgrade authority, check the explorer")
         return
-    new_auth = pk(args.new_authority)
+    import deploy
+    if args.new_authority_vault:
+        new_auth = deploy.vault_authority(rpc, args.new_authority_vault)
+    elif args.net == "mainnet":
+        raise SystemExit("on mainnet pass --new-authority-vault <vault file of an initialized opeq wallet on an immutable program>, not a typed address")
+    else:
+        new_auth = pk(args.new_authority)
+        acc = rpc.account(new_auth)
+        if acc is None:
+            raise SystemExit("the new authority address does not exist on this cluster yet; initialize that wallet first")
+        if acc.get("executable") or acc["owner"] != SYSTEM or on_curve(new_auth):
+            raise SystemExit("the new authority must be an opeq wallet address (a program-derived address owned by the System program)")
     if new_auth in (SYSTEM, payer.pub, target, v.wallet, v.state, programdata_of(target)):
         raise SystemExit("that address cannot be an upgrade authority")
-    if rpc.account(new_auth) is None:
-        raise SystemExit("the new authority address does not exist on this cluster yet; initialize that wallet first")
-    confirm_typed(f"move upgrade authority of {ps(target)} from {ps(v.wallet)} to {ps(new_auth)}", ps(new_auth)[-8:])
+    confirm_typed(f"move upgrade authority of {ps(target)} from {ps(v.wallet)} to {ps(new_auth)}", ps(new_auth))
     inner = [(LOADER, [(programdata_of(target), False, True), (v.wallet, True, False), (new_auth, False, False)], u32(4))]
     print("authority moved", send_exec(rpc, payer, v, inner))
     if upgrade_authority(rpc, target) != new_auth:
@@ -777,20 +801,26 @@ def cmd_hand_authority(rpc, payer, v, args):
 def cmd_upgrade(rpc, payer, v, args):
     import deploy
     target = pk(args.target)
+    if not args.elf or not os.path.isfile(args.elf):
+        raise SystemExit("pass --elf <program file>")
     elf = open(args.elf, "rb").read()
     if upgrade_authority(rpc, target) != v.wallet:
         raise SystemExit("this vault is not the upgrade authority of the target program")
-    if not re.search(rb"opeq/\d+\.\d+", elf):
-        raise SystemExit("the elf carries no opeq/<version> tag; refusing to upgrade to an unknown program")
+    deploy.check_elf(elf, args.sha256)
+    if args.net == "mainnet" and not args.sha256:
+        raise SystemExit("a mainnet upgrade needs --sha256 <hash of the elf>")
     preflight(rpc, v)
     pd = rpc.account(programdata_of(target))
     if len(elf) > len(pd["data"]) - deploy.PROGRAMDATA_META:
         raise SystemExit("the elf is larger than the program's reserved size (max_len); refusing")
+    old = deploy.elf_version(bytes(pd["data"]))
+    if old and deploy.elf_version(elf) < old and not args.allow_downgrade:
+        raise SystemExit(f"the elf is opeq/{'.'.join(map(str, deploy.elf_version(elf)))}, older than the deployed opeq/{'.'.join(map(str, old))}; pass --allow-downgrade if this is on purpose")
     if args.buffer:
         buf_key = pk(args.buffer)
     else:
+        confirm(args, f"write {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()}) to a new buffer, hand it to the vault and upgrade {ps(target)}")
         buf = deploy.write_buffer(rpc, payer, elf)
-        confirm(args, f"hand buffer {ps(buf.pub)} to the vault and upgrade {ps(target)} to {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()[:16]})")
         rpc.send([(LOADER, [(buf.pub, False, True), (payer.pub, True, False), (v.wallet, False, False)], u32(4))], [payer])
         buf_key = buf.pub
     acc = rpc.account(buf_key)
@@ -816,8 +846,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["keygen", "backup", "recover", "encrypt", "init", "status", "send", "burn", "restore", "rekey", "takeover", "set-authority", "hand-authority", "upgrade"])
     ap.add_argument("--net", default="devnet", choices=list(NETS))
-    ap.add_argument("--payer", default=os.path.join(HERE, "devnet-key.json"))
-    ap.add_argument("--vault", default=os.path.join(HERE, "vault.json"))
+    ap.add_argument("--rpc")
+    ap.add_argument("--payer")
+    ap.add_argument("--vault")
+    ap.add_argument("--sha256")
+    ap.add_argument("--allow-downgrade", action="store_true")
+    ap.add_argument("--new-authority-vault")
     ap.add_argument("--program")
     ap.add_argument("--to")
     ap.add_argument("--sol")
@@ -828,13 +862,20 @@ def main():
     ap.add_argument("--plaintext", action="store_true")
     ap.add_argument("--yes", action="store_true")
     args = ap.parse_args()
+    if args.net == "mainnet" and (not args.vault or (args.cmd not in ("keygen", "encrypt", "backup", "recover") and not args.payer)):
+        raise SystemExit("on mainnet pass --vault and --payer explicitly")
+    args.vault = args.vault or os.path.join(HERE, "vault.json")
+    args.payer = args.payer or os.path.join(HERE, "devnet-key.json")
     if args.cmd == "keygen":
         return cmd_keygen(args)
     if args.cmd == "encrypt":
         return cmd_encrypt(args)
     if args.cmd == "backup":
         return cmd_backup(args)
-    rpc = Rpc(NETS[args.net])
+    rpc = Rpc(args.rpc or NETS[args.net])
+    genesis = rpc.call("getGenesisHash")
+    if genesis != GENESIS[args.net]:
+        raise SystemExit(f"the RPC is not {args.net} (genesis {genesis}), refusing")
     if args.cmd == "recover":
         return cmd_recover(rpc, args)
     payer = load_keypair(args.payer)
