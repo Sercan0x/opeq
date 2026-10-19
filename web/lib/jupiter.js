@@ -78,7 +78,8 @@ export async function check(rpc, q, ctx, ix) {
     if (eq(prog, T.ATA_PROG)) {
       const tp = metas[5] && metas[5][0];
       if (!same([...data], [1]) || metas.length !== 6 || !metaIs(metas[0], wallet, true, true) || !metaIs(metas[2], wallet, false, false)
-        || !metaIs(metas[4], SYSTEM, false, false) || !(eq(tp, T.TOKEN) || eq(tp, T.TOKEN22)) || !metaIs(metas[1], T.ata(wallet, metas[3][0], tp), false, true)) {
+        || !metaIs(metas[4], SYSTEM, false, false) || !(eq(tp, T.TOKEN) || eq(tp, T.TOKEN22)) || !metaIs(metas[1], T.ata(wallet, metas[3][0], tp), false, true)
+        || !(eq(metas[3][0], inMint) || eq(metas[3][0], outMint) || eq(metas[3][0], T.WSOL))) {
         throw new Error("Jupiter's setup would create an account the wallet does not own");
       }
     } else if (eq(prog, SYSTEM)) {
@@ -123,6 +124,7 @@ export async function check(rpc, q, ctx, ix) {
     if (exe.get(id) && !BASE.has(id) && !AMMS.has(id)) throw new Error(`the route uses a program this wallet does not know (${id.slice(0, 6)}…), refusing to sign`);
     if (exe.get(id) && !BASE.has(id)) venues.add(id);
   }
+  ix.pump = venues.has(PUMP_AMM);
   if (extraWallet && !(venues.size === 1 && venues.has(PUMP_AMM))) {
     const e = new Error("the swap passes the wallet itself to a pool, refusing to sign");
     e.venues = [...venues].filter((v) => v !== PUMP_AMM).map((v) => AMMS.get(v));
@@ -174,7 +176,9 @@ export async function buildLeg(rpc, session, from, to, amount, slip, cache) {
     const main = [ix.swap, ...ix.cleanup];
     const tables = await tablesFor(rpc, ix.alts, cache);
     if ((await session.execSize([...setup, ...main], tables)) <= TX_LIMIT) return { q, ctx, ix, txs: [[...setup, ...main]], tables, rent };
-    if (setup.length && (await session.execSize(main, tables)) <= TX_LIMIT && (await session.execSize(setup, tables)) <= TX_LIMIT) return { q, ctx, ix, txs: [setup, main], tables, rent };
+    const creates = setup.filter((i) => eq(i[0], T.ATA_PROG)), wrap = setup.filter((i) => !eq(i[0], T.ATA_PROG));
+    const main2 = [...wrap, ...main];
+    if (creates.length && (await session.execSize(main2, tables)) <= TX_LIMIT && (await session.execSize(creates, tables)) <= TX_LIMIT) return { q, ctx, ix, txs: [creates, main2], tables, rent };
     last = new Error("this swap route is too large for one quantum-safe transaction; try another token or a different amount");
   }
   throw last;
@@ -195,34 +199,46 @@ export async function swapPlan(rpc, session, from, to, amount, slip, cache) {
 const amountOf = (a) => (a && a.data.length >= 72 ? new DataView(a.data.buffer, a.data.byteOffset + 64, 8).getBigUint64(0, true) : 0n);
 const lamportsOf = (a) => (a ? a.lamports : 0n);
 
-export async function balanceGuard(rpc, ctx, min, allowance) {
+export async function balanceGuard(rpc, ctx, min, allowance, tx) {
   const { wallet, inMint, outMint, inProg, outProg, amount } = ctx;
   const inAta = T.ata(wallet, inMint, inProg), outAta = T.ata(wallet, outMint, outProg), wsol = T.ata(wallet, T.WSOL, T.TOKEN);
-  const held = (await rpc.tokenAccounts(wallet)).map((t) => pubkey(t.account));
-  const addrs = [...new Map([wallet, wsol, inAta, outAta, ...held].map((k) => [b58encode(k), k])).values()];
+  const inTx = new Set(tx.flatMap(([p, ms]) => [b58encode(p), ...ms.map((m) => b58encode(m[0]))]));
+  const held = (await rpc.tokenAccounts(wallet)).map((t) => pubkey(t.account)).filter((k) => inTx.has(b58encode(k)));
+  const addrs = [...new Map([wallet, wsol, inAta, outAta, ...held].filter((k) => inTx.has(b58encode(k)) || eq(k, wallet)).map((k) => [b58encode(k), k])).values()];
   const pre = await rpc.snapshot(addrs);
+  const fromSol = eq(inMint, T.WSOL), toSol = eq(outMint, T.WSOL);
   return async (signed) => {
     const sim = await rpc.simulate(signed, addrs);
     if (sim.err) { const e = new Error(`the swap failed in simulation, so it was not sent: ${JSON.stringify(sim.err).slice(0, 120)}`); e.logs = sim.logs; throw e; }
-    const d = new Map(addrs.map((k, i) => {
-      const id = b58encode(k);
-      return [id, id === b58encode(wallet) ? lamportsOf(sim.accounts[i]) - lamportsOf(pre[i]) : amountOf(sim.accounts[i]) - amountOf(pre[i])];
-    }));
-    const get = (k) => d.get(b58encode(k)) || 0n;
-    const solNet = get(wallet) + get(wsol);
-    const fromSol = eq(inMint, T.WSOL), toSol = eq(outMint, T.WSOL);
     const bad = (why) => { throw new Error(`simulation shows ${why}, so the swap was not sent`); };
+    const at = (k) => addrs.findIndex((x) => eq(x, k));
+    const d = (k) => {
+      const i = at(k);
+      if (i < 0) return 0n;
+      return eq(k, wallet) ? lamportsOf(sim.accounts[i]) - lamportsOf(pre[i]) : amountOf(sim.accounts[i]) - amountOf(pre[i]);
+    };
+    const solNet = d(wallet) + d(wsol);
     if (fromSol) { if (solNet < -(amount + allowance)) bad("more SOL leaving the wallet than you approved"); }
     else {
-      if (get(inAta) < -amount) bad("more of the input token leaving the wallet than you approved");
-      if (get(wallet) < -allowance) bad("SOL leaving the wallet that you did not approve");
+      if (d(inAta) < -amount) bad("more of the input token leaving the wallet than you approved");
+      if (d(wallet) < -allowance) bad("SOL leaving the wallet that you did not approve");
     }
     if (toSol) { if (solNet + (fromSol ? amount : 0n) < min - allowance) bad("less SOL arriving than the minimum you approved"); }
-    else if (get(outAta) < min) bad("less of the output token arriving than the minimum you approved");
-    for (const k of addrs) {
-      if (eq(k, wallet) || eq(k, wsol) || eq(k, inAta) || eq(k, outAta)) continue;
-      if (get(k) < 0n) bad("another token leaving the wallet");
-    }
+    else if (d(outAta) < min) bad("less of the output token arriving than the minimum you approved");
+    addrs.forEach((k, i) => {
+      if (eq(k, wallet)) return;
+      const a = pre[i], b = sim.accounts[i];
+      const solSide = eq(k, wsol) && (fromSol || toSol);
+      const io = eq(k, inAta) || eq(k, outAta) || solSide;
+      if (a && b && a.data.length >= 165 && b.data.length >= 165) {
+        const fixed = (x) => [...x.data.slice(0, 64), ...x.data.slice(72, 165)].join(",");
+        const fixedNative = (x) => [...x.data.slice(0, 64), ...x.data.slice(72, 109), ...x.data.slice(121, 165)].join(",");
+        if ((solSide ? fixedNative(a) !== fixedNative(b) : fixed(a) !== fixed(b))) bad("a change to who controls one of your token accounts");
+      }
+      if (io) { if (a && !b && !solSide) bad("one of your token accounts being closed"); return; }
+      if (!a) return;
+      if (!b || b.lamports !== a.lamports || b.data.join(",") !== a.data.join(",")) bad("a change to a token account this swap should not touch");
+    });
   };
 }
 

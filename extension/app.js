@@ -57,7 +57,8 @@ function ask(msg, yes = "Confirm") {
   d.showModal();
   $("ask-no").focus();
   return new Promise((res) => {
-    const done = (v) => { d.close(); $("ask-yes").onclick = $("ask-no").onclick = d.oncancel = null; res(v); };
+    const timer = setTimeout(() => done(false), 60000);
+    const done = (v) => { clearTimeout(timer); d.close(); $("ask-yes").onclick = $("ask-no").onclick = d.oncancel = null; res(v); };
     $("ask-yes").onclick = () => done(true);
     $("ask-no").onclick = () => done(false);
     d.oncancel = () => done(false);
@@ -151,7 +152,7 @@ function logCount() {
   $("log-count").textContent = n ? String(n) : "";
 }
 
-function log(text, cls) {
+function log(text, cls, keepIt = true) {
   const m = SIG_RE.exec(text);
   const msg = (m ? text.slice(0, m.index) + text.slice(m.index + m[1].length) : text).replace(/[\s:]+$/, "").trim().slice(0, 300);
   const e = { t: Date.now(), text: msg, cls: cls === "ok" || cls === "err" ? cls : "", sig: m ? m[1] : null };
@@ -159,7 +160,9 @@ function log(text, cls) {
   while ($("log").children.length > LOG_MAX) $("log").lastChild.remove();
   logCount();
   const k = logKey;
-  if (!k) return;
+  if (!k || !keepIt || !e.cls) return;
+  const prev = $("log").children[1];
+  if (prev && prev.querySelector(".msg") && prev.querySelector(".msg").textContent.toLowerCase() === (e.text.charAt(0).toUpperCase() + e.text.slice(1)).toLowerCase() && !e.sig) return;
   chrome.storage.local.get(k).then((v) => chrome.storage.local.set({ [k]: [e, ...(Array.isArray(v[k]) ? v[k] : [])].slice(0, LOG_MAX) })).catch(() => {});
 }
 
@@ -224,7 +227,7 @@ async function networkFee(cuLimit) {
   return engine.feeFor(cuLimit, await engine.price(cuLimit, [session.wallet, engine.payer.key()]));
 }
 
-async function planTopup(inner, tables, spend) {
+async function planTopup(inner, tables, spend, allowInline = true) {
   const fee = await rpc.balance(engine.payer.key());
   if (fee >= FEE_LOW) return { amount: 0n, note: "" };
   const free = BigInt(await rpc.balance(session.wallet)) - BigInt(spend);
@@ -238,7 +241,7 @@ async function planTopup(inner, tables, spend) {
   }
   if (fee < floor) throw new Error(`the fee key is empty; send 0.01 SOL to it once (Keys tab, copy button). Nothing was signed`);
   const ix = feeTopupIx(amount);
-  const inline = inner.length > 0 && (await session.execSize([...inner, ix], tables)) <= TX_LIMIT;
+  const inline = allowInline && inner.length > 0 && (await session.execSize([...inner, ix], tables)) <= TX_LIMIT;
   const note = inline
     ? `\nThis transaction also moves ${sol(amount)} SOL from your wallet to your fee key, which pays network fees.`
     : `\nFirst, a separate transaction moves ${sol(amount)} SOL from your wallet to your fee key, which pays network fees. That costs one more network fee and one more one-time key.`;
@@ -406,7 +409,7 @@ async function refreshWallet() {
   $("w-bal").textContent = (bal / 1e9).toLocaleString("en-US", { maximumFractionDigits: 9 });
   if (r.inflight && !inactive) {
     const note = await session.ackInflight(st);
-    if (note.message) log(note.message, note.state === "pending" ? "err" : "ok");
+    if (note.message) log(note.message, note.state === "pending" ? "err" : "ok", note.state !== "pending");
   }
   $("w-init-box").classList.toggle("hidden", !!st);
   await refreshFee();
@@ -421,7 +424,7 @@ async function refreshWallet() {
     $("w-left").textContent = String(left);
     renderDimms(left);
     rekeyWarn(inactive ? EXEC_LIMIT : left);
-    refreshTokens().catch((e) => log(`token list: ${e.message}`, "err"));
+    refreshTokens().catch((e) => log(`token list: ${e.message}`, "err", false));
   } else {
     $("w-status").textContent = "not activated";
     $("w-state").textContent = "not active yet";
@@ -447,20 +450,24 @@ async function lookupTables() {
   return altCache;
 }
 const KNOWN = NET.mainnet ? T.KNOWN_MAINNET : T.KNOWN;
-const KNOWN_NAMES = new Set([...KNOWN.values(), "SOL", "USDC", "USDT", "OPEQ"].map((x) => x.toUpperCase()));
+const confusable = (s) => s.toUpperCase().replace(/0/g, "O").replace(/[1|!]/g, "I").replace(/[5$]/g, "S").replace(/8/g, "B").replace(/[^A-Z]/g, "");
+const KNOWN_NAMES = new Set([...KNOWN.values(), "SOL", "USDC", "USDT", "OPEQ", "TETHER", "USDCOIN", "SOLANA", "JUPITER"].map(confusable));
+const KNOWN_DECIMALS = new Map([["So11111111111111111111111111111111111111112", 9], ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", 6], ["Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", 6], ["9tpHqTJ2d8jMZJjZzsf9MCfnCEmbAjsqjPJ56PzSpump", 6]]);
 const labels = new Map();
 const tokenName = (mint) => {
   const known = KNOWN.get(pubkey(mint).join(","));
   if (known) return known;
   const l = labels.get(mint);
   if (!l) return short(mint);
-  const bare = l.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return [...KNOWN_NAMES].some((k) => bare.includes(k.replace(/[^A-Z0-9]/g, ""))) ? `${l} (unverified)` : l;
+  const bare = confusable(l);
+  return [...KNOWN_NAMES].some((k) => bare.includes(k)) ? `${l} (unverified)` : l;
 };
 
 async function refreshTokens() {
   if (!session) return;
+  const owner = session;
   const fresh = await rpc.tokenAccounts(session.wallet);
+  if (session !== owner) return;
   for (const t of fresh.slice(0, 30)) {
     if (labels.has(t.mint) || KNOWN.has(pubkey(t.mint).join(","))) continue;
     labels.set(t.mint, await T.tokenLabel(rpc, pubkey(t.mint), pubkey(t.program)).catch(() => ""));
@@ -488,18 +495,22 @@ async function refreshTokens() {
 const CU_JUP = 1400000;
 const SOL_MINT = J.SOL_MINT;
 const SWAP_TO = NET.mainnet ? ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", "9tpHqTJ2d8jMZJjZzsf9MCfnCEmbAjsqjPJ56PzSpump"] : [];
-const mints = new Map();
 
 const jcache = { mints: new Map(), table: null };
 
 async function mintInfo(mint) {
   const info = await J.mintInfo(rpc, mint, jcache);
+  if (KNOWN_DECIMALS.has(mint) && KNOWN_DECIMALS.get(mint) !== info.decimals) throw new Error("the RPC reported wrong decimals for a well-known token, refusing to continue");
+  if (!KNOWN_DECIMALS.has(mint) && rpc.url !== NET.rpc && !info.crossChecked) {
+    const ref = await new Rpc(NET.rpc).account(pubkey(mint)).catch(() => null);
+    if (!ref || ref.data[44] !== info.decimals) throw new Error("your RPC and the default one disagree about this token, refusing to continue");
+    info.crossChecked = true;
+  }
   if (mint !== SOL_MINT && !labels.has(mint) && !KNOWN.has(pubkey(mint).join(","))) labels.set(mint, await T.tokenLabel(rpc, pubkey(mint), info.prog).catch(() => ""));
   return info;
 }
 
 const symOf = (mint) => (mint === SOL_MINT ? "SOL" : tokenName(mint));
-const buildLeg = (from, to, amount, slip) => J.buildLeg(rpc, session, from, to, amount, slip, jcache);
 
 async function swapPlan(from, to, amount, slip) {
   await mintInfo(from); await mintInfo(to);
@@ -944,6 +955,7 @@ function initWallet() {
       const { from, to, slip } = swapInputs();
       const fi = await mintInfo(from), ti = await mintInfo(to);
       const amount = T.parseAmount($("j-amt").value, fi.decimals);
+      const shown = T.formatAmount(amount, fi.decimals);
       if (from !== SOL_MINT) {
         const held = tokens.find((x) => x.mint === from);
         if (!held || held.amount < amount) throw new Error(`not enough ${symOf(from)} in the wallet`);
@@ -956,9 +968,10 @@ function initWallet() {
       const spend = (from === SOL_MINT ? amount : 0n) + rent + BigInt(ntx) * 200000n;
       const low = from === SOL_MINT ? await solCheck(amount + rent) : "";
       const ext = ti.prog.join(",") === T.TOKEN22.join(",") ? await T.mintWarnings(rpc, pubkey(to), ti.prog) : "";
+      if (/transfer fee/.test(ext)) throw new Error(`${symOf(to)} charges a fee on every transfer, which this wallet cannot swap into yet. Nothing was signed`);
       const first = plan.legs[0];
-      const topPlan = await planTopup(first.txs[0], first.tables, spend);
-      const shown = $("j-amt").value.trim();
+      const topPlan = await planTopup(first.txs[0], first.tables, spend, false);
+      const planned = Date.now();
       const route = plan.via ? `${symOf(from)} to SOL to ${symOf(to)}` : J.labels(first.q).join(", ");
       const rows = [["You get about", `${T.formatAmount(plan.out, ti.decimals)} ${symOf(to)}`], ["At least", `${T.formatAmount(plan.min, ti.decimals)} ${symOf(to)}`], ["Route", `${route} (Jupiter)`]];
       if (to !== SOL_MINT && !KNOWN.has(pubkey(to).join(","))) rows.push(["Token mint", to, true]);
@@ -970,15 +983,22 @@ function initWallet() {
           ntx > (plan.via ? 2 : 1) ? "The route is large, so the wallet prepares your token accounts in a separate transaction first." : "",
           to !== SOL_MINT && !KNOWN.has(pubkey(to).join(",")) ? "This token is not on the wallet's known list. Anyone can create a token with any name. Check the mint address above against the project's official site before you buy." : "",
           ext, topPlan.note, low) }, "Swap"))) return;
-      let topup = topPlan, sig = "";
+      if (Date.now() - planned > 45000) throw new Error("this price is more than 45 seconds old. Nothing was signed; review the swap again for a fresh price");
+      if (topPlan.amount) { await topup(topPlan, spend); refreshFee().catch(() => {}); }
+      let sig = "";
+      const topupNone = { amount: 0n, note: "" };
       for (let li = 0; li < plan.legs.length; li++) {
         let leg = plan.legs[li];
-        if (li === 1) leg = await J.secondLeg(rpc, session, to, J.minOut(plan.legs[0].q), plan.min, jcache);
+        if (li === 1) {
+          log(`swap 1 of 2 done: ${shown} ${symOf(from)} for at least ${T.formatAmount(J.minOut(plan.legs[0].q), 9)} SOL: ${sig}`, "ok");
+          try { leg = await J.secondLeg(rpc, session, to, J.minOut(plan.legs[0].q), plan.min, jcache); }
+          catch (e) { $("j-amt").value = ""; refreshWallet().catch(() => {}); throw new Error(`Swap 1 of 2 went through and you now hold the SOL. Swap 2 was not signed: ${friendly(e)}`); }
+        }
         for (const tx of leg.txs) {
           await J.check(rpc, leg.q, leg.ctx, leg.ix);
-          const verify = tx.includes(leg.ix.swap) ? await J.balanceGuard(rpc, leg.ctx, J.minOut(leg.q), leg.rent + 5000000n) : null;
-          sig = await run(plan.legs.length > 1 ? `signing swap ${li + 1} of 2` : "signing the swap", tx, topup, { cu: CU_JUP, tables: leg.tables, spend, verify });
-          topup = { amount: 0n, note: "" };
+          const verify = tx.includes(leg.ix.swap) ? await J.balanceGuard(rpc, leg.ctx, J.minOut(leg.q), leg.rent + (leg.ix.pump ? 5000000n : 0n), tx) : null;
+          try { sig = await run(plan.legs.length > 1 ? `signing swap ${li + 1} of 2` : "signing the swap", tx, topupNone, { cu: CU_JUP, tables: leg.tables, spend, verify }); }
+          catch (e) { if (li === 1) { $("j-amt").value = ""; refreshWallet().catch(() => {}); throw new Error(`Swap 1 of 2 went through and you now hold the SOL. Swap 2 did not complete: ${friendly(e)}`); } throw e; }
         }
       }
       $("j-ok").textContent = `swapped ${shown} ${symOf(from)}`;
@@ -995,9 +1015,10 @@ function initWallet() {
     needPayer();
     const buy = $("x-dir").value === "buy";
     const amt = T.parseAmount($("x-amt").value, buy ? 9 : T.DEMO.decimals);
+    const shownAmt = T.formatAmount(amt, buy ? 9 : T.DEMO.decimals);
     const out = await T.quote(rpc, buy, amt);
     const minOut = (out * 99n) / 100n;
-    const shown = $("x-amt").value.trim();
+    const shown = shownAmt;
     const label = buy ? `${shown} SOL for about ${T.formatAmount(out, T.DEMO.decimals)} DEMO` : `${shown} DEMO for about ${T.formatAmount(out, 9)} SOL`;
     if (buy) await solCheck(amt + 4200000n);
     const tables = await lookupTables();
@@ -1098,6 +1119,10 @@ function setRpc(u) {
   rpc.url = u;
   engine._genesisOk = false;
   altCache = null;
+  jcache.mints.clear();
+  jcache.table = null;
+  jcache.ataRent = null;
+  labels.clear();
   $("n-now").textContent = u === NET.rpc ? `Connected through ${hostOf(u)} (default).` : `Connected through your RPC at ${hostOf(u)}.`;
 }
 
@@ -1108,6 +1133,13 @@ async function loadRpc() {
 }
 
 function initNetwork() {
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[RPC_KEY]) return;
+      const u = changes[RPC_KEY].newValue;
+      setRpc(typeof u === "string" && validRpc(u) ? u : NET.rpc);
+    });
+  } catch {}
   $("n-save").addEventListener("click", () => guard("n-err", "n-ok", async () => {
     const u = $("n-url").value.trim();
     if (!validRpc(u)) throw new Error("enter an https:// RPC address");
