@@ -73,7 +73,7 @@ def strip_other(html, net):
 
 
 def rpc_call(url, method, params):
-    req = urllib.request.Request(url, data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(), headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(url, data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(), headers={"Content-Type": "application/json", "User-Agent": "opeq-build/1"})
     with urllib.request.urlopen(req, timeout=30) as r:
         out = json.load(r)
     if "error" in out:
