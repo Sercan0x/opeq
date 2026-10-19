@@ -3,9 +3,10 @@ import { MemoryStore, withLock } from "../lib/vaultstore.js";
 import { localCompute } from "../lib/compute.js";
 import * as P from "../lib/protocol.js";
 import * as M from "../lib/mnemonic.js";
-import { pubkey, unhex, hex, concat, u32, u64, SYSTEM, u64 as U64 } from "../lib/solana.js";
+import { b58encode, pubkey, unhex, hex, concat, u32, u64, SYSTEM, u64 as U64 } from "../lib/solana.js";
 import { SIG_LEN, PATH_LEN } from "../lib/wots.js";
 
+const names = new Map();
 const held = new Set();
 globalThis.navigator = { locks: { async request(name, opts, fn) {
   if (held.has(name)) {
@@ -61,7 +62,13 @@ function mkRpc(e) {
     async blockhash() { return new Uint8Array(32); },
     async balance() { return chain.feeBal; },
     async rent() { return chain.rent; },
-    async sendRaw() {
+    async sendRaw(tx) {
+      const real = b58encode(tx.slice(1, 65));
+      const name = await this._sendRaw();
+      names.set(real, name);
+      return real;
+    },
+    async _sendRaw() {
       const ix = e._cur;
       if (chain.mode === "neterr-landed") { apply(ix); throw new Error("network error talking to the RPC (sendTransaction)"); }
       if (chain.mode === "neterr") { const x = new Error("network error talking to the RPC (sendTransaction)"); throw x; }
@@ -72,6 +79,7 @@ function mkRpc(e) {
       return "sig" + chain.signed.length;
     },
     async status(sig) {
+      sig = names.get(sig) ?? sig;
       if (sig === "dropped") { chain.slot += 400; return null; }
       return { confirmationStatus: "confirmed" };
     },

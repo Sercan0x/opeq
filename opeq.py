@@ -1,6 +1,7 @@
 import argparse
 import base64
 import fcntl
+import getpass
 import glob
 import hashlib
 import json
@@ -75,7 +76,12 @@ def tree_root(pub_seed_hex, leaves_hex):
 
 class Vault:
     def __init__(self, path, lock=False):
-        self.path = path
+        real = os.path.realpath(path)
+        if os.path.islink(path) or (os.path.exists(real) and os.stat(real).st_nlink > 1):
+            raise SystemExit("the vault path is a symlink or hard link; keep exactly one plain vault file and point --vault at it")
+        if real.startswith("/mnt/"):
+            raise SystemExit("keep the vault on the Linux filesystem (under ~), not on a Windows drive under /mnt")
+        self.path = path = real
         self.lock_fd = None
         if lock:
             self.lock_fd = os.open(os.path.realpath(path) + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
@@ -84,6 +90,7 @@ class Vault:
             except BlockingIOError:
                 raise SystemExit("vault is in use by another opeq process, try again when it finishes") from None
         self.raw = json.load(open(path))
+        self._gen = self.raw.get("gen", 0)
         self.program = pk(self.raw["program"])
         self.aid = bytes.fromhex(self.raw["aid"])
         self.state = P.state_pda(self.aid, self.program)[0]
@@ -141,6 +148,12 @@ class Vault:
         return data
 
     def save(self):
+        if self.lock_fd is None:
+            raise SystemExit("internal error: writing a vault without holding its lock")
+        if json.load(open(self.path)).get("gen", 0) != self._gen:
+            raise SystemExit("the vault file was changed by another opeq process, refusing to overwrite it; run the command again")
+        self._gen += 1
+        self.raw["gen"] = self._gen
         if self.encrypted:
             if self._mac_key is None:
                 raise SystemExit("internal error: saving an encrypted vault before unlocking it")
@@ -211,12 +224,27 @@ def recover_pending(rpc, v, st, quiet=False):
                 print("recovered a rekey that landed earlier, vault now uses the new tree")
             return
         if st["root"] == v.root:
-            slot = rpc.call("getSlot", [{"commitment": "confirmed"}])
-            if slot <= pend["expiry"] + 2:
-                raise SystemExit(f"a rekey is still in flight until slot {pend['expiry']}, wait about a minute and retry")
+            if not surely_unlanded(rpc, v, wots.LEAVES, pend["expiry"], st["epoch"], st["root"]):
+                raise SystemExit(f"a rekey may still land (expiry slot {pend['expiry']}, waiting for it to finalize); retry in a minute")
             os.unlink(f)
             fsync_dir(v.path)
             print("removed a rekey attempt that expired without landing")
+
+
+def finalized_state(rpc, v):
+    r = rpc.call("getAccountInfo", [ps(v.state), {"encoding": "base64", "commitment": "finalized"}])["value"]
+    if r is None:
+        return None
+    if pk(r["owner"]) != v.program:
+        raise SystemExit("state account is not owned by the vault program")
+    return P.unpack_state(base64.b64decode(r["data"][0]))
+
+
+def surely_unlanded(rpc, v, leaf, expiry, epoch, root):
+    if rpc.call("getSlot", [{"commitment": "finalized"}]) <= expiry + 2:
+        return False
+    st = finalized_state(rpc, v)
+    return st is not None and st["epoch"] == epoch and st["root"] == root and st["next"] <= leaf
 
 
 def own_rekey(v, st):
@@ -250,7 +278,15 @@ def sync_epoch(v, st):
     print(f"vault now uses tree {st['epoch']} (this copy's rekey landed)")
 
 
+def check_cluster(rpc, v):
+    genesis = rpc.call("getGenesisHash")
+    if v.raw.get("cluster") not in (None, genesis):
+        raise SystemExit("this vault was created on a different cluster (genesis hash mismatch); signing here would reuse one-time keys, refusing")
+    return genesis
+
+
 def preflight(rpc, v):
+    genesis = check_cluster(rpc, v)
     st = chain_state(rpc, v)
     if st is None:
         raise SystemExit("vault not initialized")
@@ -264,22 +300,18 @@ def preflight(rpc, v):
         raise SystemExit("on-chain root differs from this vault file, refusing to sign")
     if st["epoch"] != v.raw.get("epoch", st["epoch"]):
         raise SystemExit("on-chain epoch differs from this vault file, refusing to sign")
-    genesis = rpc.call("getGenesisHash")
     if v.raw.get("cluster") is None:
         v.raw["cluster"] = genesis
         v.save()
-    elif v.raw["cluster"] != genesis:
-        raise SystemExit("this vault was created on a different cluster (genesis hash mismatch); signing here would reuse one-time keys, refusing")
     inflight = v.raw.get("inflight")
     if inflight:
         in_leaf, in_expiry = int(inflight["leaf"]), int(inflight["expiry"])
         if st["next"] > in_leaf:
             raise SystemExit(f"your interrupted transaction (leaf {in_leaf}) DID land on chain. Check the balance before sending again, "
                              f"then run `status` to clear this note")
-        slot = rpc.call("getSlot", [{"commitment": "confirmed"}])
-        if slot <= in_expiry + 2:
-            raise SystemExit(f"your interrupted transaction (leaf {in_leaf}) may still land until slot {in_expiry}; "
-                             f"wait, then run `status` and retry")
+        if not surely_unlanded(rpc, v, in_leaf, in_expiry, st["epoch"], st["root"]):
+            raise SystemExit(f"your interrupted transaction (leaf {in_leaf}) may still land (expiry slot {in_expiry}, "
+                             f"waiting for it to finalize); wait a minute, then retry")
         v.raw.pop("inflight", None)
         v.save()
     return st, key
@@ -355,19 +387,21 @@ def sign_exec(rpc, v, key, st, leaf, inner, fmt):
 def burn(rpc, payer, v, key, failed_leaf, fmt):
     st = chain_state(rpc, v)
     if st["next"] > failed_leaf:
-        return
+        return True
     try:
         leaf = v.reserve_leaf(st["next"], P.EXEC_LEAF_LIMIT)
     except SystemExit:
         print(f"WARNING: no free leaf to burn {failed_leaf} with; it stays replayable until slot expiry")
-        return
+        return False
     expiry, salt, r, sig, path, _ = sign_exec(rpc, v, key, st, leaf, [], fmt)
     data = P.build_exec(leaf, expiry, salt, r, sig, path, [], [v.state, v.wallet], fmt)
     try:
         submit(rpc, payer, (v.program, [(v.state, False, True), (v.wallet, False, True)], data), expiry, 400_000, None)
         print(f"burned leaf {failed_leaf}: on-chain counter moved past it, the failed signature is now dead")
+        return True
     except Failed as e:
         print(f"WARNING: could not burn leaf {failed_leaf} ({e}); it stays replayable until slot expiry")
+        return False
 
 
 def send_exec(rpc, payer, v, inner, extra_accounts=(), cu_limit=400_000, tables=None):
@@ -383,10 +417,15 @@ def send_exec(rpc, payer, v, inner, extra_accounts=(), cu_limit=400_000, tables=
     try:
         sig = submit(rpc, payer, (v.program, metas, data), expiry, cu_limit, tables)
     except Failed as e:
-        if "expired without landing" not in str(e):
-            burn(rpc, payer, v, key, leaf, fmt)
-        v.raw.pop("inflight", None)
-        v.save()
+        if "expired without landing" in str(e):
+            dead = surely_unlanded(rpc, v, leaf, expiry, st["epoch"], st["root"])
+        else:
+            dead = burn(rpc, payer, v, key, leaf, fmt)
+        if dead:
+            v.raw.pop("inflight", None)
+            v.save()
+        else:
+            print(f"NOTE: the signed transaction (leaf {leaf}) may still land until slot {expiry}; opeq will not sign again until that is settled")
         raise
     v.raw.pop("inflight", None)
     v.save()
@@ -411,6 +450,12 @@ def confirm(args, text):
         raise SystemExit("cancelled, nothing was signed")
 
 
+def confirm_typed(text, expect):
+    print(text)
+    if input(f"this cannot be undone. Type {expect!r} to proceed: ").strip() != expect:
+        raise SystemExit("cancelled, nothing was signed")
+
+
 def show_words(words):
     print()
     print("RECOVERY WORDS. Write them on paper, in order. Anyone with these words controls the wallet.")
@@ -428,13 +473,15 @@ def quiz_words(words):
             raise SystemExit("that word does not match, nothing was saved. Run keygen again.")
 
 
-def new_master_vault(path, program, master, password, epoch, root_check=None, next_leaf=0, pub_seed=None, active=True):
+def new_master_vault(path, program, master, password, epoch, root_check=None, next_leaf=0, pub_seed=None, active=True, cluster=None):
     tree = mnemonic.tree(master, epoch, pk(program), pub_seed)
     if root_check is not None and tree.root != root_check:
         raise SystemExit("these words do not control this wallet's current tree")
     tree0 = tree if epoch == 0 else mnemonic.tree(master, 0, pk(program))
     aid = P.account_id(tree0.pub_seed, tree0.root)
     raw = {**tree.to_json(), "seed_type": "master", "program": program, "aid": aid.hex(), "next_leaf": next_leaf, "epoch": epoch, "active": active}
+    if cluster:
+        raw["cluster"] = cluster
     del raw["sk_seed"]
     if password is None:
         raw["master"] = master.hex()
@@ -454,7 +501,7 @@ def cmd_keygen(args):
     show_words(words)
     if not args.yes:
         input("press Enter when the words are written down...")
-        print("\n" * 40)
+        print("\033[3J\033[2J\033[H", end="", flush=True)
         quiz_words(words)
     password = None if args.plaintext else keystore.ask_password(confirm=True)
     aid = new_master_vault(args.vault, args.program, master, password, 0)
@@ -473,7 +520,7 @@ def cmd_recover(rpc, args):
     if os.path.exists(args.vault):
         raise SystemExit(f"{args.vault} already exists, choose another --vault path")
     program = pk(args.program)
-    text = os.environ.get("OPEQ_WORDS") or input("enter the 24 words separated by spaces: ")
+    text = os.environ.get("OPEQ_WORDS") or getpass.getpass("enter the 24 words separated by spaces (hidden): ")
     try:
         master = mnemonic.from_words(text)
     except ValueError as e:
@@ -497,7 +544,7 @@ def cmd_recover(rpc, args):
                              f"signed with the last key. Rekey from the original wallet copy if you still have it, or wait for its "
                              f"in-flight rekey to land, then recover again")
     password = None if args.plaintext else keystore.ask_password(confirm=True)
-    new_master_vault(args.vault, args.program, master, password, epoch, root, next_leaf, chain_seed, active=False)
+    new_master_vault(args.vault, args.program, master, password, epoch, root, next_leaf, chain_seed, active=False, cluster=rpc.call("getGenesisHash"))
     print(f"recovered wallet {ps(P.wallet_pda(aid, program)[0])} at tree {epoch}. This copy does not sign yet: run `takeover` to make it the only copy that signs; any other copy then stops")
 
 
@@ -549,7 +596,8 @@ def cmd_status(rpc, payer, v, args):
     if st:
         print("on-chain next leaf", st["next"], "epoch", st["epoch"], "root match", st["root"] == v.root)
         print("signatures left before rekey", max(0, EXEC_LIMIT - max(st["next"], v.raw.get("next_leaf", 0))))
-        print("this copy signs:", "yes" if v.is_active() else "no, run `takeover` to use it here")
+        signs = v.is_active() and st["epoch"] == v.raw.get("epoch", 0)
+        print("this copy signs:", "yes" if signs else "no or not yet (run a command to sync, or `takeover` to use it here)")
     else:
         print("not initialized")
     print("local next leaf", v.raw.get("next_leaf"), "| pending rekey files", len(v.pending_files()))
@@ -560,12 +608,11 @@ def cmd_status(rpc, payer, v, args):
             print(f"NOTE: an interrupted transaction (leaf {in_leaf}) DID land on chain; check the balance above. Note cleared.")
             clear = True
         else:
-            slot = rpc.call("getSlot", [{"commitment": "confirmed"}])
-            clear = slot > in_expiry + 2
+            clear = bool(st) and surely_unlanded(rpc, v, in_leaf, in_expiry, st["epoch"], st["root"])
             if clear:
                 print(f"NOTE: an interrupted transaction (leaf {in_leaf}) expired without landing. Note cleared, safe to retry.")
             else:
-                print(f"NOTE: an interrupted transaction (leaf {in_leaf}) may still land until slot {in_expiry} (now {slot}); run status again later.")
+                print(f"NOTE: an interrupted transaction (leaf {in_leaf}) may still land (expiry slot {in_expiry}); run status again in a minute.")
         if clear:
             v.unlock()
             v.raw.pop("inflight", None)
@@ -575,6 +622,8 @@ def cmd_status(rpc, payer, v, args):
 def cmd_restore(rpc, payer, v, args):
     st, _ = preflight(rpc, v)
     new = max(v.raw.get("next_leaf", 0), st["next"]) + RESTORE_GAP
+    if new > EXEC_LIMIT:
+        raise SystemExit("too few keys left in this tree to skip ahead safely; run `rekey` instead")
     v.raw["next_leaf"] = new
     v.save()
     print(f"local counter moved to {new}: leaves that an older copy of this file may have signed are skipped")
@@ -593,9 +642,7 @@ def cmd_takeover(rpc, payer, v, args):
     if st is None:
         raise SystemExit("vault not initialized")
     v.unlock()
-    genesis = rpc.call("getGenesisHash")
-    if v.raw.get("cluster") not in (None, genesis):
-        raise SystemExit("this vault was created on a different cluster (genesis hash mismatch), refusing")
+    genesis = check_cluster(rpc, v)
     if st["epoch"] < v.raw.get("epoch", 0):
         raise SystemExit("on-chain epoch is behind this vault file, refusing to sign")
     if st["epoch"] != v.raw.get("epoch", 0):
@@ -608,7 +655,7 @@ def cmd_takeover(rpc, payer, v, args):
         v.raw.pop("inflight", None)
         v._key = None
         v.save()
-    lo = max(v.raw.get("next_leaf", 0), st["next"] + RESTORE_GAP)
+    lo = max(v.raw.get("next_leaf", 0), st["next"] + RESTORE_GAP, P.EXEC_LEAF_LIMIT)
     if lo >= wots.LEAVES:
         raise SystemExit("the current key tree is too far used to take over safely; take over from the copy that is active")
     confirm(args, "make this copy the only one that signs (one rekey transaction; every other copy stops signing)")
@@ -616,7 +663,11 @@ def cmd_takeover(rpc, payer, v, args):
     v.raw["next_leaf"] = leaf + 1
     v.raw["cluster"] = genesis
     v.save()
-    do_rekey(rpc, payer, v, st, v.unlock(), leaf)
+    try:
+        do_rekey(rpc, payer, v, st, v.unlock(), leaf)
+    except (Failed, RpcError):
+        print("WARNING: the takeover did not land. Run `takeover` again from THIS copy until it lands, and do not sign with any other copy meanwhile")
+        raise
 
 
 def do_rekey(rpc, payer, v, st, key, leaf):
@@ -641,7 +692,7 @@ def do_rekey(rpc, payer, v, st, key, leaf):
     try:
         tx = submit(rpc, payer, (v.program, [(v.state, False, True), (v.wallet, False, False)], data), expiry, 400_000, None)
     except Failed as e:
-        if pend_path and "expired without landing" in str(e):
+        if pend_path and "expired without landing" in str(e) and surely_unlanded(rpc, v, leaf, expiry, st["epoch"], st["root"]):
             os.unlink(pend_path)
             fsync_dir(pend_path)
         elif pend_path:
@@ -665,13 +716,16 @@ def upgrade_authority(rpc, program):
 
 
 def cmd_set_authority(rpc, payer, v, args):
-    v.unlock()
+    preflight(rpc, v)
+    program_format(rpc, v.program)
     target = pk(args.target)
     cur = upgrade_authority(rpc, target)
     if cur != payer.pub:
         raise SystemExit(f"upgrade authority is {ps(cur) if cur else 'none'}, not the payer key")
-    confirm(args, f"hand upgrade authority of {ps(target)} to quantum wallet {ps(v.wallet)}")
+    confirm_typed(f"hand upgrade authority of {ps(target)} to quantum wallet {ps(v.wallet)}", ps(v.wallet)[-8:])
     sig = rpc.send([(LOADER, [(programdata_of(target), False, True), (payer.pub, True, False), (v.wallet, False, False)], u32(4))], [payer])
+    if upgrade_authority(rpc, target) != v.wallet:
+        raise SystemExit("the authority did not change as expected, check the explorer")
     print("upgrade authority of", ps(target), "->", ps(v.wallet), sig)
 
 
@@ -680,18 +734,22 @@ def cmd_hand_authority(rpc, payer, v, args):
     if upgrade_authority(rpc, target) != v.wallet:
         raise SystemExit("this vault is not the upgrade authority of the target program")
     if args.new_authority == "none":
-        confirm(args, f"make {ps(target)} IMMUTABLE forever: nobody, including this vault, can ever upgrade or close it again")
+        confirm_typed(f"make {ps(target)} IMMUTABLE forever: nobody, including this vault, can ever upgrade or close it again", "IMMUTABLE")
         inner = [(LOADER, [(programdata_of(target), False, True), (v.wallet, True, False)], u32(4))]
         print("program is now immutable", send_exec(rpc, payer, v, inner))
         if upgrade_authority(rpc, target) is not None:
             raise SystemExit("the program still has an upgrade authority, check the explorer")
         return
     new_auth = pk(args.new_authority)
+    if new_auth in (SYSTEM, payer.pub, target, v.wallet, v.state, programdata_of(target)):
+        raise SystemExit("that address cannot be an upgrade authority")
     if rpc.account(new_auth) is None:
-        print("NOTE: the new authority address has no account yet; make sure it is a wallet you control")
-    confirm(args, f"move upgrade authority of {ps(target)} from {ps(v.wallet)} to {ps(new_auth)}")
+        raise SystemExit("the new authority address does not exist on this cluster yet; initialize that wallet first")
+    confirm_typed(f"move upgrade authority of {ps(target)} from {ps(v.wallet)} to {ps(new_auth)}", ps(new_auth)[-8:])
     inner = [(LOADER, [(programdata_of(target), False, True), (v.wallet, True, False), (new_auth, False, False)], u32(4))]
     print("authority moved", send_exec(rpc, payer, v, inner))
+    if upgrade_authority(rpc, target) != new_auth:
+        raise SystemExit("the authority did not change as expected, check the explorer")
 
 
 def cmd_upgrade(rpc, payer, v, args):
@@ -702,6 +760,7 @@ def cmd_upgrade(rpc, payer, v, args):
         raise SystemExit("this vault is not the upgrade authority of the target program")
     if not re.search(rb"opeq/\d+\.\d+", elf):
         raise SystemExit("the elf carries no opeq/<version> tag; refusing to upgrade to an unknown program")
+    preflight(rpc, v)
     pd = rpc.account(programdata_of(target))
     if len(elf) > len(pd["data"]) - deploy.PROGRAMDATA_META:
         raise SystemExit("the elf is larger than the program's reserved size (max_len); refusing")
@@ -718,13 +777,17 @@ def cmd_upgrade(rpc, payer, v, args):
           and len(d) == BUFFER_META + len(elf) and d[BUFFER_META:] == elf)
     if not ok:
         raise SystemExit("buffer check failed: owner, authority, size or contents differ from the local elf, not signing")
-    confirm(args, f"upgrade {ps(target)} to {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()[:16]}) from buffer {ps(buf_key)}")
+    confirm_typed(f"upgrade {ps(target)} to {args.elf} (sha256 {hashlib.sha256(elf).hexdigest()}) from buffer {ps(buf_key)}", ps(target)[-8:])
     inner = [(LOADER, [
         (programdata_of(target), False, True), (target, False, True), (buf_key, False, True), (payer.pub, False, True),
         (RENT, False, False), (CLOCK, False, False), (v.wallet, True, False),
     ], u32(3))]
     print("upgraded", send_exec(rpc, payer, v, inner))
     _formats.pop(target, None)
+    code = rpc.account(programdata_of(target))["data"][deploy.PROGRAMDATA_META:]
+    if code[:len(elf)] != elf or any(code[len(elf):]):
+        raise SystemExit("the program code on chain does not match the elf after the upgrade, check it now")
+    print("on-chain code verified against", args.elf)
 
 
 def main():
@@ -753,7 +816,7 @@ def main():
     if args.cmd == "recover":
         return cmd_recover(rpc, args)
     payer = load_keypair(args.payer)
-    v = Vault(args.vault, lock=args.cmd != "status")
+    v = Vault(args.vault, lock=True)
     try:
         {"init": cmd_init, "status": cmd_status, "send": cmd_send, "burn": cmd_burn, "restore": cmd_restore,
          "rekey": cmd_rekey, "takeover": cmd_takeover, "set-authority": cmd_set_authority, "hand-authority": cmd_hand_authority, "upgrade": cmd_upgrade}[args.cmd](rpc, payer, v, args)

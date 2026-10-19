@@ -106,6 +106,7 @@ const oneBlock = new Uint8Array(64);
 
 export function sha256Short(msg, out, outLen = 32) {
   const n = msg.length;
+  if (n > 55) throw new Error("sha256Short takes at most 55 bytes");
   oneBlock.fill(0);
   oneBlock.set(msg);
   oneBlock[n] = 0x80;

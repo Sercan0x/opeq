@@ -117,6 +117,7 @@ engine.log = (m) => log(m);
 
 function friendly(e) {
   let msg = String(e.message || e).slice(0, 300);
+  if (e.fromRpc) msg = `The RPC answered: ${msg.slice(0, 160)}`;
   const m = /error (\d+)\)/.exec(msg);
   if (m && P.ERRORS[m[1]] && e.program === PROGRAM) msg += `: ${P.ERRORS[m[1]]}`;
   if (/insufficient lamports|0x1\b/.test(msg + (e.logs || []).join(" "))) msg += "\nNot enough SOL in the wallet for this amount.";
@@ -158,10 +159,23 @@ async function networkFee(cuLimit) {
   return engine.feeFor(cuLimit, await engine.price(cuLimit, [session.wallet, engine.payer.key()]));
 }
 
-async function topupNote(spend) {
+async function planTopup(inner, tables, spend) {
   const fee = await rpc.balance(engine.payer.key());
-  if (fee >= FEE_LOW) return "";
-  return `\nThis also moves up to ${sol(FEE_TOPUP)} SOL from your wallet to your fee key, which pays network fees.`;
+  if (fee >= FEE_LOW) return { amount: 0n, note: "" };
+  let amount = BigInt(await rpc.balance(session.wallet)) - BigInt(spend) - VAULT_KEEP;
+  if (amount > FEE_TOPUP) amount = FEE_TOPUP;
+  const floor = 2 * (TX_FEE + MAX_PRIORITY);
+  if (amount < 2000000n) {
+    if (fee < floor) throw new Error(`the fee key is empty (${sol(fee)} SOL) and the wallet has too little SOL to top it up. Send 0.01 SOL to the fee key (Keys tab)`);
+    return { amount: 0n, note: "" };
+  }
+  if (fee < floor) throw new Error(`the fee key is empty; send 0.01 SOL to it once (Keys tab, copy button). Nothing was signed`);
+  const ix = feeTopupIx(amount);
+  const inline = inner.length > 0 && (await session.execSize([...inner, ix], tables)) <= TX_LIMIT;
+  const note = inline
+    ? `\nThis transaction also moves ${sol(amount)} SOL from your wallet to your fee key, which pays network fees.`
+    : `\nFirst, a separate transaction moves ${sol(amount)} SOL from your wallet to your fee key, which pays network fees. That costs one more network fee and one more one-time key.`;
+  return { amount, inline, note };
 }
 
 async function checkRecipient(to, token) {
@@ -174,7 +188,9 @@ async function checkRecipient(to, token) {
   const acc = await rpc.account(to);
   if (acc && (acc.executable || LOADERS.includes(b58encode(acc.owner)))) throw new Error("that address is a program, not a wallet");
   if (acc && (eq(acc.owner, T.TOKEN) || eq(acc.owner, T.TOKEN22))) throw new Error("that address is a token account or a token mint, not a wallet. Ask for the owner's wallet address");
+  if (acc && eq(acc.owner, engine.program) && acc.data && acc.data.length) throw new Error("that is the internal state account of an opeq wallet, not a wallet address");
   if (acc && !eq(acc.owner, SYSTEM) && !eq(acc.owner, engine.program)) return `\nWarning: this address is owned by another program (${short(b58encode(acc.owner))}). Funds sent there may be lost.`;
+  if (!isOnCurve(to) && !acc) return `\nWarning: this address has no private key and has never held anything on ${NET.mainnet ? "mainnet" : "devnet"}. If it is an opeq address from the ${NET.mainnet ? "devnet" : "mainnet"} app, funds sent here are lost.`;
   if (!isOnCurve(to)) return "\nNote: this address has no private key (a program address). That is normal for opeq wallets, but double check it.";
   return "";
 }
@@ -183,19 +199,13 @@ function feeTopupIx(lamports) {
   return [SYSTEM, [[session.wallet, true, true], [engine.payer.key(), false, true]], concat(u32(2), u64(lamports))];
 }
 
-async function topup(inner, tables, spend) {
-  const fee = await rpc.balance(engine.payer.key());
-  if (fee >= FEE_LOW) return [];
-  let amount = BigInt(await rpc.balance(session.wallet)) - BigInt(spend) - VAULT_KEEP;
-  if (amount > FEE_TOPUP) amount = FEE_TOPUP;
-  const floor = 2 * (TX_FEE + MAX_PRIORITY);
-  if (amount < 2000000n) {
-    if (fee < floor) throw new Error(`the fee key is empty (${sol(fee)} SOL) and the wallet has too little SOL to top it up. Send 0.01 SOL to the fee key (Keys tab)`);
-    return [];
-  }
-  if (fee < floor) throw new Error(`the fee key is empty; send 0.01 SOL to it once (Keys tab, copy button). Nothing was signed`);
+async function topup(plan, spend) {
+  if (!plan.amount) return [];
+  const have = BigInt(await rpc.balance(session.wallet)) - BigInt(spend) - VAULT_KEEP;
+  if (have < plan.amount) throw new Error("the wallet balance changed after you confirmed. Nothing was signed, try again");
+  const amount = plan.amount;
   const ix = feeTopupIx(amount);
-  if (inner.length && (await session.execSize([...inner, ix], tables)) <= TX_LIMIT) {
+  if (plan.inline) {
     log(`this transaction also tops up the fee key with ${sol(amount)} SOL`);
     return [ix];
   }
@@ -204,9 +214,9 @@ async function topup(inner, tables, spend) {
   return [];
 }
 
-async function run(text, inner, { cu = CU_SEND, tables = [], spend = 0n } = {}) {
+async function run(text, inner, plan, { cu = CU_SEND, tables = [], spend = 0n } = {}) {
   needPayer();
-  const extra = await topup(inner, tables, spend);
+  const extra = await topup(plan, spend);
   const sig = await signed(text, (pr) => session.exec([...inner, ...extra], cu, pr, tables));
   refreshFee().catch(() => {});
   return sig;
@@ -369,12 +379,13 @@ async function lookupTables() {
   if (!altCache) altCache = [await rpc.lookupTable(T.DEMO.alt)];
   return altCache;
 }
-const tokenName = (mint) => T.KNOWN.get(pubkey(mint).join(",")) || short(mint);
+const KNOWN = NET.mainnet ? T.KNOWN_MAINNET : T.KNOWN;
+const tokenName = (mint) => KNOWN.get(pubkey(mint).join(",")) || short(mint);
 
 async function refreshTokens() {
   if (!session) return;
-  tokens = (await rpc.tokenAccounts(session.wallet)).filter((t) => t.amount > 0n || t.mint === b58encode(T.DEMO.mint));
-  const list = $("t-list"), sel = $("t-sel");
+  tokens = (await rpc.tokenAccounts(session.wallet)).filter((t) => t.amount > 0n || (NET.swap && t.mint === b58encode(T.DEMO.mint)));
+  const list = $("t-list"), sel = $("t-sel"), chosen = sel.value;
   list.textContent = ""; sel.textContent = "";
   if (!tokens.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = NET.swap ? "No tokens yet. Try a swap." : "No tokens yet. Anyone can send tokens to your address."; list.append(p); }
   tokens.forEach((t, i) => {
@@ -385,8 +396,9 @@ async function refreshTokens() {
     left.append(nm, m);
     const right = document.createElement("div"); right.className = "mono amt"; right.textContent = T.formatAmount(t.amount, t.decimals);
     row.append(left, right); list.append(row);
-    const o = document.createElement("option"); o.value = i; o.textContent = `${tokenName(t.mint)} (${T.formatAmount(t.amount, t.decimals)})`; sel.append(o);
+    const o = document.createElement("option"); o.value = t.mint; o.textContent = `${tokenName(t.mint)} (${T.formatAmount(t.amount, t.decimals)})`; sel.append(o);
   });
+  if (tokens.some((t) => t.mint === chosen)) sel.value = chosen;
 }
 
 let quoteTimer = null;
@@ -466,6 +478,13 @@ function initAutoLock() {
     touch();
   });
   setInterval(() => {
+    if (!session && !busy && Date.now() - lastActive > IDLE_MS && (pending || $("r-words").value || $("c-words").textContent)) {
+      hideWords(); wipeInputs();
+      if (pending) { pending.words = null; pending.pw = null; pending = null; }
+      lastActive = Date.now();
+      if (current) openVault(current); else show("v-welcome");
+      return;
+    }
     if (!session || busy) return;
     if (Date.now() - lastActive > IDLE_MS) lockVault("Locked after 10 minutes without activity.");
   }, 15000);
@@ -669,10 +688,12 @@ function initWallet() {
     const lamports = parseSol($("s-amt").value);
     const amount = $("s-amt").value.trim();
     const warn = await checkRecipient(to, false);
+    if (lamports < RENT_FLOOR && !(await rpc.account(to))) throw new Error("the receiving address is empty, so Solana needs at least 0.00089 SOL to create it. Send more. Nothing was signed");
     const low = await solCheck(lamports);
-    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${amount} ${NET.sol} from your opeq wallet to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_SEND))} SOL${await topupNote()}${low}${warn}`, "Send"))) return;
     const inner = [[SYSTEM, [[session.wallet, true, true], [to, false, true]], concat(u32(2), u64(lamports))]];
-    const sig = await run("reserving a key, grinding the signature", inner, { spend: lamports });
+    const plan = await planTopup(inner, [], lamports);
+    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${sol(lamports)} ${NET.sol} from your opeq wallet to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_SEND))} SOL${plan.note}${low}${warn}`, "Send"))) return;
+    const sig = await run("reserving a key, grinding the signature", inner, plan, { spend: lamports });
     $("s-ok").textContent = `sent ${amount} SOL`;
     log(`sent ${amount} SOL to ${short(b58encode(to))}: ${sig}`, "ok");
     $("s-amt").value = "";
@@ -680,7 +701,7 @@ function initWallet() {
   }));
   $("t-go").addEventListener("click", () => guard("t-err", "t-ok", async () => {
     needPayer();
-    const t = tokens[Number($("t-sel").value)];
+    const t = tokens.find((x) => x.mint === $("t-sel").value);
     if (!t) throw new Error("no token selected");
     const to = pubkey($("t-to").value.trim());
     const warn = await checkRecipient(to, true);
@@ -690,11 +711,13 @@ function initWallet() {
     const prog = pubkey(t.program), mint = pubkey(t.mint);
     const hasAta = !!(await rpc.account(T.ata(to, mint, prog)));
     const rent = hasAta ? "" : "\nThe receiver has no account for this token yet, so your wallet also pays its rent, about 0.002 SOL.";
-    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${shown} ${name}${NET.mainnet ? "" : " (devnet)"} to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_TOKEN))} SOL${rent}${await topupNote()}${warn}`, "Send"))) return;
+    const ext = await T.mintWarnings(rpc, mint, prog);
     const inner = [T.createAtaIdempotent(session.wallet, to, mint, prog),
       T.transferChecked(prog, pubkey(t.account), mint, T.ata(to, mint, prog), session.wallet, amount, t.decimals)];
     const tables = await lookupTables();
-    const sig = await run("signing the token transfer", inner, { cu: CU_TOKEN, tables, spend: 2100000n });
+    const plan = await planTopup(inner, tables, 2100000n);
+    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${shown} ${name}${NET.mainnet ? "" : " (devnet)"}\nToken mint: ${t.mint}\nto\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_TOKEN))} SOL${rent}${ext}${plan.note}${warn}`, "Send"))) return;
+    const sig = await run("signing the token transfer", inner, plan, { cu: CU_TOKEN, tables, spend: 2100000n });
     $("t-ok").textContent = `sent ${shown} ${name}`;
     log(`sent ${shown} ${name} to ${short(b58encode(to))}: ${sig}`, "ok");
     $("t-amt").value = "";
@@ -712,9 +735,12 @@ function initWallet() {
     const shown = $("x-amt").value.trim();
     const label = buy ? `${shown} SOL for about ${T.formatAmount(out, T.DEMO.decimals)} DEMO` : `${shown} DEMO for about ${T.formatAmount(out, 9)} SOL`;
     if (buy) await solCheck(amt + 4200000n);
-    if (!(await ask(`Swap ${label}${NET.mainnet ? "" : " (devnet)"}? You get at least 99% of that or the swap is cancelled.\nNetwork fee: about ${sol(await networkFee(CU_SWAP))} SOL. If you hold no DEMO account yet, your wallet pays its rent, about 0.002 SOL.${await topupNote()}`, "Swap"))) return;
     const tables = await lookupTables();
-    const sig = await run("signing the swap", T.swapInner(session.wallet, session.wallet, buy, amt, minOut), { cu: CU_SWAP, tables, spend: (buy ? amt : 0n) + 4200000n });
+    const inner = T.swapInner(session.wallet, session.wallet, buy, amt, minOut);
+    const spend = (buy ? amt : 0n) + 4200000n;
+    const plan = await planTopup(inner, tables, spend);
+    if (!(await ask(`Swap ${label}${NET.mainnet ? "" : " (devnet)"}? You get at least 99% of that or the swap is cancelled.\nNetwork fee: about ${sol(await networkFee(CU_SWAP))} SOL. If you hold no DEMO account yet, your wallet pays its rent, about 0.002 SOL.${plan.note}`, "Swap"))) return;
+    const sig = await run("signing the swap", inner, plan, { cu: CU_SWAP, tables, spend });
     $("x-ok").textContent = `swapped ${label}`;
     log(`swapped ${label}: ${sig}`, "ok");
     $("x-amt").value = "";
@@ -724,8 +750,9 @@ function initWallet() {
   if ($("w-rw-go")) $("w-rw-go").addEventListener("click", () => $("k-rekey").click());
   $("k-rekey").addEventListener("click", () => guard("k-err", "k-ok", async () => {
     needPayer();
-    if (!(await ask("Move to a fresh key tree? Your address and words stay the same. This sends one transaction.", "Rekey"))) return;
-    await topup([], [], 0n);
+    const plan = await planTopup([], [], 0n);
+    if (!(await ask(`Move to a fresh key tree? Your address and words stay the same. This sends one transaction.${plan.note}`, "Rekey"))) return;
+    await topup(plan, 0n);
     const sig = await signed("building the next tree", (pr) => session.rekey(pr));
     $("k-ok").textContent = "rekeyed";
     log(`rekeyed: ${sig}`, "ok");

@@ -54,6 +54,8 @@ def check_mac(mac_key, raw):
 def ask_password(confirm=False):
     env = os.environ.get("OPEQ_PASSWORD")
     if env:
+        if confirm and len(env) < 10:
+            raise SystemExit("OPEQ_PASSWORD is shorter than 10 characters")
         return env
     pw = getpass.getpass("vault password: ")
     if confirm:

@@ -173,6 +173,7 @@ export class Rpc {
         const e = new Error(String(j.error.message || "RPC error").slice(0, 200));
         const logs = j.error.data && j.error.data.logs;
         e.data = { logs: Array.isArray(logs) ? logs.filter((l) => typeof l === "string").slice(0, 60) : [] };
+        e.fromRpc = true;
         throw e;
       }
       return j.result;

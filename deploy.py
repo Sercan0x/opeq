@@ -1,5 +1,7 @@
 import argparse
+import json
 import os
+import re
 import struct
 import sys
 import time
@@ -82,6 +84,33 @@ def upgrade(rpc, payer, elf, program):
     ], u32(3))], [payer], cu_limit=400_000)
 
 
+def vault_authority(rpc, path):
+    import opeq
+    import protocol as P
+    raw = json.load(open(path))
+    gov, aid = pk(raw["program"]), bytes.fromhex(raw["aid"])
+    acc = rpc.account(gov)
+    if acc is None or acc["owner"] != LOADER or not acc.get("executable", True):
+        raise SystemExit(f"the vault's program {ps(gov)} is not a deployed program on this cluster")
+    pd = rpc.account(find_pda([gov], LOADER))
+    if bytes(pd["data"])[12] != 0:
+        raise SystemExit(f"the vault's program {ps(gov)} still has an upgrade authority; the admin vault must live on an immutable program")
+    state, wallet = P.state_pda(aid, gov)[0], P.wallet_pda(aid, gov)[0]
+    st = rpc.account(state)
+    if st is None or st["owner"] != gov:
+        raise SystemExit("the admin vault is not initialized on this cluster; run `opeq.py init` for it first")
+    chain = P.unpack_state(bytes(st["data"]))
+    if chain["root"] != opeq.tree_root(raw["pub_seed"], raw["leaves"]) or chain["pub_seed"].hex() != raw["pub_seed"]:
+        raise SystemExit("the admin vault file does not match its on-chain state")
+    return wallet
+
+
+def confirm_typed(text, expect):
+    print(text)
+    if input(f"this cannot be undone. Type {expect!r} to proceed: ").strip() != expect:
+        raise SystemExit("cancelled, nothing was sent")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["newkey", "airdrop", "balance", "deploy", "upgrade"])
@@ -92,6 +121,7 @@ def main():
     ap.add_argument("--program")
     ap.add_argument("--max-len", type=int, default=0)
     ap.add_argument("--authority")
+    ap.add_argument("--authority-vault")
     args = ap.parse_args()
     rpc = Rpc(NETS[args.net])
     if args.cmd == "newkey":
@@ -112,6 +142,15 @@ def main():
         print(ps(payer.pub), rpc.balance(payer.pub) / 1e9, "SOL")
     elif args.cmd == "deploy":
         elf = open(args.elf, "rb").read()
+        if elf[:4] != b"\x7fELF" or not re.search(rb"opeq/\d+\.\d+", elf):
+            raise SystemExit("the elf is not an opeq program build (no ELF header or opeq/<version> tag)")
+        if args.net == "mainnet":
+            if "--key" not in sys.argv or not args.program_key or not args.max_len:
+                raise SystemExit("a mainnet deploy needs explicit --key, --program-key and --max-len")
+            if args.authority not in (None, "none"):
+                raise SystemExit("on mainnet pass --authority none (immutable) or --authority-vault <admin vault file>, never a typed address")
+            if bool(args.authority) == bool(args.authority_vault):
+                raise SystemExit("a mainnet deploy needs exactly one of --authority none or --authority-vault <admin vault file>")
         if args.program_key and os.path.exists(args.program_key):
             prog = load_keypair(args.program_key)
             if args.net == "mainnet" and Rpc(NETS["devnet"]).account(prog.pub) is not None:
@@ -121,13 +160,20 @@ def main():
             prog = Keypair.generate()
             if args.program_key:
                 prog.save(args.program_key)
-        if args.net == "mainnet" and not args.authority:
-            raise SystemExit("a mainnet deploy must hand the upgrade authority to the admin vault wallet in the same transaction: pass --authority <vault wallet>")
         if args.net == "mainnet" and Rpc(NETS["devnet"]).account(prog.pub) is not None:
             raise SystemExit("refusing: this program id exists on devnet")
+        if rpc.account(prog.pub) is not None:
+            raise SystemExit(f"program {ps(prog.pub)} already exists on {args.net}")
         max_len = max(args.max_len, len(elf))
-        print("program", ps(prog.pub), "elf", len(elf), "max_len", max_len)
-        auth = None if not args.authority else ("none" if args.authority == "none" else pk(args.authority))
+        if args.authority_vault:
+            auth = vault_authority(rpc, args.authority_vault)
+        else:
+            auth = None if not args.authority else ("none" if args.authority == "none" else pk(args.authority))
+        import hashlib
+        print(f"network {args.net}\npayer {ps(payer.pub)}\nprogram {ps(prog.pub)}\nelf sha256 {hashlib.sha256(elf).hexdigest()} ({len(elf)} bytes)\nmax_len {max_len}")
+        print("upgrade authority after deploy:", "NONE, immutable forever" if auth == "none" else ps(auth) if auth else f"the payer {ps(payer.pub)}")
+        if args.net == "mainnet":
+            confirm_typed("check every line above", "IMMUTABLE" if auth == "none" else ps(auth)[-8:])
         print("deployed", deploy(rpc, payer, elf, prog, max_len, auth))
     elif args.cmd == "upgrade":
         elf = open(args.elf, "rb").read()

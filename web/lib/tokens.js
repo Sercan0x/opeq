@@ -24,6 +24,34 @@ export const DEMO = {
 };
 
 export const KNOWN = new Map([[DEMO.mint.join(","), "DEMO"], [WSOL.join(","), "wSOL"]]);
+export const KNOWN_MAINNET = new Map([[WSOL.join(","), "wSOL"],
+  [pubkey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v").join(","), "USDC"],
+  [pubkey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB").join(","), "USDT"]]);
+
+export function mintExtensions(data) {
+  const out = new Set();
+  if (data.length <= 166 || data[165] !== 1) return out;
+  for (let i = 166; i + 4 <= data.length;) {
+    const type = data[i] | (data[i + 1] << 8), len = data[i + 2] | (data[i + 3] << 8);
+    if (type === 0) break;
+    if (type !== 14 || data.slice(i + 36, i + 68).some((b) => b !== 0)) out.add(type);
+    i += 4 + len;
+  }
+  return out;
+}
+
+export async function mintWarnings(rpc, mint, tokenProgram) {
+  if (tokenProgram.join(",") !== TOKEN22.join(",")) return "";
+  const acc = await rpc.account(mint);
+  if (!acc) throw new Error("token mint not found");
+  const ext = mintExtensions(acc.data);
+  if (ext.has(14)) throw new Error("this token runs extra program code on every transfer (transfer hook), which this wallet does not support yet");
+  if (ext.has(9)) throw new Error("this token cannot be transferred (non-transferable)");
+  let w = "";
+  if (ext.has(1)) w += "\nThis token charges a transfer fee, so the receiver gets less than the amount sent.";
+  if (ext.has(12)) w += "\nThis token has a permanent delegate that can move or burn anyone's balance of it.";
+  return w;
+}
 
 export function ata(owner, mint, tokenProgram = TOKEN) {
   return findPda([owner, tokenProgram, mint], ATA_PROG).key;

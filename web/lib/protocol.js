@@ -37,6 +37,8 @@ function leafEpochExpiry(epoch, leaf, expiry) {
 }
 
 export function execHasher(program, aid, epoch, leaf, expiry, inner, r) {
+  checkInner(inner);
+  if (r.length !== N) throw new Error("randomizer must be 16 bytes");
   const h = new Sha256();
   h.update(r).update(TAG_EXEC).update(program).update(aid).update(leafEpochExpiry(epoch, leaf, expiry));
   h.update(new Uint8Array([inner.length]));
@@ -51,6 +53,7 @@ export function execHasher(program, aid, epoch, leaf, expiry, inner, r) {
 }
 
 export function rekeyHasher(program, aid, epoch, leaf, expiry, newPubSeed, newRoot, r) {
+  if (r.length !== N) throw new Error("randomizer must be 16 bytes");
   return new Sha256().update(r).update(TAG_REKEY).update(program).update(aid)
     .update(leafEpochExpiry(epoch, leaf, expiry)).update(newPubSeed).update(newRoot);
 }
@@ -76,13 +79,23 @@ function header(tag, leaf, expiry, salt, r) {
   return concat(new Uint8Array([tag]), u32(leaf), u64(expiry), u32(salt), r);
 }
 
+function checkInner(inner) {
+  if (inner.length > 255) throw new Error("too many inner instructions");
+  for (const [, metas, data] of inner) {
+    if (metas.length > 255) throw new Error("too many accounts in an inner instruction");
+    if (data.length > 0xffff) throw new Error("inner instruction data too long");
+  }
+}
+
 export function buildExec(leaf, expiry, salt, r, sig, path, inner, outerKeys) {
+  checkInner(inner);
   const pos = new Map(outerKeys.map((k, i) => [k.join(","), i]));
+  const at = (k) => { const i = pos.get(k.join(",")); if (i === undefined || i > 255) throw new Error("inner instruction key missing from the transaction"); return i; };
   const parts = [header(IX_EXEC, leaf, expiry, salt, r), sig, path, new Uint8Array([inner.length])];
   for (const [prog, metas, data] of inner) {
-    parts.push(new Uint8Array([pos.get(prog.join(",")), metas.length]));
+    parts.push(new Uint8Array([at(prog), metas.length]));
     for (const [key, signer, writable] of metas) {
-      parts.push(new Uint8Array([pos.get(key.join(",")), (signer ? F_SIGNER : 0) | (writable ? F_WRITABLE : 0)]));
+      parts.push(new Uint8Array([at(key), (signer ? F_SIGNER : 0) | (writable ? F_WRITABLE : 0)]));
     }
     parts.push(new Uint8Array([data.length & 0xff, data.length >> 8]), data);
   }

@@ -71,7 +71,7 @@
           <li>Plug in a new wallet on the left, write down the 24 words, set a password.</li>
           <li data-only="devnet">Send a little devnet SOL to the activation address it shows. Free devnet SOL: <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>.</li><li data-only="mainnet">Send a little SOL to the activation address it shows.</li>
           <li>Activate. The setup costs about 0.0015 SOL and the rest moves into your opeq wallet.</li>
-          <li>Send SOL, hold tokens and swap, each signed with a one-time quantum-proof key.</li>
+          <li data-only="devnet">Send SOL, hold tokens and swap, each signed with a one-time quantum-proof key.</li><li data-only="mainnet">Send SOL and tokens, each signed with a one-time quantum-proof key.</li>
         </ol>
       </div>
     </div>
@@ -203,14 +203,14 @@
           <label class="f" for="t-sel">Token</label><select id="t-sel"></select>
           <label class="f" for="t-to">To address</label><input type="text" id="t-to" spellcheck="false" autocomplete="off">
           <label class="f" for="t-amt">Amount</label><input type="text" id="t-amt" inputmode="decimal" autocomplete="off">
-          <p class="hint">If the receiver has no account for this token yet, the fee key pays its rent (about 0.002 SOL).</p>
+          <p class="hint">If the receiver has no account for this token yet, your wallet pays its rent (about 0.002 SOL).</p>
           <div class="row"><button class="btn btn-solid" id="t-go" type="button">Sign and send</button></div>
           <p class="ok" id="t-ok"></p><p class="err" id="t-err" role="alert"></p>
         </div></div>
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-swap" aria-labelledby="tab-swap">
           <div>          <h2 class="silk"><span>PCIE_4</span><b>swap</b></h2>
-          <p class="hint">Swaps through a Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
+          <p class="hint" data-only="devnet">Swaps through a Raydium pool of the DEMO test token. One quantum-proof signature covers the whole swap.</p>
           <label class="f" for="x-dir">Direction</label>
           <select id="x-dir"><option value="buy">SOL to DEMO</option><option value="sell">DEMO to SOL</option></select>
           <label class="f" for="x-amt">Amount in</label><input type="text" id="x-amt" inputmode="decimal" autocomplete="off">

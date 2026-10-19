@@ -13,7 +13,7 @@ SRC = os.path.join(ROOT, "extension")
 WEB = os.path.join(ROOT, "web")
 LIB = ["compute.js", "engine.js", "mnemonic.js", "protocol.js", "sha256.js", "solana.js", "tokens.js", "vaultstore.js", "wordlist.js", "worker.js", "wots.js"]
 ASSETS = ["logo.svg", "mark.svg"]
-FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "feekey.js", "keep.js", "net.js"]
+FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "feekey.js", "keep.js", "net.js", "bg.js"]
 ICONS = ["16.png", "32.png", "48.png", "128.png"]
 LEGACY_PROGRAM = "424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN"
 DEVNET_RPC = "https://api.devnet.solana.com"
@@ -25,6 +25,7 @@ DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 DEVNET_PROGRAMS = {LEGACY_PROGRAM, "B8h654SDQbXEg5r3Bjbcpd6LYh74orB4yqifh6yQF4vp", "2VXWnTUp", "9MPeZzh3rdpJA88AtZ26j5yrDwcsdzWCzJ4jWoEQhBnG", "HKgkPK5DgB7tMMaVg1wExZ6M5p9nJ7kL275cb1BddxXj", "9Ce67NYP"}
 LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
 ELF = os.path.join(ROOT, "build", "opeq-1.1.elf")
+CHECK = {}
 DENY = ["api.devnet.solana.com", "cluster=devnet", "faucet.solana.com", "Free devnet SOL", "devnet only", LEGACY_PROGRAM]
 
 
@@ -39,6 +40,15 @@ def config(args):
     u = urlparse(args.rpc or "")
     if u.scheme != "https" or u.username or u.password or not HOST.match(u.netloc or "") or any(x in u.netloc for x in ("devnet", "testnet")):
         raise SystemExit("a mainnet build needs --rpc https://<mainnet rpc host>/... without credentials in the host part")
+    for k in ("authority", "gov"):
+        v = getattr(args, k)
+        if not v or not B58.match(v):
+            raise SystemExit(f"a mainnet build needs --{k} <address>")
+        CHECK[k] = v
+    if args.skip_chain_check:
+        raise SystemExit("--skip-chain-check is not allowed for a mainnet build")
+    if (u.query or "key" in u.path.lower()) and not args.allow_rpc_key:
+        raise SystemExit("the --rpc url carries a key that every user can read from the extension; use a proxy or pass --allow-rpc-key")
     if not args.version or not re.match(r"^\d+\.\d+\.\d+$", args.version):
         raise SystemExit("a mainnet build needs an explicit --version like 1.0.0")
     return {"name": "mainnet", "mainnet": True, "program": args.program, "rpc": args.rpc, "genesis": MAINNET_GENESIS,
@@ -85,7 +95,15 @@ def check_mainnet(cfg):
     if code[:len(elf)] != elf or any(code[len(elf):]):
         raise SystemExit("on-chain program code differs from build/opeq-1.1.elf")
     auth = raw[13:45] if raw[12] == 1 else None
-    print("mainnet check ok: genesis, executable program, code sha256", hashlib.sha256(elf).hexdigest()[:16], "upgrade authority", auth and b58(auth))
+    if not auth or b58(auth) != CHECK["authority"]:
+        raise SystemExit(f"program upgrade authority is {auth and b58(auth)}, expected {CHECK["authority"]}")
+    gov = rpc_call(cfg["rpc"], "getAccountInfo", [CHECK["gov"], {"encoding": "jsonParsed"}])["value"]
+    if not gov or gov["owner"] != LOADER or not gov["executable"]:
+        raise SystemExit("the --gov account is not a deployed program on mainnet")
+    graw = base64.b64decode(rpc_call(cfg["rpc"], "getAccountInfo", [gov["data"]["parsed"]["info"]["programData"], {"encoding": "base64"}])["value"]["data"][0])
+    if graw[12] != 0:
+        raise SystemExit("the gov program still has an upgrade authority, it must be immutable")
+    print("mainnet check ok: genesis, executable program, code sha256", hashlib.sha256(elf).hexdigest()[:16], "upgrade authority", b58(auth), "gov immutable")
 
 
 def b58(b):
@@ -100,7 +118,7 @@ def b58(b):
 
 def build(args):
     cfg = config(args)
-    if cfg["mainnet"] and not args.skip_chain_check:
+    if cfg["mainnet"]:
         check_mainnet(cfg)
     final = os.path.join(ROOT, "build", "extension" if cfg["name"] == "devnet" else "extension-mainnet")
     dist = final + ".tmp"
@@ -122,6 +140,7 @@ def build(args):
             m["content_security_policy"]["extension_pages"] = m["content_security_policy"]["extension_pages"].replace("connect-src https://api.devnet.solana.com", f"connect-src {origin}")
             if cfg["mainnet"]:
                 m["name"] = "OPEQ Wallet"
+                m["action"]["default_title"] = "OPEQ Wallet"
                 m["description"] = "A Solana wallet built to resist quantum computers. Hash-based one-time signatures, verified on chain. Beta."
                 if args.version:
                     m["version"] = args.version
@@ -177,6 +196,9 @@ if __name__ == "__main__":
     ap.add_argument("--windows", action="store_true")
     ap.add_argument("--zip", action="store_true")
     ap.add_argument("--skip-chain-check", action="store_true")
+    ap.add_argument("--authority")
+    ap.add_argument("--gov")
+    ap.add_argument("--allow-rpc-key", action="store_true")
     args = ap.parse_args()
     dist, cfg, version = build(args)
     print("built", dist, cfg["name"], "version", version, "program", cfg["program"])

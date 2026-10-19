@@ -12,7 +12,7 @@
     "128": "icons/128.png"
   },
   "action": {
-    "default_title": "OPEQ Wallet",
+    "default_title": "OPEQ Wallet (Devnet)",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/16.png",
@@ -23,6 +23,10 @@
     "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.devnet.solana.com; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'"
   },
   "permissions": [
-    "storage"
-  ]
+    "storage",
+    "alarms"
+  ],
+  "background": {
+    "service_worker": "bg.js"
+  }
 }

@@ -105,6 +105,7 @@ export class Engine {
   }
 
   async init(record) {
+    await this.checkCluster();
     const ix = await this.initIx(record)();
     const slot = await this.rpc.slot();
     try {
@@ -168,6 +169,7 @@ export class Engine {
   }
 
   async submit(ix, expiry, cuLimit, tables = [], price = 0) {
+    await this.checkCluster();
     const { message, signers } = compileV0(this.payer.key(), [...this.budget(cuLimit, price), ix], await this.rpc.blockhash(), tables);
     if (signers.length !== 1) throw new Error("unexpected extra signer");
     const signed = await this.payer.sign(unsignedTx(message, 1));
@@ -175,6 +177,7 @@ export class Engine {
     let sig;
     try {
       sig = await this.rpc.sendRaw(signed);
+      if (sig !== b58encode(signed.slice(1, 65))) throw new Error("the RPC returned a signature that is not this transaction's");
     } catch (e) {
       const d = describe(e);
       const f = new Failed(d.msg);
@@ -418,6 +421,7 @@ export class Session {
 
   takeover(progress) {
     return this.lock(async () => {
+      await this.e.checkCluster();
       let r = await this.load();
       const st = await this.e.chainState(r);
       if (!st) throw new Error("wallet is not initialized on chain yet");
@@ -431,7 +435,7 @@ export class Session {
         delete r.rekeying;
         r = await this.put(r);
       }
-      const lo = Math.max(r.next_leaf, st.next + RESTORE_GAP);
+      const lo = Math.max(r.next_leaf, st.next + RESTORE_GAP, P.EXEC_LEAF_LIMIT);
       if (lo >= LEAVES) throw new Error("tree fully used");
       const span = LEAVES - lo;
       const leaf = lo + (crypto.getRandomValues(new Uint32Array(1))[0] % span);
