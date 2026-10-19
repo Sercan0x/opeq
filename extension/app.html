@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.devnet.solana.com; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title data-only="devnet">OPEQ Wallet (Devnet)</title><title data-only="mainnet">OPEQ Wallet</title>
 <meta name="theme-color" content="#070b11">
@@ -254,6 +254,13 @@
         <div class="words" id="k-wordlist"></div>
         <div class="row"><button class="btn btn-quiet btn-sm" id="k-hide" type="button">Hide</button></div>
       </div>
+          <div>
+            <h2 class="silk"><span>NET</span><b>network</b></h2>
+            <p class="hint" id="n-now"></p>
+            <label class="f" for="n-url">Your own RPC address (optional)</label><input type="text" id="n-url" spellcheck="false" autocomplete="off" placeholder="https://">
+            <div class="row"><button class="btn btn-line" id="n-save" type="button">Use this RPC</button><button class="btn btn-quiet" id="n-reset" type="button">Use default</button></div>
+            <p class="ok" id="n-ok"></p><p class="err" id="n-err" role="alert"></p>
+          </div>
         </div>
       </section>
 

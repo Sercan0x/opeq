@@ -140,17 +140,15 @@ def build(args):
     extra = sorted(set(os.listdir(SRC)) - set(FILES) - {"icons"})
     if extra:
         raise SystemExit(f"unexpected files in extension/: {extra}")
-    origin = "{0.scheme}://{0.netloc}".format(urlparse(cfg["rpc"]))
     for n in FILES:
         with open(os.path.join(SRC, n), encoding="utf-8") as f:
             text = f.read()
         if n.endswith(".html"):
-            text = strip_other(text, cfg["name"]).replace("connect-src https://api.devnet.solana.com", f"connect-src {origin}")
+            text = strip_other(text, cfg["name"])
         if n == "net.js":
             text = "export const NET = " + json.dumps(cfg, indent=2) + ";\n"
         if n == "manifest.json":
             m = json.loads(text)
-            m["content_security_policy"]["extension_pages"] = m["content_security_policy"]["extension_pages"].replace("connect-src https://api.devnet.solana.com", f"connect-src {origin}")
             if cfg["mainnet"]:
                 m["name"] = "OPEQ Wallet"
                 m["action"]["default_title"] = "OPEQ Wallet"

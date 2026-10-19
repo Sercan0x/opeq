@@ -819,7 +819,48 @@ function watchLock() {
   });
 }
 
+const RPC_KEY = "opeq:rpc";
+const hostOf = (u) => { try { return new URL(u).host; } catch { return "?"; } };
+
+function validRpc(u) {
+  try { const x = new URL(u); return x.protocol === "https:" && !x.username && !x.password && u.length < 400; } catch { return false; }
+}
+
+function setRpc(u) {
+  rpc.url = u;
+  engine._genesisOk = false;
+  altCache = null;
+  $("n-now").textContent = u === NET.rpc ? `Connected through ${hostOf(u)} (default).` : `Connected through your RPC at ${hostOf(u)}.`;
+}
+
+async function loadRpc() {
+  let u = null;
+  try { u = (await chrome.storage.local.get(RPC_KEY))[RPC_KEY]; } catch {}
+  setRpc(typeof u === "string" && validRpc(u) ? u : NET.rpc);
+}
+
+function initNetwork() {
+  $("n-save").addEventListener("click", () => guard("n-err", "n-ok", async () => {
+    const u = $("n-url").value.trim();
+    if (!validRpc(u)) throw new Error("enter an https:// RPC address");
+    let g;
+    try { g = await new Rpc(u).call("getGenesisHash", []); } catch (e) { throw new Error(`that RPC did not answer: ${String(e.message || e).slice(0, 120)}`); }
+    if (g !== NET.genesis) throw new Error(`that RPC is on a different Solana network than this wallet (${NET.name})`);
+    await chrome.storage.local.set({ [RPC_KEY]: u });
+    setRpc(u);
+    $("n-url").value = "";
+    $("n-ok").textContent = "saved";
+  }));
+  $("n-reset").addEventListener("click", () => guard("n-err", "n-ok", async () => {
+    await chrome.storage.local.remove(RPC_KEY);
+    setRpc(NET.rpc);
+    $("n-ok").textContent = "back to the default";
+  }));
+}
+
 async function init() {
+  await loadRpc();
+  initNetwork();
   if (!NET.swap) { $("tab-swap").remove(); $("pane-swap").classList.add("hidden"); }
   watchLock();
   initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
