@@ -677,9 +677,16 @@ def cmd_set_authority(rpc, payer, v, args):
 
 def cmd_hand_authority(rpc, payer, v, args):
     target = pk(args.target)
-    new_auth = pk(args.new_authority)
     if upgrade_authority(rpc, target) != v.wallet:
         raise SystemExit("this vault is not the upgrade authority of the target program")
+    if args.new_authority == "none":
+        confirm(args, f"make {ps(target)} IMMUTABLE forever: nobody, including this vault, can ever upgrade or close it again")
+        inner = [(LOADER, [(programdata_of(target), False, True), (v.wallet, True, False)], u32(4))]
+        print("program is now immutable", send_exec(rpc, payer, v, inner))
+        if upgrade_authority(rpc, target) is not None:
+            raise SystemExit("the program still has an upgrade authority, check the explorer")
+        return
+    new_auth = pk(args.new_authority)
     if rpc.account(new_auth) is None:
         print("NOTE: the new authority address has no account yet; make sure it is a wallet you control")
     confirm(args, f"move upgrade authority of {ps(target)} from {ps(v.wallet)} to {ps(new_auth)}")

@@ -50,7 +50,9 @@ def deploy(rpc, payer, elf, prog_kp, max_len, authority=None):
             (RENT, False, False), (CLOCK, False, False), (SYSTEM, False, False), (payer.pub, True, False),
         ], u32(2) + u64(max_len)),
     ]
-    if authority is not None:
+    if authority == "none":
+        ixs.append((LOADER, [(pdata, False, True), (payer.pub, True, False)], u32(4)))
+    elif authority is not None:
         ixs.append((LOADER, [(pdata, False, True), (payer.pub, True, False), (authority, False, False)], u32(4)))
     sig = rpc.send(ixs, [payer, prog_kp], cu_limit=400_000)
     acc = rpc.account(pdata)
@@ -59,6 +61,11 @@ def deploy(rpc, payer, elf, prog_kp, max_len, authority=None):
     code = data[PROGRAMDATA_META:]
     if code[:len(elf)] != elf or any(code[len(elf):]):
         raise SystemExit("deployed program code differs from the elf")
+    if authority == "none":
+        if auth is not None:
+            raise SystemExit(f"program should be immutable but its authority is {ps(auth)}")
+        print("program is IMMUTABLE (no upgrade authority, set in the same transaction)")
+        return sig
     expected = authority if authority is not None else payer.pub
     if auth != expected:
         raise SystemExit(f"upgrade authority is {auth and ps(auth)}, expected {ps(expected)}")
@@ -120,7 +127,8 @@ def main():
             raise SystemExit("refusing: this program id exists on devnet")
         max_len = max(args.max_len, len(elf))
         print("program", ps(prog.pub), "elf", len(elf), "max_len", max_len)
-        print("deployed", deploy(rpc, payer, elf, prog, max_len, pk(args.authority) if args.authority else None))
+        auth = None if not args.authority else ("none" if args.authority == "none" else pk(args.authority))
+        print("deployed", deploy(rpc, payer, elf, prog, max_len, auth))
     elif args.cmd == "upgrade":
         elf = open(args.elf, "rb").read()
         print("upgraded", upgrade(rpc, payer, elf, pk(args.program)))
