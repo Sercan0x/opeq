@@ -61,6 +61,6 @@ body[data-mode="popup"] .keys-line { padding: 0; margin: 10px 0 2px; }
 body[data-mode="popup"] .bus { padding: 8px 12px; }
 body[data-mode="popup"] .warn { font-size: 12.5px; padding: 10px 12px; }
 #fee-on .addr-row { margin-bottom: 4px; }
-body[data-mode="popup"] #fee-on .addr { white-space: normal; word-break: break-all; }
 #w-take-box .addr-row { margin: 2px 0 4px; }
 #w-take-box .addr { white-space: normal; word-break: break-all; }
+body[data-mode="popup"] .log { max-height: none; overflow: visible; }

@@ -10,8 +10,8 @@ import { NET } from "./net.js";
 const PROGRAM = NET.program;
 const EXPLORER = "https://explorer.solana.com";
 const LAMPORTS = 1000000000;
-const FEE_LOW = 5000000;
-const FEE_TOPUP = 20000000n;
+const FEE_LOW = 2000000;
+const FEE_TOPUP = 10000000n;
 const FEE_KEEP = 5000000;
 const TX_FEE = 5000;
 const MAX_PRIORITY = 100000;
@@ -26,9 +26,32 @@ const $ = (id) => document.getElementById(id);
 const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const POPUP = document.body.dataset.mode === "popup";
 
-function ask(text, yes = "Confirm") {
-  const d = $("ask");
-  $("ask-text").textContent = text;
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function notes(...parts) {
+  return parts.flatMap((x) => String(x || "").split("\n")).map((s) => s.trim()).filter(Boolean)
+    .map((text) => ({ text, warn: /^(Warning|This token|New accounts|After this|This address)/.test(text) }));
+}
+
+function ask(msg, yes = "Confirm") {
+  const d = $("ask"), box = $("ask-text");
+  box.textContent = "";
+  if (typeof msg === "string") box.append(el("p", "", msg));
+  else {
+    if (msg.tag) box.append(el("span", NET.mainnet ? "ask-tag" : "ask-tag test", msg.tag));
+    if (msg.title) box.append(el("h3", "ask-title", msg.title));
+    for (const [k, v, addr] of msg.rows || []) {
+      const r = el("div", "ask-row");
+      r.append(el("span", "ask-k", k), el(addr ? "code" : "span", addr ? "ask-v ask-addr" : "ask-v", v));
+      box.append(r);
+    }
+    for (const n of msg.notes || []) box.append(el("p", n.warn ? "ask-note warn" : "ask-note", n.text));
+  }
   $("ask-yes").textContent = yes;
   d.showModal();
   $("ask-no").focus();
@@ -95,23 +118,60 @@ function setProgress(id, frac) {
   el.firstElementChild.style.width = `${Math.round(frac * 100)}%`;
 }
 
-function log(text, cls) {
-  const line = document.createElement("div");
-  if (cls) line.className = cls;
-  const t = document.createElement("time");
-  t.textContent = new Date().toLocaleTimeString("en-GB");
-  line.append(t, " ");
-  const sig = /([1-9A-HJ-NP-Za-km-z]{80,90})/.exec(text);
-  if (sig) {
-    line.append(text.slice(0, sig.index));
-    const a = document.createElement("a");
-    a.href = `${EXPLORER}/tx/${sig[1]}${NET.explorerQuery}`;
+const LOG_MAX = 40;
+const SIG_RE = /([1-9A-HJ-NP-Za-km-z]{80,90})/;
+let logKey = null;
+
+function stamp(t) {
+  const d = new Date(t), now = new Date();
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === now.toDateString() ? time : `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${time}`;
+}
+
+function entryEl(e) {
+  const row = el("div", `entry ${e.cls}`);
+  const body = el("span", "body");
+  const meta = el("span", "meta");
+  meta.append(el("time", "", stamp(e.t)));
+  if (e.sig) {
+    const a = el("a", "", "view on explorer");
+    a.href = `${EXPLORER}/tx/${e.sig}${NET.explorerQuery}`;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    a.textContent = short(sig[1]);
-    line.append(a, text.slice(sig.index + sig[1].length));
-  } else line.append(text);
-  $("log").prepend(line);
+    meta.append(a);
+  }
+  body.append(el("span", "msg", e.text.charAt(0).toUpperCase() + e.text.slice(1)), meta);
+  row.append(el("i", "dot"), body);
+  return row;
+}
+
+function logCount() {
+  const n = $("log").children.length;
+  $("log-count").textContent = n ? String(n) : "";
+}
+
+function log(text, cls) {
+  const m = SIG_RE.exec(text);
+  const msg = (m ? text.slice(0, m.index) + text.slice(m.index + m[1].length) : text).replace(/[\s:]+$/, "").trim().slice(0, 300);
+  const e = { t: Date.now(), text: msg, cls: cls === "ok" || cls === "err" ? cls : "", sig: m ? m[1] : null };
+  $("log").prepend(entryEl(e));
+  while ($("log").children.length > LOG_MAX) $("log").lastChild.remove();
+  logCount();
+  const k = logKey;
+  if (!k) return;
+  chrome.storage.local.get(k).then((v) => chrome.storage.local.set({ [k]: [e, ...(Array.isArray(v[k]) ? v[k] : [])].slice(0, LOG_MAX) })).catch(() => {});
+}
+
+async function loadLog(id) {
+  logKey = id ? `opeq:log:${id}` : null;
+  $("log").textContent = "";
+  let list = [];
+  if (logKey) try { list = (await chrome.storage.local.get(logKey))[logKey]; } catch {}
+  for (const e of (Array.isArray(list) ? list : []).slice(0, LOG_MAX).reverse()) {
+    if (!e || typeof e.text !== "string" || !Number.isFinite(e.t)) continue;
+    $("log").prepend(entryEl({ t: e.t, text: e.text.slice(0, 300), cls: e.cls === "ok" || e.cls === "err" ? e.cls : "", sig: typeof e.sig === "string" && /^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(e.sig) ? e.sig : null }));
+  }
+  logCount();
 }
 engine.log = (m) => log(m);
 
@@ -141,10 +201,12 @@ function needPayer() { if (!engine.payer || !session) throw new Error("unlock a 
 async function startSession(s) {
   engine.payer = await feePayer(s.master, engine.program);
   session = s;
+  await loadLog(s.id);
   await keep.save(s.id, s.master, s.macRaw);
   $("fee-none").classList.add("hidden");
   $("fee-on").classList.remove("hidden");
   $("fee-addr").textContent = engine.payer.address;
+  $("fee-addr").title = engine.payer.address;
 }
 
 function stopFee() {
@@ -162,8 +224,10 @@ async function networkFee(cuLimit) {
 async function planTopup(inner, tables, spend) {
   const fee = await rpc.balance(engine.payer.key());
   if (fee >= FEE_LOW) return { amount: 0n, note: "" };
-  let amount = BigInt(await rpc.balance(session.wallet)) - BigInt(spend) - VAULT_KEEP;
+  const free = BigInt(await rpc.balance(session.wallet)) - BigInt(spend);
+  let amount = free - VAULT_KEEP;
   if (amount > FEE_TOPUP) amount = FEE_TOPUP;
+  if (amount > free / 4n) amount = free / 4n;
   const floor = 2 * (TX_FEE + MAX_PRIORITY);
   if (amount < 2000000n) {
     if (fee < floor) throw new Error(`the fee key is empty (${sol(fee)} SOL) and the wallet has too little SOL to top it up. Send 0.01 SOL to the fee key (Keys tab)`);
@@ -349,15 +413,15 @@ async function refreshWallet() {
     const next = Math.max(st.next, r.next_leaf);
     const left = Math.max(0, EXEC_LIMIT - next);
     $("w-status").textContent = inactive ? "not active on this device" : `active, tree ${st.epoch}`;
-    $("w-state").textContent = inactive ? "active on another device" : "active on chain";
-    $("w-tree").textContent = `tree ${st.epoch}, next key ${next}`;
+    $("w-state").textContent = inactive ? "other device" : "active";
+    $("w-tree").textContent = `tree ${st.epoch}`;
     $("w-left").textContent = String(left);
     renderDimms(left);
     rekeyWarn(inactive ? EXEC_LIMIT : left);
     refreshTokens().catch((e) => log(`token list: ${e.message}`, "err"));
   } else {
     $("w-status").textContent = "not activated";
-    $("w-state").textContent = "not activated yet";
+    $("w-state").textContent = "not active yet";
     $("w-tree").textContent = "tree 0";
     $("w-left").textContent = String(EXEC_LIMIT);
     renderDimms(EXEC_LIMIT);
@@ -463,6 +527,7 @@ function wipeInputs() {
 function lockVault(reason) {
   wipeInputs();
   if (!session) return;
+  loadLog(null);
   if (session.master) session.master.fill(0);
   if (session.macRaw) session.macRaw.fill(0);
   session.master = null;
@@ -713,7 +778,9 @@ function initWallet() {
     const low = await solCheck(lamports);
     const inner = [[SYSTEM, [[session.wallet, true, true], [to, false, true]], concat(u32(2), u64(lamports))]];
     const plan = await planTopup(inner, [], lamports);
-    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${sol(lamports)} ${NET.sol} from your opeq wallet to\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_SEND))} SOL${plan.note}${low}${warn}`, "Send"))) return;
+    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Send ${sol(lamports)} ${NET.sol}`,
+      rows: [["To", b58encode(to), true], ["Network fee", `about ${sol(await networkFee(CU_SEND))} SOL`]],
+      notes: notes(plan.note, low, warn) }, "Send"))) return;
     const sig = await run("reserving a key, grinding the signature", inner, plan, { spend: lamports });
     $("s-ok").textContent = `sent ${amount} SOL`;
     log(`sent ${amount} SOL to ${short(b58encode(to))}: ${sig}`, "ok");
@@ -737,7 +804,9 @@ function initWallet() {
       T.transferChecked(prog, pubkey(t.account), mint, T.ata(to, mint, prog), session.wallet, amount, t.decimals)];
     const tables = await lookupTables();
     const plan = await planTopup(inner, tables, 2100000n);
-    if (!(await ask(`${NET.mainnet ? "Mainnet, real funds.\n" : ""}Send ${shown} ${name}${NET.mainnet ? "" : " (devnet)"}\nToken mint: ${t.mint}\nto\n${b58encode(to)}?\nNetwork fee: about ${sol(await networkFee(CU_TOKEN))} SOL${rent}${ext}${plan.note}${warn}`, "Send"))) return;
+    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Send ${shown} ${name}`,
+      rows: [["To", b58encode(to), true], ["Token mint", t.mint, true], ["Network fee", `about ${sol(await networkFee(CU_TOKEN))} SOL`]],
+      notes: notes(rent, ext, plan.note, warn) }, "Send"))) return;
     const sig = await run("signing the token transfer", inner, plan, { cu: CU_TOKEN, tables, spend: 2100000n });
     $("t-ok").textContent = `sent ${shown} ${name}`;
     log(`sent ${shown} ${name} to ${short(b58encode(to))}: ${sig}`, "ok");
@@ -760,7 +829,9 @@ function initWallet() {
     const inner = T.swapInner(session.wallet, session.wallet, buy, amt, minOut);
     const spend = (buy ? amt : 0n) + 4200000n;
     const plan = await planTopup(inner, tables, spend);
-    if (!(await ask(`Swap ${label}${NET.mainnet ? "" : " (devnet)"}? You get at least 99% of that or the swap is cancelled.\nNetwork fee: about ${sol(await networkFee(CU_SWAP))} SOL. If you hold no DEMO account yet, your wallet pays its rent, about 0.002 SOL.${plan.note}`, "Swap"))) return;
+    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Swap ${label}`,
+      rows: [["Network fee", `about ${sol(await networkFee(CU_SWAP))} SOL`]],
+      notes: notes("You get at least 99% of that or the swap is cancelled.", "If you hold no DEMO account yet, your wallet pays its rent, about 0.002 SOL.", plan.note) }, "Swap"))) return;
     const sig = await run("signing the swap", inner, plan, { cu: CU_SWAP, tables, spend });
     $("x-ok").textContent = `swapped ${label}`;
     log(`swapped ${label}: ${sig}`, "ok");
@@ -772,7 +843,8 @@ function initWallet() {
   $("k-rekey").addEventListener("click", () => guard("k-err", "k-ok", async () => {
     needPayer();
     const plan = await planTopup([], [], 0n);
-    if (!(await ask(`Move to a fresh key tree? Your address and words stay the same. This sends one transaction.${plan.note}`, "Rekey"))) return;
+    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: "Move to a fresh key tree",
+      notes: notes("Your address, balance and words stay the same. This sends one transaction.", plan.note) }, "Rekey"))) return;
     await topup(plan, 0n);
     const sig = await signed("building the next tree", (pr) => session.rekey(pr));
     $("k-ok").textContent = "rekeyed";
