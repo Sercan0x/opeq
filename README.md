@@ -40,7 +40,11 @@ python3 build_extension.py --net mainnet --version 1.0.0 \
   --rpc https://api.mainnet-beta.solana.com
 ```
 
-The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store (version 1.0.0) file for file. An installed store copy also carries the store's own `_metadata` signature folder and an `update_url` line in `manifest.json`; everything else is identical.
+The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store (version 1.0.0) file for file. Once the listing is public you can check this against your own install. Chrome keeps it in its profile folder under `Extensions/ppddghgloaomicpgkpodjenaogmhhijj/1.0.0_0` (on Windows `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\...`). The store adds its own `_metadata` signature folder and store fields such as `update_url` to `manifest.json`; every other file is identical:
+
+```
+diff -r --exclude=_metadata --exclude=manifest.json build/extension-mainnet <installed folder>
+```
 
 A self-built copy has its own extension id, and `rpc.opeq.io` will only serve the store build. Set your own mainnet RPC in the Keys tab (the wallet checks that it really is mainnet). The words, the vault and every signature stay on your machine either way.
 

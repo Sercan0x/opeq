@@ -8,6 +8,8 @@ import urllib.request
 import zipfile
 from urllib.parse import urlparse
 
+import program
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "extension")
 WEB = os.path.join(ROOT, "web")
@@ -24,7 +26,6 @@ MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
 DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
 DEVNET_PROGRAMS = {LEGACY_PROGRAM, "B8h654SDQbXEg5r3Bjbcpd6LYh74orB4yqifh6yQF4vp", "2VXWnTUp", "9MPeZzh3rdpJA88AtZ26j5yrDwcsdzWCzJ4jWoEQhBnG", "HKgkPK5DgB7tMMaVg1wExZ6M5p9nJ7kL275cb1BddxXj", "9Ce67NYP"}
 LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
-ELF = os.path.join(ROOT, "build", "opeq-1.1.elf")
 CHECK = {}
 DENY = ["api.devnet.solana.com", "cluster=devnet", "faucet.solana.com", "Free devnet SOL", "devnet only", LEGACY_PROGRAM]
 
@@ -90,10 +91,10 @@ def check_mainnet(cfg):
     pd = acc["data"]["parsed"]["info"]["programData"]
     import base64
     raw = base64.b64decode(rpc_call(cfg["rpc"], "getAccountInfo", [pd, {"encoding": "base64"}])["value"]["data"][0])
-    elf = open(ELF, "rb").read()
+    elf = program.build().elf()
     code = raw[45:]
     if code[:len(elf)] != elf or any(code[len(elf):]):
-        raise SystemExit("on-chain program code differs from build/opeq-1.1.elf")
+        raise SystemExit("on-chain program code differs from the program built from program.py")
     auth = raw[13:45] if raw[12] == 1 else None
     if not auth or b58(auth) != CHECK["authority"]:
         raise SystemExit(f"program upgrade authority is {auth and b58(auth)}, expected {CHECK["authority"]}")
@@ -105,7 +106,7 @@ def check_mainnet(cfg):
         raise SystemExit("the gov program still has an upgrade authority, it must be immutable")
     gcode = graw[45:]
     if gcode[:len(elf)] != elf or any(gcode[len(elf):]):
-        raise SystemExit("the gov program does not run the same opeq code as build/opeq-1.1.elf")
+        raise SystemExit("the gov program does not run the same code as the program built from program.py")
     import sys
     sys.path.insert(0, ROOT)
     import protocol as P
