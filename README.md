@@ -29,6 +29,21 @@ Every Solana wallet today is protected by Ed25519. A large enough quantum comput
 - One active copy per wallet: a recovered copy must choose *Use on this device* (a rekey) before it signs, and any other copy then stops signing. This prevents two installs from ever signing the same one-time key
 - Build: `python3 build_extension.py` (output in `build/extension`, `--zip` for the store package)
 
+The mainnet listing on the Chrome Web Store is still in review. Until it is public you can build the extension yourself and load `build/extension-mainnet` with *Load unpacked* on `chrome://extensions`. A mainnet build checks the program, its governance and the admin vault on chain:
+
+```
+python3 build_extension.py --net mainnet --version 1.0.0 \
+  --program HL598vrersxS5AUUV6NyzHgpSyK31xAmqMsqUhxzeKm8 \
+  --authority 6KX8M2fwCGyMTFodAL2HE1gbhwM5vYzfia2rsjhuHPU8 \
+  --gov 2UpwhLHUUS1Uqij7KVdXxLRWjt8yCssdFjB2QG4saRAj \
+  --admin-state 3AMt6BShy2aigE8hRAAnrHsPR4kedNjbtGo2tCxKuJTp \
+  --rpc https://api.mainnet-beta.solana.com
+```
+
+The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store (version 1.0.0) file for file. An installed store copy also carries the store's own `_metadata` signature folder and an `update_url` line in `manifest.json`; everything else is identical.
+
+A self-built copy has its own extension id, and `rpc.opeq.io` will only serve the store build. Set your own mainnet RPC in the Keys tab (the wallet checks that it really is mainnet). The words, the vault and every signature stay on your machine either way.
+
 ## How it works
 
 | Piece | Choice |
