@@ -15,7 +15,6 @@
 <meta name="twitter:site" content="@opeqio">
 <link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="board.css">
-<link rel="stylesheet" href="modal.css">
 <link rel="stylesheet" href="../../intro.css">
 <script type="module" src="board.js"></script>
 </head>
@@ -24,71 +23,17 @@
 <header class="bar">
   <a class="brand" href="#"><img src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
   <nav class="legend" id="legend" aria-label="Sections"></nav>
-  <a class="cta cta-store" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer">Add to Chrome</a>
+  <a class="cta cta-store" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer"><svg class="ico-chrome" viewBox="-1 -1 2 2" aria-hidden="true"><path d="M0 0L.866-.5A1 1 0 0 0-.866-.5Z" fill="#db4437"/><path d="M0 0L-.866-.5A1 1 0 0 0 0 1Z" fill="#0f9d58"/><path d="M0 0L0 1A1 1 0 0 0 .866-.5Z" fill="#f4b400"/><circle r=".46" fill="#fff"/><circle r=".36" fill="#4285f4"/></svg>Add to Chrome</a>
   <a class="cta cta-ghost" href="app.html">Test Wallet (Devnet)</a>
-  <a class="cta" href="waitlist.html">Join the waitlist</a>
 </header>
 <main class="stage">
   <svg id="board" viewBox="0 0 1240 780" role="group" aria-label="A motherboard. Each part opens one section about opeq."></svg>
 </main>
 <footer class="foot">
   <a class="x-link" href="https://x.com/opeqio" target="_blank" rel="noopener noreferrer" aria-label="opeq on X (opens in a new tab)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
+  <a class="x-link" href="https://t.me/opeqio" target="_blank" rel="noopener noreferrer" aria-label="opeq on Telegram (opens in a new tab)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.7 11.1 20.5 4.2c.9-.3 1.6.2 1.3 1.5l-3 14.2c-.2 1-.8 1.2-1.7.8l-4.6-3.4-2.2 2.1c-.3.3-.5.5-1 .5l.3-4.7 8.6-7.8c.4-.3-.1-.5-.6-.2L7 13.9l-4.5-1.4c-1-.3-1-1 .2-1.4z"/></svg></a>
   <a class="foot-link" href="privacy.html">Privacy</a>
 </footer>
-<dialog class="wl-modal" id="wl-dialog" aria-labelledby="wl-title">
-  <div class="wl-box">
-    <button class="wl-x mono" id="wl-close" type="button" aria-label="Close">close</button>
-    <p class="silk"><span>BOOT QUEUE</span><b>join the waitlist</b></p>
-    <h2 id="wl-title">Three steps and you are on the list.</h2>
-    <p class="lead">opeq is live on Solana mainnet in beta. Join the list for updates. Each step unlocks the next.</p>
-    <ol class="wl-steps">
-      <li class="wl-step" id="wl-s1">
-        <span class="wl-led" aria-hidden="true"></span><span class="wl-chip mono" aria-hidden="true">LAN</span>
-        <div class="wl-body">
-          <h2>Follow @opeqio on X</h2>
-          <div id="wl-follow-form">
-            <p class="hint">Launch news and the mainnet date go out there first.</p>
-            <div class="row"><a class="btn btn-line" href="https://x.com/intent/follow?screen_name=opeqio" target="_blank" rel="noopener noreferrer">Follow @opeqio</a></div>
-            <label class="f" for="wl-handle">Your X username</label>
-            <div class="wl-inline"><input type="text" id="wl-handle" placeholder="@yourname" maxlength="16" spellcheck="false" autocomplete="off"><button class="btn btn-solid" type="button" id="wl-handle-save">Continue</button></div>
-            <div class="err-text" id="wl-handle-err" role="alert"></div>
-          </div>
-          <p class="wl-done hidden" id="wl-followed">Following as <b id="wl-handle-out"></b> <button class="wl-edit" type="button" id="wl-handle-edit">Change</button></p>
-        </div>
-      </li>
-      <li class="wl-step wl-locked" id="wl-s2">
-        <span class="wl-led" aria-hidden="true"></span><span class="wl-chip mono" aria-hidden="true">ANTENNA</span>
-        <div class="wl-body">
-          <h2>Post about opeq</h2>
-          <div id="wl-post-form">
-            <p class="hint">Share this post on X, then paste its link below.</p>
-            <blockquote class="wl-quote" id="wl-quote"></blockquote>
-            <div class="row"><a class="btn btn-line" id="wl-post-link" href="https://x.com/intent/post" target="_blank" rel="noopener noreferrer">Post on X</a></div>
-            <label class="f" for="wl-url">Link to your post</label>
-            <div class="wl-inline"><input type="text" id="wl-url" placeholder="https://x.com/yourname/status/..." maxlength="200" spellcheck="false" autocomplete="off"><button class="btn btn-solid" type="button" id="wl-url-save">Continue</button></div>
-            <div class="err-text" id="wl-url-err" role="alert"></div>
-          </div>
-          <p class="wl-done hidden" id="wl-posted">Post added. <a id="wl-post-out" target="_blank" rel="noopener noreferrer">View it on X</a> <button class="wl-edit" type="button" id="wl-url-edit">Change</button></p>
-        </div>
-      </li>
-      <li class="wl-step wl-locked" id="wl-s3">
-        <span class="wl-led" aria-hidden="true"></span><span class="wl-chip mono" aria-hidden="true">MOUNT</span>
-        <div class="wl-body">
-          <h2>Join with your email</h2>
-          <form id="wl-form" novalidate>
-            <label class="f" for="wl-email">Email address</label>
-            <input type="email" id="wl-email" autocomplete="email" maxlength="254" spellcheck="false">
-            <input type="text" class="wl-trap" id="wl-company" tabindex="-1" autocomplete="off" aria-hidden="true">
-            <div class="row"><button class="btn btn-solid" type="submit" id="wl-join">Join the waitlist</button></div>
-            <div class="err-text" id="wl-err" role="alert"></div>
-          </form>
-          <p class="wl-done hidden" id="wl-joined">You're on the list.</p>
-        </div>
-      </li>
-    </ol>
-    <p class="wl-all hidden" id="wl-all">All done. We will write to you with opeq updates.</p>
-  </div>
-</dialog>
 <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Section">
   <button class="close mono" id="close" type="button" aria-label="Close section">close</button>
   <div class="drawer-in" id="drawer-in">
@@ -102,8 +47,8 @@
       <div><dt>Signatures per tree</dt><dd>688, then rekey</dd></div>
       <div><dt>Protocol changes</dt><dd>none</dd></div>
     </dl>
-    <p>opeq is live on mainnet in beta. Start with small amounts, and leave your email for updates.</p>
-    <div class="actions"><a class="btn btn-solid" href="waitlist.html">Join the waitlist</a><a class="btn btn-line" href="app.html">Try it on devnet</a><a class="btn btn-line" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer">Add to Chrome</a></div>
+    <p>opeq is live on mainnet in beta. Start with small amounts.</p>
+    <div class="actions"><a class="btn btn-solid" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer"><svg class="ico-chrome" viewBox="-1 -1 2 2" aria-hidden="true"><path d="M0 0L.866-.5A1 1 0 0 0-.866-.5Z" fill="#db4437"/><path d="M0 0L-.866-.5A1 1 0 0 0 0 1Z" fill="#0f9d58"/><path d="M0 0L0 1A1 1 0 0 0 .866-.5Z" fill="#f4b400"/><circle r=".46" fill="#fff"/><circle r=".36" fill="#4285f4"/></svg>Add to Chrome</a><a class="btn btn-line" href="app.html">Try it on devnet</a></div>
   </section>
   <section class="panel" id="p-m2" hidden aria-labelledby="h-m2">
     <p class="crumb mono" id="h-m2">M.2 / the problem</p>

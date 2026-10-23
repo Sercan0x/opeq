@@ -257,3 +257,5 @@ input[type=text], input[type=password], textarea, select { padding: 8px 11px; fo
 .wallet-btn { gap: 10px; justify-content: flex-start; }
 .wicon { width: 18px; height: 18px; border-radius: 5px; flex: 0 0 auto; }
 .fee-name { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #fff; margin: 0 0 4px; }
+
+.ico-chrome { width: 15px; height: 15px; vertical-align: -3px; margin-right: 7px; }

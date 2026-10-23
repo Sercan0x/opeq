@@ -29,7 +29,7 @@ Every Solana wallet today is protected by Ed25519. A large enough quantum comput
 - One active copy per wallet: a recovered copy must choose *Use on this device* (a rekey) before it signs, and any other copy then stops signing. This prevents two installs from ever signing the same one-time key
 - Build: `python3 build_extension.py` (output in `build/extension`, `--zip` for the store package)
 
-The mainnet listing on the Chrome Web Store is still in review. Until it is public you can build the extension yourself and load `build/extension-mainnet` with *Load unpacked* on `chrome://extensions`. A mainnet build checks the program, its governance and the admin vault on chain:
+Install the mainnet wallet from the [Chrome Web Store](https://chromewebstore.google.com/detail/opeq-wallet/ppddghgloaomicpgkpodjenaogmhhijj), or build the extension yourself and load `build/extension-mainnet` with *Load unpacked* on `chrome://extensions`. A mainnet build checks the program, its governance and the admin vault on chain:
 
 ```
 python3 build_extension.py --net mainnet --version 1.0.0 \
@@ -40,10 +40,10 @@ python3 build_extension.py --net mainnet --version 1.0.0 \
   --rpc https://api.mainnet-beta.solana.com
 ```
 
-The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store (version 1.0.0) file for file. Once the listing is public you can check this against your own install. Chrome keeps it in its profile folder under `Extensions/ppddghgloaomicpgkpodjenaogmhhijj/1.0.0_0` (on Windows `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\...`). The store adds its own `_metadata` signature folder and store fields such as `update_url` to `manifest.json`; every other file is identical:
+The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store (version 1.0.0) file for file. To compare it with your own install, Chrome keeps the store copy in its profile folder under `Extensions/ppddghgloaomicpgkpodjenaogmhhijj/1.0.0_0` (on Windows `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\...`). The store adds its own `_metadata` signature folder, adds store fields such as `update_url` to `manifest.json`, and re-encodes the icon images, so leave those out:
 
 ```
-diff -r --exclude=_metadata --exclude=manifest.json build/extension-mainnet <installed folder>
+diff -r --exclude=_metadata --exclude=manifest.json --exclude=icons build/extension-mainnet <installed folder>
 ```
 
 A self-built copy has its own extension id, and `rpc.opeq.io` will only serve the store build. Set your own mainnet RPC in the Keys tab (the wallet checks that it really is mainnet). The words, the vault and every signature stay on your machine either way.

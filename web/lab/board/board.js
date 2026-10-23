@@ -1,5 +1,4 @@
 import { bonkScene } from "../../lib/bonk.js";
-import { initWaitlist } from "../../lib/waitlist.js";
 import { playIntro, dropCover } from "../../lib/intro.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -289,22 +288,6 @@ window.addEventListener("keydown", (e) => {
 const start = location.hash.slice(1);
 if (parts[start]) open(start, false);
 
-const dialog = document.getElementById("wl-dialog");
-let wlReady = false;
-function openWaitlist(e) {
-  if (e) e.preventDefault();
-  if (!wlReady) { initWaitlist(); wlReady = true; }
-  if (active) close();
-  if (!dialog.open) dialog.showModal();
-  history.replaceState(null, "", "#waitlist");
-}
-function closeWaitlist() {
-  if (dialog.open) dialog.close();
-}
-dialog.addEventListener("close", () => { if (location.hash === "#waitlist") history.replaceState(null, "", location.pathname); });
-dialog.addEventListener("click", (e) => { if (e.target === dialog) closeWaitlist(); });
-document.getElementById("wl-close").addEventListener("click", closeWaitlist);
-for (const a of document.querySelectorAll('a[href="waitlist.html"]')) a.addEventListener("click", openWaitlist);
 function cameFromSite() {
   try {
     const inside = sessionStorage.getItem("opeq:inside") === "1";
@@ -315,5 +298,4 @@ function cameFromSite() {
 const booted = cameFromSite() ? (dropCover(), Promise.resolve()) : playIntro();
 booted.then(() => {
   if (!reduce) svg.classList.add("powerup");
-  if (location.hash === "#waitlist") openWaitlist();
 });

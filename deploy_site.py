@@ -23,9 +23,9 @@ DATABASE = "opeq-waitlist"
 ZONE = "opeq.io"
 HOSTS = ["opeq.io", "www.opeq.io"]
 API = "https://api.cloudflare.com/client/v4"
-BOARD_FILES = ["index.html", "board.css", "board.js", "modal.css", "app.html", "app.css", "app.js", "waitlist.html", "waitlist.css", "waitlist.js", "privacy.html", "privacy.css", "privacy.js"]
+BOARD_FILES = ["index.html", "board.css", "board.js", "app.html", "app.css", "app.js", "privacy.html", "privacy.css", "privacy.js"]
 SKIP_ASSETS = {".ttf"}
-SKIP_LIB = {"pixelfont.js", "sprites.js"}
+SKIP_LIB = {"pixelfont.js", "sprites.js", "waitlist.js"}
 
 
 def read_kv(path):

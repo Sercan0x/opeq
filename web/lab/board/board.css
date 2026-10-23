@@ -223,3 +223,5 @@ pre { margin: 4px 0 0; padding: 12px 14px; border: 1px solid var(--rule); border
 @media (max-width: 520px) { .params > div { grid-template-columns: 1fr; gap: 0; } }
 @media (max-width: 760px) { .cta-store { display: none; } }
 @media (max-width: 420px) { .bar .cta { padding: 8px 10px; } }
+
+.ico-chrome { width: 15px; height: 15px; vertical-align: -3px; margin-right: 7px; }
