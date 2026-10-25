@@ -48,6 +48,28 @@ diff -r --exclude=_metadata --exclude=manifest.json --exclude=icons build/extens
 
 A self-built copy has its own extension id, and `rpc.opeq.io` will only serve the store build. Set your own mainnet RPC in the Keys tab (the wallet checks that it really is mainnet). The words, the vault and every signature stay on your machine either way.
 
+## Android app (in progress)
+
+The Android app runs the same wallet code as the mainnet extension inside a full-screen WebView. The wallet files ship inside the APK and load from a private `https://app.opeq.io` origin that exists only in the app (it has no DNS record), so no server can change the code a phone runs. The app has one permission, `INTERNET`, blocks screenshots and screen recording, turns off backups, file access and JavaScript bridges, and opens outside links in the phone's browser. It needs an Android System WebView with Ed25519 support (Chrome 137 or later) and shows an update screen on older ones.
+
+There is no Android SDK, Gradle or Java in this repository either. The APK is written by plain Python:
+
+| File | Purpose |
+|---|---|
+| `dex.py` | Dalvik bytecode assembler and DEX writer |
+| `axml.py`, `arsc.py` | binary `AndroidManifest.xml` and resource table writers |
+| `apk.py` | zip writer with alignment and APK Signature Scheme v2 (ECDSA P-256) |
+| `build_android.py` | the activity and WebView client, Android wording, icon, build |
+| `android/` | the `chrome.storage` stand-in and phone layout |
+| `test_android.py` | decodes the DEX, manifest, resources and signature independently |
+
+```
+python3 build_extension.py --net mainnet --version 1.0.0 ... --rpc https://rpc.opeq.io
+python3 build_android.py --wallet --out build/opeq-android.apk --new-key
+```
+
+`--new-key` creates `~/.opeq-android-key.pem` once. Keep a copy offline: Android only installs updates signed by the same key. `--allow-screenshots` makes a test build (the file name must contain `test`).
+
 ## USB edition (beta)
 
 The USB edition runs straight from a USB stick on Windows: plug it in, double-click `OPEQ`, and the wallet opens in its own Chrome or Edge window. Nothing is installed and the store extension is not involved. It is built from the mainnet extension by `build_usb.py`:

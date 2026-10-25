@@ -23,7 +23,7 @@ function allowedOrigin(origin) {
   if (!origin) return null;
   if (origin === "chrome-extension://ppddghgloaomicpgkpodjenaogmhhijj" || origin === "chrome-extension://dlbelakgenghdmdebidomjiaghlkleni") return origin;
   if (origin === "http://127.0.0.1:47821") return origin;
-  if (origin === "https://opeq.io" || origin === "https://www.opeq.io") return origin;
+  if (origin === "https://opeq.io" || origin === "https://www.opeq.io" || origin === "https://app.opeq.io") return origin;
   return null;
 }
 

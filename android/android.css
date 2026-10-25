@@ -1,0 +1,7 @@
+.android-block { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 32px 24px; }
+.android-block h2 { margin: 0; font-size: 24px; }
+.android-block p { margin: 0; line-height: 1.5; color: var(--text-2, #b4bdc9); }
+.android-block .btn { align-self: flex-start; }
+.rig { grid-template-columns: minmax(0, 1fr); padding: 12px 12px 28px; }
+.rig > .io { order: 2; }
+.bar .back { display: none; }
