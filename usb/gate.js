@@ -85,7 +85,10 @@ async function boot() {
   globalThis.OPEQ_USB = { store: new FileStore(file), local: new LocalArea(file), ls: new LastSeen(file), file };
   watch(file, () => {
     locked("The USB was removed, so the wallet locked. Plug it back in and double-click OPEQ again.");
-    setTimeout(() => location.replace("about:blank"), 1500);
+    setTimeout(() => {
+      try { window.close(); } catch {}
+      location.replace("about:blank");
+    }, 1500);
   });
   $("usb-gate").classList.add("hidden");
   document.body.classList.remove("usb-locked");
