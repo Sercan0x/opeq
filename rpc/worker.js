@@ -9,6 +9,7 @@ const FALLBACK = "https://api.mainnet-beta.solana.com";
 function allowedOrigin(origin) {
   if (!origin) return null;
   if (origin === "chrome-extension://ppddghgloaomicpgkpodjenaogmhhijj") return origin;
+  if (origin === "http://127.0.0.1:47821") return origin;
   if (origin === "https://opeq.io" || origin === "https://www.opeq.io") return origin;
   return null;
 }

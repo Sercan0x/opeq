@@ -48,6 +48,29 @@ diff -r --exclude=_metadata --exclude=manifest.json --exclude=icons build/extens
 
 A self-built copy has its own extension id, and `rpc.opeq.io` will only serve the store build. Set your own mainnet RPC in the Keys tab (the wallet checks that it really is mainnet). The words, the vault and every signature stay on your machine either way.
 
+## USB edition (beta)
+
+The USB edition runs straight from a USB stick on Windows: plug it in, double-click `OPEQ`, and the wallet opens in its own Chrome or Edge window. Nothing is installed and the store extension is not involved. It is built from the mainnet extension by `build_usb.py`:
+
+- `OPEQ.cmd` starts `app/opeq.ps1` with PowerShell. Windows blocks downloaded scripts by default, so the launcher passes `-ExecutionPolicy Bypass` for that one run; it changes no system setting.
+- `opeq.ps1` listens on `127.0.0.1:47821` only. It serves the wallet files and reads and writes `data/opeq-wallet.json` on the stick. Every launch makes a random token that the page must send; requests with another `Host` or `Origin` are refused before any body is read, each connection gets 2 seconds in total, and writes go to a temporary file that replaces the wallet file in one step (a half-written save is recovered on the next start).
+- The browser opens with `--app` and a throwaway profile in `%TEMP%` with password saving off, deleted when the window closes. Pulling the stick out closes the window.
+- The vault, the one-time key counter, the activity log and settings all live in that one file. There is no "stay unlocked" copy, the wallet locks after 3 minutes without activity or 2 minutes in the background, the vault password is stretched with 2,000,000 PBKDF2 rounds, and a custom RPC is kept for the session only.
+- `OPEQ.cmd` and `opeq.ps1` notice when they run from inside the zip and say to extract it first. The page warns when the folder sits on the computer's own drive instead of a stick, and the activation screen checks the activation address every few seconds and says when the SOL has arrived.
+- A one-time key whose transaction expired is burned on chain, so a wallet file that is later copied or rolled back cannot sign with it again. The wallet file also remembers the stick's volume serial and warns when it shows up on a different stick.
+
+### Code check
+
+The stick carries code as well as the wallet, so a computer with malware could change the code on the stick. At every start `opeq.ps1` hashes every file it ships with and compares them with `https://opeq.io/usb/<version>.json`, which `build_usb.py` writes to `web/usb/` and the site deploy publishes. If any file differs, or an extra file appears, the wallet refuses to open and lists the files. This catches untargeted changes; it runs from the stick itself, so a careful attacker can change the check too. The README on the stick tells users to plug it only into trusted computers and recommends a stick with a write-protect switch.
+
+The key is still opened on the computer for the moment of signing, so this protects a wallet at rest, not against malware running on the computer while you sign. A hardware signer is a separate, later step.
+
+```
+python3 build_usb.py --zip
+```
+
+This writes `build/OPEQ-USB/` (`OPEQ.cmd`, `app/`, an empty `data/` and `README.txt` with the steps), `build/OPEQ-USB.zip` and `web/usb/<version>.json`. The zip is reproducible: the same commit always gives the same SHA-256.
+
 ## How it works
 
 | Piece | Choice |

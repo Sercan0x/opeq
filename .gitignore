@@ -14,3 +14,5 @@ legacy-qsol/
 waitlist/dev.db
 waitlist/.dev-admin
 build/site/
+*.pem
+*.pem.crt

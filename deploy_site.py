@@ -88,6 +88,12 @@ def build():
     for n in os.listdir(os.path.join(WEB, "lib")):
         if n.endswith(".js") and n not in SKIP_LIB:
             shutil.copy(os.path.join(WEB, "lib", n), os.path.join(DIST, "lib"))
+    usb = os.path.join(WEB, "usb")
+    if os.path.isdir(usb):
+        os.makedirs(os.path.join(DIST, "usb"))
+        for n in os.listdir(usb):
+            if n.endswith(".json"):
+                shutil.copy(os.path.join(usb, n), os.path.join(DIST, "usb"))
     os.makedirs(os.path.join(DIST, "assets"))
     for n in os.listdir(os.path.join(WEB, "assets")):
         if os.path.splitext(n)[1] not in SKIP_ASSETS:
