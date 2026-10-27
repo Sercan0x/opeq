@@ -1,3 +1,4 @@
+try { sessionStorage.setItem("opeq:inside", "1"); } catch {}
 import { Rpc, b58decode, isOnCurve, pubkey } from "../../lib/solana.js";
 import { KNOWN_MAINNET, TOKEN, TOKEN22, tokenLabel } from "../../lib/tokens.js";
 

@@ -38,6 +38,11 @@ p { margin: 0 0 1em; }
 #board { width: min(100%, 1400px, calc((100vh - var(--top, 56px) - 66px) * 1.5897)); height: auto; display: block; overflow: visible; }
 .foot { position: relative; height: 56px; display: flex; align-items: center; justify-content: center; }
 .foot-link { position: absolute; right: clamp(16px, 3vw, 32px); font-size: 13px; color: var(--text-2); text-decoration: none; transition: color 0.2s; }
+.foot-links { position: absolute; right: clamp(16px, 3vw, 32px); display: flex; gap: 18px; }
+.foot-links .foot-link { position: static; }
+.cta-scan { border-color: rgba(167, 139, 250, 0.6); background: rgba(139, 92, 246, 0.18); }
+.cta-scan:hover { border-color: #b9a3ff; background: rgba(139, 92, 246, 0.3); }
+.ico-usb { width: 30px; height: 10px; margin-right: 8px; vertical-align: -1px; }
 .foot-link:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .x-link { display: inline-flex; padding: 8px; color: var(--text-2); transition: color 0.2s; }
 .x-link svg { width: 20px; height: 20px; fill: currentColor; }
@@ -221,7 +226,7 @@ pre { margin: 4px 0 0; padding: 12px 14px; border: 1px solid var(--rule); border
 .params dd { margin: 0; color: var(--text-2); }
 .params dd span { display: block; padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; }
 @media (max-width: 520px) { .params > div { grid-template-columns: 1fr; gap: 0; } }
-@media (max-width: 1240px) { .bar > .cta-ghost { display: none; } }
+@media (max-width: 1240px) { .bar > .cta-scan { display: none; } }
 @media (max-width: 760px) { .cta-store, .cta-usb { display: none; } }
 @media (max-width: 420px) { .bar .cta { padding: 8px 10px; } }
 
