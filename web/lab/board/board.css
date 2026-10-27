@@ -231,3 +231,5 @@ pre { margin: 4px 0 0; padding: 12px 14px; border: 1px solid var(--rule); border
 @media (max-width: 420px) { .bar .cta { padding: 8px 10px; } }
 
 .ico-chrome { width: 15px; height: 15px; vertical-align: -3px; margin-right: 7px; }
+@media (max-width: 640px) { .foot-long { display: none; } }
+@media (max-width: 460px) { .foot-devnet { display: none; } }
