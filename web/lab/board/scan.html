@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://rpc.opeq.io https://lite-api.jup.ag; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Quantum check for Solana wallets</title>
+<meta name="description" content="Paste a Solana address and see how much sits behind a public key that a large quantum computer could break.">
+<meta name="theme-color" content="#070b11">
+<link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="scan.css">
+<script type="module" src="scan.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html"><img src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <a class="back" href="index.html">Back to the board</a>
+</header>
+
+<main class="scan">
+  <h1>Is your Solana wallet quantum-safe?</h1>
+  <p class="lede">A normal Solana address is an Ed25519 public key. It has been public since the day the wallet was made, and a large enough quantum computer could work out its private key from it. Paste an address to see what sits behind it.</p>
+
+  <form class="probe" id="probe" autocomplete="off">
+    <label class="sr" for="addr">Solana address</label>
+    <input id="addr" type="text" spellcheck="false" placeholder="Paste a Solana address" inputmode="text">
+    <button class="btn btn-solid" id="go" type="submit">Check</button>
+  </form>
+  <p class="err" id="err" role="alert"></p>
+
+  <section class="result hidden" id="result" aria-live="polite">
+    <p class="tag mono" id="r-tag"></p>
+    <h2 id="r-title"></h2>
+    <p class="say" id="r-say"></p>
+    <div class="total hidden" id="r-total"><span id="r-usd"></span><small id="r-usd-note"></small></div>
+    <ul class="assets" id="r-assets"></ul>
+    <p class="more" id="r-more"></p>
+    <div class="actions" id="r-actions">
+      <a class="btn btn-solid" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer">Get OPEQ for Chrome</a>
+      <a class="btn btn-line" href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.0.1" target="_blank" rel="noopener noreferrer">OPEQ on a USB drive</a>
+      <button class="btn btn-line" id="r-copy" type="button">Copy result</button>
+    </div>
+  </section>
+
+  <section class="notes">
+    <h2>How this check works</h2>
+    <p>The page decodes the address and tests whether it is a point on the Ed25519 curve. A point on the curve is a public key, so a private key exists behind it. An address off the curve belongs to a program and has no private key of its own.</p>
+    <p>Balances come from Solana mainnet through rpc.opeq.io, and dollar values from Jupiter's price API. The address you paste is sent to them to look up the balance. OPEQ does not store it, and it never leaves this page in any other way.</p>
+    <p>Nothing here means a quantum computer can do this today. It means the key is already public, so the coins are waiting for the day one can.</p>
+  </section>
+</main>
+</body>
+</html>
