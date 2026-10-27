@@ -40,7 +40,7 @@ for (const [x, y] of [[166, 56], [1194, 56], [166, 724], [1194, 724], [720, 724]
 const vias = el("g", { class: "vias" }, board);
 for (let x = 300; x < 1200; x += 26) for (let y = 690; y < 735; y += 22) el("circle", { cx: x, cy: y, r: 1.6 }, vias);
 for (let x = 940; x < 1100; x += 22) for (let y = 90; y < 300; y += 22) el("circle", { cx: x, cy: y, r: 1.6 }, vias);
-el("text", { x: 1196, y: 742, "text-anchor": "end", class: "silk silk-dim" }, board, "OPEQ BOARD REV 1.1  SOLANA DEVNET");
+el("text", { x: 1196, y: 742, "text-anchor": "end", class: "silk silk-dim" }, board, "OPEQ BOARD REV 1.1  SOLANA MAINNET");
 
 const traceLayer = el("g", {}, svg);
 const traces = [];
