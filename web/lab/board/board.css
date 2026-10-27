@@ -38,6 +38,8 @@ p { margin: 0 0 1em; }
 #board { width: min(100%, 1400px, calc((100vh - var(--top, 56px) - 66px) * 1.5897)); height: auto; display: block; overflow: visible; }
 .foot { position: relative; height: 56px; display: flex; align-items: center; justify-content: center; }
 .foot-link { position: absolute; right: clamp(16px, 3vw, 32px); font-size: 13px; color: var(--text-2); text-decoration: none; transition: color 0.2s; }
+.foot-links { position: absolute; right: clamp(16px, 3vw, 32px); display: flex; gap: 18px; }
+.foot-links .foot-link { position: static; }
 .foot-link:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .x-link { display: inline-flex; padding: 8px; color: var(--text-2); transition: color 0.2s; }
 .x-link svg { width: 20px; height: 20px; fill: currentColor; }
@@ -226,3 +228,4 @@ pre { margin: 4px 0 0; padding: 12px 14px; border: 1px solid var(--rule); border
 @media (max-width: 420px) { .bar .cta { padding: 8px 10px; } }
 
 .ico-chrome { width: 15px; height: 15px; vertical-align: -3px; margin-right: 7px; }
+@media (max-width: 460px) { .foot-links .foot-link[href="scan.html"] { display: none; } }
