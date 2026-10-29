@@ -16,3 +16,5 @@ waitlist/.dev-admin
 build/site/
 *.pem
 *.pem.crt
+evm/out/
+evm/cache/
