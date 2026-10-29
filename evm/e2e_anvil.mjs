@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import * as E from "../web/lib/evmwots.js";
 import * as S from "../web/lib/secp256k1.js";
 import { signTx1559, hexToBytes, bytesToHex, create2Address } from "../web/lib/evmtx.js";
@@ -19,7 +20,9 @@ async function rpc(method, params = []) {
   return j.result;
 }
 
-const master = sha256(enc.encode("opeq evm anvil e2e master"));
+const masterFile = process.env.OPEQ_EVM_MASTER_FILE;
+const master = masterFile ? Uint8Array.from(Buffer.from(readFileSync(masterFile.replace(/^~/, homedir()), "utf8").trim(), "hex")) : sha256(enc.encode("opeq evm anvil e2e master"));
+if (master.length !== 32) throw new Error("master must be 32 bytes");
 const feeKey = S.feeKeyFromMaster(master);
 const fee = S.addressOf(feeKey);
 const chainId = Number(await rpc("eth_chainId"));

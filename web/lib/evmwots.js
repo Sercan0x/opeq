@@ -119,7 +119,7 @@ function u64be(v) {
   return out;
 }
 
-export const CHAIN_SLOTS = Object.freeze({ 8453: 0, 84532: 1, 31337: 2 });
+export const CHAIN_SLOTS = Object.freeze({ 8453: 0, 84532: 1, 31337: 2, 1: 3, 42161: 4, 4663: 5, 421614: 6, 11155111: 7 });
 
 export function chainSlot(chainId) {
   const s = CHAIN_SLOTS[chainId];
