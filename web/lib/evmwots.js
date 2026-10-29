@@ -17,6 +17,7 @@ const T_CHAIN = 0, T_LEAF = 1, T_NODE = 2, T_PRF = 3;
 const enc = new TextEncoder();
 
 export const TAG_EXEC = keccak256(enc.encode("opeq/evm/exec/v1"));
+export const CREATE_SELECTOR = keccak256(enc.encode("create(bytes16,bytes16)")).slice(0, 4);
 export const TAG_REKEY = keccak256(enc.encode("opeq/evm/rekey/v1"));
 export const EXECUTE_SELECTOR = keccak256(enc.encode("execute((address,uint256,bytes)[],uint32,uint64,uint32,bytes16,bytes)")).slice(0, 4);
 export const REKEY_SELECTOR = keccak256(enc.encode("rekey(bytes16,bytes16,uint32,uint64,uint32,bytes16,bytes)")).slice(0, 4);
@@ -112,17 +113,42 @@ export class EvmTreeKey {
 
 function u32be(v) { return new Uint8Array([(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff]); }
 
-export function evmTreeSeeds(master, epoch) {
-  if (!Number.isInteger(epoch) || epoch < 0 || epoch > 0xffffffff) throw new Error("epoch out of range");
+function u64be(v) {
+  const b = BigInt(v), out = new Uint8Array(8);
+  for (let i = 0; i < 8; i++) out[i] = Number((b >> BigInt(56 - 8 * i)) & 0xffn);
+  return out;
+}
+
+export const CHAIN_SLOTS = Object.freeze({ 8453: 0, 84532: 1, 31337: 2 });
+
+export function chainSlot(chainId) {
+  const s = CHAIN_SLOTS[chainId];
+  if (s === undefined) throw new Error("chain " + chainId + " has no identity slot");
+  return s;
+}
+
+export function identitySeeds(master) {
   return {
-    skSeed: sha256(enc.encode("opeq/evm/tree/sk/v1"), master, u32be(epoch)),
-    pubSeed: sha256(enc.encode("opeq/evm/tree/pub/v1"), master, u32be(epoch)).slice(0, N),
+    skSeed: sha256(enc.encode("opeq/evm/tree/sk/v1"), master, u32be(0)),
+    pubSeed: sha256(enc.encode("opeq/evm/tree/pub/v1"), master, u32be(0)).slice(0, N),
   };
 }
 
-export function deriveEvmTree(master, epoch, progress) {
-  const { skSeed, pubSeed } = evmTreeSeeds(master, epoch);
+export function chainTreeSeeds(master, chainId, epoch, pubSeed) {
+  if (!Number.isInteger(epoch) || epoch < 1 || epoch > 0xffffffff) throw new Error("chain tree epoch must be 1 or more");
+  if (!(pubSeed instanceof Uint8Array) || pubSeed.length !== N) throw new Error("pubSeed must be 16 bytes");
+  chainSlot(chainId);
+  return { skSeed: sha256(enc.encode("opeq/evm/tree/sk/v2"), master, u64be(chainId), u32be(epoch), pubSeed), pubSeed: pubSeed.slice() };
+}
+
+export function deriveIdentityTree(master, progress) {
+  const { skSeed, pubSeed } = identitySeeds(master);
   return EvmTreeKey.generate(skSeed, pubSeed, progress);
+}
+
+export function deriveChainTree(master, chainId, epoch, pubSeed, progress) {
+  const s = chainTreeSeeds(master, chainId, epoch, pubSeed);
+  return EvmTreeKey.generate(s.skSeed, s.pubSeed, progress);
 }
 
 function word(n) {
@@ -218,4 +244,8 @@ export function encodeRekey(newPubSeed, newRoot, leaf, deadline, salt, rnd, proo
     leftWord(newPubSeed), leftWord(newRoot), word(leaf), word(deadline), word(salt), leftWord(rnd), word(32 * 7),
     dynBytes(proof),
   );
+}
+
+export function encodeCreate(pubSeed, root) {
+  return concat(CREATE_SELECTOR, leftWord(pubSeed), leftWord(root));
 }

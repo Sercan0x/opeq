@@ -9,6 +9,7 @@ import {OpeqFactory} from "../src/OpeqFactory.sol";
 
 contract OpeqAccountTest is Asserts {
     OpeqFactory factory;
+    Signer identity;
     Signer signer;
     OpeqAccount account;
     address payable bob = payable(address(0xB0B));
@@ -17,9 +18,20 @@ contract OpeqAccountTest is Asserts {
     function setUp() public {
         vm.warp(1_800_000_000);
         factory = new OpeqFactory();
-        signer = new Signer(keccak256("test words"), bytes16(keccak256("pub seed")), 4);
-        account = OpeqAccount(payable(factory.create(signer.pubSeed(), signer.root())));
+        identity = new Signer(keccak256("test words"), bytes16(keccak256("pub seed")), 3);
+        account = OpeqAccount(payable(factory.create(identity.pubSeed(), identity.root())));
         vm.deal(address(account), 10 ether);
+        signer = new Signer(keccak256("test words chain epoch 1"), bytes16(keccak256("pub seed 1")), 4);
+        _rekey(identity, signer, 2, "bootstrap rekey, slot leaf 2, salt 0");
+    }
+
+    function _rekey(Signer from, Signer to, uint32 leaf, string memory label) internal {
+        uint64 deadline = uint64(block.timestamp + 600);
+        bytes16 digest = account.rekeyDigest(to.pubSeed(), to.root(), leaf, deadline, 0, RND);
+        bytes memory proof = from.sign(leaf, digest);
+        uint256 g = gasleft();
+        account.rekey(to.pubSeed(), to.root(), leaf, deadline, 0, RND, proof);
+        emit Gas(label, g - gasleft());
     }
 
     function _send(uint256 amount) internal pure returns (OpeqAccount.Call[] memory calls) {
@@ -62,8 +74,19 @@ contract OpeqAccountTest is Asserts {
     }
 
     function testFactoryAddressIsDeterministic() public view {
-        assertTrue(factory.predict(signer.pubSeed(), signer.root()) == address(account), "predicted address");
-        assertTrue(account.root() == signer.root(), "root stored");
+        assertTrue(factory.predict(identity.pubSeed(), identity.root()) == address(account), "predicted address");
+        assertTrue(account.root() == signer.root(), "chain tree root stored after bootstrap");
+        assertEq(account.epoch(), 1, "bootstrap moved to epoch 1");
+    }
+
+    function testExecuteFromIdentityTreeIsRejected() public {
+        OpeqFactory f2 = new OpeqFactory();
+        OpeqAccount fresh = OpeqAccount(payable(f2.create(identity.pubSeed(), identity.root())));
+        OpeqAccount.Call[] memory calls = _send(1 ether);
+        uint64 deadline = uint64(block.timestamp + 600);
+        bytes memory proof = identity.sign(0, this.digestOf(fresh, calls, 0, deadline, 0));
+        vm.expectRevert(OpeqAccount.NeedsRekey.selector);
+        fresh.execute(calls, 0, deadline, 0, RND, proof);
     }
 
     function testSendEthWithoutGrinding() public {
@@ -152,14 +175,9 @@ contract OpeqAccountTest is Asserts {
     }
 
     function testRekeyMovesToNewTreeAndKeepsAddress() public {
-        Signer next = new Signer(keccak256("test words epoch 1"), bytes16(keccak256("pub seed 1")), 2);
-        uint64 deadline = uint64(block.timestamp + 600);
-        bytes16 digest = account.rekeyDigest(next.pubSeed(), next.root(), 0, deadline, 0, RND);
-        bytes memory proof = signer.sign(0, digest);
-        uint256 g = gasleft();
-        account.rekey(next.pubSeed(), next.root(), 0, deadline, 0, RND, proof);
-        emit Gas("rekey, salt 0", g - gasleft());
-        assertEq(account.epoch(), 1, "epoch moved");
+        Signer next = new Signer(keccak256("test words chain epoch 2"), bytes16(keccak256("pub seed 2")), 2);
+        _rekey(signer, next, 0, "rekey, salt 0");
+        assertEq(account.epoch(), 2, "epoch moved");
         assertEq(account.next(), 0, "counter reset");
         signer = next;
         _exec(_send(1 ether), 0, 0, "execute after rekey");

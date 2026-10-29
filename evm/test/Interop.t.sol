@@ -14,6 +14,14 @@ contract InteropTest is Asserts {
         vm.warp(Fixture.NOW);
         account = new OpeqAccount(Fixture.PUB_SEED, Fixture.ROOT);
         vm.deal(address(account), 10 ether);
+        (bool ok, uint256 used) = _call(Fixture.CALL0);
+        assertTrue(ok, "JS-signed bootstrap rekey from the identity slot accepted");
+        emit Gas("JS-signed bootstrap rekey, 4096 salts", used);
+    }
+
+    function testBootstrapMovedToChainTree() public view {
+        assertEq(account.epoch(), 1, "epoch 1 after bootstrap");
+        assertTrue(account.root() == Fixture.CHAIN_ROOT, "chain tree root stored");
     }
 
     function _call(bytes memory data) internal returns (bool ok, uint256 used) {
@@ -54,7 +62,7 @@ contract InteropTest is Asserts {
         (bool ok, uint256 used) = _call(Fixture.CALL3);
         assertTrue(ok, "JS-signed rekey accepted");
         emit Gas("JS-signed rekey, 4096 salts", used);
-        assertEq(account.epoch(), 1, "epoch moved");
+        assertEq(account.epoch(), 2, "epoch moved");
         assertTrue(account.root() == Fixture.NEXT_ROOT, "new root stored");
         (ok,) = _call(Fixture.CALL4);
         assertTrue(ok, "JS-signed execute from the new tree accepted");

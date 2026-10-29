@@ -30,6 +30,7 @@ contract OpeqAccount {
     error LeafOutOfRange();
     error BadSignature();
     error SameRoot();
+    error NeedsRekey();
     error CallFailed(uint256 index, bytes reason);
 
     constructor(bytes16 pubSeed_, bytes16 root_) {
@@ -69,6 +70,7 @@ contract OpeqAccount {
         bytes16 rnd,
         bytes calldata proof
     ) external {
+        if (epoch == 0) revert NeedsRekey();
         _window(deadline);
         if (leaf < next) revert LeafUsed();
         if (leaf >= EXEC_LIMIT) revert LeafOutOfRange();
