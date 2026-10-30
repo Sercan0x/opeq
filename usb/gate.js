@@ -68,7 +68,9 @@ async function boot() {
   if (facts.drive === "fixed") {
     await ask("This OPEQ-USB folder is on this computer's own drive, not on a USB stick, so the wallet would be saved on this computer. Copy the OPEQ-USB folder to a USB stick and double-click OPEQ there, or continue here only to try it out.", "Continue here");
   }
-  if (facts.check !== "ok") {
+  if (facts.check === "old") {
+    await ask(`A newer OPEQ USB (${String(facts.latest).slice(0, 12)}) is out. This stick runs ${String(facts.version).slice(0, 12)}, which may lack security fixes. Get the new release from github.com/Sercan0x/opeq and keep your data folder.`, "Continue with this version");
+  } else if (facts.check !== "ok") {
     await ask("OPEQ could not check its files against the official release because opeq.io did not answer. If this stick was plugged into a computer you do not trust, close this window and check it while online first.", "Continue");
   }
   const file = await new UsbFile(t).open();

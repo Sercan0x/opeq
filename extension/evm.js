@@ -114,6 +114,7 @@ async function open() {
     $("e-addr").textContent = chain.account;
     $("e-gas-addr").textContent = chain.feeAddress;
     $("e-explorer").href = explorer("address", chain.account);
+    $("e-note").textContent = `Receive only on ${NETS.map((x) => x.name).join(", ").replace(/, ([^,]*)$/, " or $1")}. Funds sent to this address on any other network cannot be used. Before a large deposit, send a small test amount: some exchanges cannot withdraw to smart-account addresses like this one.`;
     hide("e-main", false);
     hide("e-gas", false);
     await refresh();

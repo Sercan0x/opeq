@@ -23,11 +23,14 @@ REWORD = {
         ("Locked after 10 minutes without activity.", "Locked after 3 minutes without activity.", None),
         ("in the background for more than 5 minutes.", "in the background for more than 2 minutes.", 1),
         ("that RPC could not be reached from the extension", "that RPC could not be reached from OPEQ", 1),
+        ("This wallet already exists in this browser.", "This wallet already exists on this USB.", 1),
+        ("Remove this wallet from this browser?", "Remove this wallet from this USB?", 1),
     ],
     "app.html": [
         (MODULE_TAG, '<link rel="stylesheet" href="usb.css">\n<script src="shim.js"></script>\n<script type="module" src="gate.js"></script>', 1),
         ("connect-src https:;", "connect-src 'self' https:;", 1),
         ("<title>OPEQ Wallet</title>", "<title>OPEQ Wallet USB</title>", 1),
+        ("about 15 seconds, once per browser.", "about 15 seconds, once per stick.", 1),
         ("wallets in this browser", "wallets on this USB", None),
         ("Your keys are made in this browser and never leave it.", "Your keys are made on this computer and kept only on your USB.", 1),
         ("New password for this browser", "New password for this USB", 1),
@@ -153,9 +156,13 @@ def main():
     p.add_argument("--src", default=SRC)
     p.add_argument("--out", default=os.path.join(ROOT, "build", "OPEQ-USB"))
     p.add_argument("--zip", action="store_true")
+    p.add_argument("--release", action="store_true")
     a = p.parse_args()
     build(a.src, a.out)
-    print(f"built {a.out}, code check list {checklist(a.out)}")
+    if a.release:
+        print(f"built {a.out}, code check list {checklist(a.out)}")
+    else:
+        print(f"built {a.out} (test build, no code check list written; pass --release for the published build)")
     if a.zip:
         zpath = a.out.rstrip("/") + ".zip"
         pack(a.out, zpath)

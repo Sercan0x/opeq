@@ -158,7 +158,13 @@ function Check-Code() {
       if (Test-Path -LiteralPath $p) { $local[$name] = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() }
     }
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-    $resp = Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri ($CheckUrl + $version + ".json")
+    try { $resp = Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri ($CheckUrl + $version + ".json") }
+    catch {
+      $code = 0
+      if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+      if ($code -eq 404) { $result.state = "changed"; $result.changed = @("app/VERSION (" + $version + " is not an official release)"); return $result }
+      throw
+    }
     $list = ($resp.Content | ConvertFrom-Json).files
     $want = @{}
     foreach ($p in $list.PSObject.Properties) { $want[$p.Name] = [string]$p.Value }
@@ -166,6 +172,12 @@ function Check-Code() {
     foreach ($k in $local.Keys) { if (-not $want.ContainsKey($k) -or $want[$k] -ne $local[$k]) { $changed += $k } }
     foreach ($k in $want.Keys) { if (-not $local.ContainsKey($k)) { $changed += $k } }
     if ($changed.Count) { $result.state = "changed"; $result.changed = @($changed | Sort-Object) } else { $result.state = "ok" }
+    if ($result.state -eq "ok") {
+      try {
+        $latest = ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri ($CheckUrl + "latest.json")).Content | ConvertFrom-Json).version
+        if ($latest -match '^[0-9]+\.[0-9]+\.[0-9]+$' -and ([version]$latest -gt [version]$version)) { $result.state = "old"; $result.latest = $latest }
+      } catch {}
+    }
   } catch {
     if ($result.state -ne "changed") { $result.state = "offline" }
   }
@@ -261,7 +273,7 @@ try { $listener.Start() } catch {
 
 $check = Check-Code
 $disk = Disk-Facts
-$Info = (@{ volume = $disk.volume; drive = $disk.drive; check = $check.state; version = $check.version; changed = @($check.changed | Select-Object -First 20) } | ConvertTo-Json -Compress)
+$Info = (@{ volume = $disk.volume; drive = $disk.drive; check = $check.state; version = $check.version; latest = $check.latest; changed = @($check.changed | Select-Object -First 20) } | ConvertTo-Json -Compress)
 
 $browser = $null
 $profileDir = $null

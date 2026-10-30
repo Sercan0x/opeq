@@ -192,6 +192,8 @@ export class EvmChain {
   }
 
   async put(r) {
+    const old = await this.store.get(r.id);
+    if (old && old.epoch === r.epoch && Array.isArray(old.used) && old.used.some((l) => !(r.used || []).includes(l))) throw new Error("refusing to forget a one-time key that was already used");
     await V.signRecord(this.macKey, r);
     await this.store.put(r);
     return r;
@@ -280,6 +282,7 @@ export class EvmChain {
   async setup(progress, step = () => {}) {
     await this.checkNetwork();
     return this.lock(async () => {
+      if ((await this.rpc.code(E.CREATE2_DEPLOYER)) === "0x") throw new Error("this network has no standard CREATE2 deployer, so OPEQ cannot be set up here");
       const fcode = await this.rpc.code(this.factory);
       if (fcode === "0x") {
         step("deploying the OPEQ factory on this network");

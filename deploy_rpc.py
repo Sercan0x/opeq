@@ -51,6 +51,11 @@ def deploy():
     if not evm and "--public-evm" not in sys.argv:
         raise SystemExit(f"{EVM_FILE} is missing; the EVM routes would fall back to the same public RPCs the wallet uses as its second source. Pass --public-evm only if that is what you want")
     if evm:
+        from urllib.parse import urlparse
+        checks = {"mainnet.base.org", "arb1.arbitrum.io", "rpc.mainnet.chain.robinhood.com", "ethereum-rpc.publicnode.com"}
+        same = sorted(c for c, urls in json.loads(evm).items() for u in urls if urlparse(u).hostname in checks)
+        if same:
+            raise SystemExit(f"chains {same} use the wallet's own second-source RPC as the upstream; the two sources would no longer be independent")
         missing = sorted({"1", "8453", "42161", "4663"} - set(json.loads(evm)))
         if missing and "--public-evm" not in sys.argv:
             raise SystemExit(f"{EVM_FILE} has no private endpoint for chains {missing}; add them or pass --public-evm")

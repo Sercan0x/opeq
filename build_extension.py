@@ -186,6 +186,13 @@ def build(args):
                     if hit:
                         raise SystemExit(f"devnet leftovers {hit} in mainnet build: {n}")
     if cfg["mainnet"]:
+        ids = sorted(n["chainId"] for n in cfg["evm"])
+        if ids != [1, 4663, 8453, 42161] or any(not (n["rpc"].startswith("https://rpc.opeq.io/evm/") and n["check"].startswith("https://") and n["explorer"].startswith("https://")) for n in cfg["evm"]):
+            raise SystemExit("mainnet EVM networks must be exactly Ethereum, Base, Arbitrum and Robinhood Chain over rpc.opeq.io")
+        with open(os.path.join(dist, "net.js"), encoding="utf-8") as f:
+            netjs = f.read().lower()
+        if any(w in netjs for w in ("sepolia", "testnet", "devnet", "goerli", "holesky")):
+            raise SystemExit("test network leftovers in the mainnet net.js")
         for n in ("popup.html", "app.html"):
             with open(os.path.join(dist, n), encoding="utf-8") as f:
                 if "beta, start with small amounts" not in f.read():
