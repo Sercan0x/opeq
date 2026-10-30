@@ -27,8 +27,16 @@ function bar(id, frac) {
 }
 
 const CHAIN_KEY = "opeq:chain";
-function net() { return NETS.find((n) => String(n.chainId) === $("chain").value) || NETS[0]; }
-const evmOn = () => $("chain").value !== "sol";
+const COLORS = { 1: "#627eea", 8453: "#0052ff", 84532: "#0052ff", 42161: "#28a0f0", 421614: "#28a0f0", 4663: "#ccff00", 11155111: "#627eea" };
+let picked = "sol";
+function net() { return NETS.find((n) => String(n.chainId) === picked) || NETS[0]; }
+const evmOn = () => picked !== "sol";
+const CHOICES = () => [{ v: "sol", name: "Solana", tag: NET.mainnet ? "" : "devnet", sol: true }, ...NETS.map((n) => ({ v: String(n.chainId), name: n.name.replace(/ Sepolia$/, ""), tag: /sepolia|test/i.test(n.name) ? "testnet" : "", color: COLORS[n.chainId] || "#8a96a8" }))];
+
+function icon(el, c) {
+  el.className = "chain-ico" + (c.sol ? " sol" : "");
+  el.style.background = c.sol ? "" : c.color;
+}
 
 function mode() {
   $("v-wallet").classList.toggle("evm-mode", evmOn());
@@ -59,7 +67,8 @@ export function stop() {
   if (chain && chain.master) chain.master.fill(0);
   chain = null; status = null; tokens = []; loading = null;
   if (!available()) return;
-  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load"]) hide(id, true);
+  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw"]) hide(id, true);
+  $("e-bal").textContent = $("e-state").textContent = "…";
   $("e-ok").textContent = $("e-err").textContent = "";
 }
 
@@ -93,9 +102,12 @@ async function refresh() {
   if (c !== chain) return;
   status = s;
   const sym = c.chain.symbol;
-  $("e-bal").textContent = `${formatUnits(s.bal, 18)} ${sym}`;
-  $("e-gas-bal").textContent = `${formatUnits(s.feeBal, 18)} ${sym} for gas on ${c.chain.name}`;
-  $("e-state").textContent = { setup: s.st.deployed ? "needs setup" : "not created yet", ready: `active, tree ${s.st.epoch}`, adopt: "finishing a rekey", other: "other device" }[s.state];
+  $("e-bal").textContent = formatUnits(s.bal, 18);
+  $("e-sym").textContent = sym;
+  $("e-gas-bal").textContent = `${formatUnits(s.feeBal, 18)} ${sym}`;
+  $("e-gas").classList.toggle("low", s.feeBal === 0n);
+  $("e-state").textContent = { setup: s.st.deployed ? "needs setup" : "not set up", ready: "active", adopt: "finishing a rekey", other: "other device" }[s.state];
+  $("e-tree").textContent = s.state === "ready" ? `tree ${s.st.epoch}` : "–";
   $("e-left").textContent = s.state === "ready" ? String(s.left) : "–";
   hide("e-setup", s.state !== "setup");
   hide("e-take", s.state !== "other");
@@ -151,27 +163,67 @@ async function recipient(text) {
 }
 
 function bind() {
-  const sel = $("chain");
-  sel.textContent = "";
-  const add = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); };
-  add("sol", NET.mainnet ? "Solana" : "Solana Devnet");
-  for (const n of NETS) add(String(n.chainId), n.name);
+  const btn = $("chain-btn"), menu = $("chain-menu");
+  const choices = CHOICES();
+  const paint = () => {
+    const c = choices.find((x) => x.v === picked);
+    icon($("chain-ico"), c);
+    $("chain-name").textContent = c.name;
+    $("chain-tag").textContent = c.tag;
+    hide("chain-tag", !c.tag);
+    for (const li of menu.children) li.setAttribute("aria-selected", String(li.dataset.v === picked));
+  };
+  menu.textContent = "";
+  for (const c of choices) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.dataset.v = c.v;
+    li.tabIndex = -1;
+    const i = document.createElement("i"); icon(i, c);
+    const nm = document.createElement("span"); nm.className = "chain-name"; nm.textContent = c.name;
+    li.append(i, nm);
+    if (c.tag) { const t = document.createElement("em"); t.className = "chain-tag"; t.textContent = c.tag; li.append(t); }
+    menu.append(li);
+  }
   let saved = null;
   try { saved = localStorage.getItem(CHAIN_KEY); } catch {}
-  if ([...sel.options].some((o) => o.value === saved)) sel.value = saved;
+  if (choices.some((c) => c.v === saved)) picked = saved;
   hide("chainbar", false);
+  paint();
   mode();
   const tryOpen = () => {
     if (!evmOn() || !ui.session() || $("v-wallet").classList.contains("hidden")) return;
     if (ui.busy()) { setTimeout(tryOpen, 400); return; }
     ui.guard("e-err", null, open);
   };
-  sel.addEventListener("change", () => {
-    try { localStorage.setItem(CHAIN_KEY, sel.value); } catch {}
+  const close = (focus) => { hide("chain-menu", true); btn.setAttribute("aria-expanded", "false"); document.removeEventListener("pointerdown", outside, true); if (focus) btn.focus(); };
+  const outside = (e) => { if (!$("chainbar").contains(e.target)) close(false); };
+  const choose = (v, keyboard) => {
+    close(keyboard);
+    if (v === picked) return;
+    picked = v;
+    try { localStorage.setItem(CHAIN_KEY, v); } catch {}
     $("e-ok").textContent = $("e-err").textContent = "";
     hide("e-last", true);
+    paint();
     mode();
     tryOpen();
+  };
+  btn.addEventListener("click", () => {
+    if (!menu.classList.contains("hidden")) { close(true); return; }
+    hide("chain-menu", false);
+    btn.setAttribute("aria-expanded", "true");
+    document.addEventListener("pointerdown", outside, true);
+    const cur = [...menu.children].find((li) => li.dataset.v === picked) || menu.firstElementChild;
+    cur.focus({ focusVisible: false });
+  });
+  menu.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) choose(li.dataset.v, e.detail === 0); });
+  menu.addEventListener("keydown", (e) => {
+    const items = [...menu.children], i = items.indexOf(document.activeElement);
+    if (e.key === "Escape") { e.preventDefault(); close(true); }
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus(); }
+    else if ((e.key === "Enter" || e.key === " ") && i >= 0) { e.preventDefault(); choose(items[i].dataset.v, true); }
+    else if (e.key === "Tab") close(false);
   });
   document.addEventListener("opeq:view", (e) => { if (e.detail === "v-wallet") setTimeout(tryOpen, 0); });
   $("e-refresh").addEventListener("click", () => ui.guard("e-err", null, refresh));

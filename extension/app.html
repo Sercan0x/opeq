@@ -129,58 +129,64 @@
     </div>
 
     <div class="view hidden" id="v-wallet">
-    <div class="chainbar hidden" id="chainbar"><label class="chain-k" for="chain">Network</label><select class="chain-sel" id="chain"></select></div>
-    <section class="card evm-view hidden" id="evm-view" aria-label="EVM account">
-      <div>
-        <h2 class="silk"><span>EVM</span><b>quantum-resistant EVM account</b></h2>
-        <p class="hint">A smart account on EVM networks, signed with the same kind of one-time hash keys as your Solana wallet. Test networks only for now, never send real funds here.</p>
-        <div id="e-load" class="hidden"><p class="hint">Building your EVM identity from your words. This takes about 10 seconds, once per browser.</p><div class="progress"><div id="e-load-bar"></div></div></div>
-        <div id="e-main" class="hidden">
-          <p class="hint ev-k">Your EVM address, the same on every network</p>
-          <div class="addr-row"><p class="mono addr" id="e-addr"></p><button class="icon-btn small" id="e-copy" type="button" title="Copy EVM address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy EVM address</span></button></div>
-          <dl class="kv">
-            <div><dt>Balance</dt><dd id="e-bal">…</dd></div>
-            <div><dt>Status</dt><dd id="e-state">…</dd></div>
-            <div><dt>Signatures left</dt><dd id="e-left">…</dd></div>
-          </dl>
-          <div class="row tight"><a class="btn btn-line btn-sm" id="e-explorer" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="e-refresh" type="button">Refresh</button></div>
-          <div class="toks ev-toks" id="e-toks"></div>
-          <div class="rw hidden" id="e-rw" role="status"><p id="e-rw-text"></p><button class="btn btn-sm rw-go" id="e-rw-go" type="button">Rekey now</button></div>
-          <p class="ok" id="e-ok"></p><p class="err" id="e-err" role="alert"></p>
-          <p class="hint ev-last hidden" id="e-last"><span id="e-last-text"></span> <a id="e-last-link" rel="noopener noreferrer" target="_blank">view on explorer</a></p>
+    <div class="chainbar hidden" id="chainbar">
+      <button class="chain-btn" id="chain-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="chain-menu"><i class="chain-ico" id="chain-ico" aria-hidden="true"></i><span class="chain-name" id="chain-name"></span><em class="chain-tag" id="chain-tag"></em><svg class="chain-chev" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg></button>
+      <ul class="chain-menu hidden" id="chain-menu" role="listbox" aria-label="Network" tabindex="-1"></ul>
+    </div>
+    <section class="evm-view hidden" id="evm-view" aria-label="EVM account">
+      <div class="cpu" id="e-cpu">
+        <div class="cpu-pins" aria-hidden="true"></div>
+        <div class="cpu-die">
+          <p class="silk-line mono">OPEQ EVM <span id="e-state">…</span></p>
+          <p class="bal"><span id="e-bal">…</span><small id="e-sym">ETH</small></p>
+          <div id="e-load" class="hidden"><p class="hint">Building your EVM identity from your words, about 15 seconds, once per browser.</p><div class="progress"><div id="e-load-bar"></div></div></div>
+          <div id="e-main" class="hidden">
+            <div class="addr-row"><p class="mono addr" id="e-addr"></p><button class="icon-btn small" id="e-copy" type="button" title="Copy EVM address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy EVM address</span></button></div>
+            <dl class="kv">
+              <div><dt>Key tree</dt><dd id="e-tree">–</dd></div>
+              <div><dt>Signatures left</dt><dd id="e-left">–</dd></div>
+            </dl>
+            <div class="row tight"><a class="btn btn-line btn-sm" id="e-explorer" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="e-refresh" type="button">Refresh</button></div>
+          </div>
         </div>
       </div>
-      <div id="e-gas" class="hidden">
-        <h2 class="silk"><span>POWER</span><b>gas key</b></h2>
-        <p class="hint">Pays network fees on EVM networks. It comes from your 24 words and has no power over your EVM account. It uses a normal key, so keep only a little ETH on it.</p>
-        <div class="addr-row"><p class="mono addr" id="e-gas-addr"></p><button class="icon-btn small" id="e-gas-copy" type="button" title="Copy gas key address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy gas key address</span></button></div>
-        <p class="hint" id="e-gas-bal"></p>
+      <div class="gasline hidden" id="e-gas">
+        <span class="gas-k">Gas key</span>
+        <span class="mono gas-addr" id="e-gas-addr"></span>
+        <button class="icon-btn small" id="e-gas-copy" type="button" title="Copy gas key address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy gas key address</span></button>
+        <span class="gas-bal mono" id="e-gas-bal"></span>
       </div>
-      <div id="e-setup" class="hidden">
+      <div class="rw hidden" id="e-rw" role="status"><p id="e-rw-text"></p><button class="btn btn-sm rw-go" id="e-rw-go" type="button">Rekey now</button></div>
+      <p class="ok" id="e-ok"></p><p class="err" id="e-err" role="alert"></p>
+      <p class="hint ev-last hidden" id="e-last"><span id="e-last-text"></span> <a id="e-last-link" rel="noopener noreferrer" target="_blank">View on explorer</a></p>
+      <div class="card hidden" id="e-setup">
         <h2 class="silk"><span>PCIE_E</span><b>set up on this network</b></h2>
-        <p class="hint">One-time step per network. Your gas key creates your account contract and moves it to a key tree made only for this network. You can receive at the address above before this.</p>
+        <p class="hint">One-time step. Your gas key creates your account contract and gives it a key tree for this network. You can already receive at the address above.</p>
         <div class="row"><button class="btn btn-solid" id="e-setup-go" type="button">Set up</button></div>
         <div class="progress hidden" id="e-setup-prog"><div></div></div>
         <p class="hint" id="e-setup-step"></p>
       </div>
-      <div id="e-take" class="hidden">
+      <div class="card hidden" id="e-take">
         <h2 class="silk"><span>TPM</span><b>use on this device</b></h2>
-        <p class="hint">Another copy of these words set up this network, so this copy does not sign here yet. Use on this device sends one rekey transaction and makes this copy the only one that signs on this network.</p>
+        <p class="hint">Another copy of these words signs on this network. Use on this device sends one rekey and makes this copy the only signer here.</p>
         <div class="row"><button class="btn btn-solid btn-sm" id="e-take-go" type="button">Use on this device</button></div>
         <div class="progress hidden" id="e-take-prog"><div></div></div>
       </div>
-      <div id="e-send" class="hidden">
+      <div class="card hidden" id="e-send">
         <h2 class="silk"><span>PCIE_2</span><b>send</b></h2>
         <label class="f" for="e-asset">Asset</label><select id="e-asset"></select>
         <label class="f" for="e-to">To address</label><input type="text" id="e-to" spellcheck="false" autocomplete="off" placeholder="0x…">
         <label class="f" for="e-amt">Amount</label><input type="text" id="e-amt" inputmode="decimal" autocomplete="off" placeholder="0.01">
         <div class="row"><button class="btn btn-solid" id="e-send-go" type="button">Send</button></div>
         <div class="progress hidden" id="e-send-prog"><div></div></div>
-        <label class="f" for="e-tok">Add a token by its contract address</label><input type="text" id="e-tok" spellcheck="false" autocomplete="off" placeholder="0x…">
-        <div class="row"><button class="btn btn-line btn-sm" id="e-tok-go" type="button">Add token</button></div>
+        <div class="toks ev-toks" id="e-toks"></div>
+        <details class="ev-more"><summary>Add a token</summary>
+          <label class="f" for="e-tok">Token contract address</label><input type="text" id="e-tok" spellcheck="false" autocomplete="off" placeholder="0x…">
+          <div class="row"><button class="btn btn-line btn-sm" id="e-tok-go" type="button">Add token</button></div>
+        </details>
       </div>
-      <div id="e-rekey" class="hidden">
-        <h2 class="silk"><span>CMOS</span><b>rekey on this network</b></h2>
+      <div class="card hidden" id="e-rekey">
+        <h2 class="silk"><span>CMOS</span><b>rekey</b></h2>
         <p class="hint">Moves this network to a fresh key tree. Your address stays the same.</p>
         <div class="row"><button class="btn btn-line btn-sm" id="e-rekey-go" type="button">Rekey now</button></div>
         <div class="progress hidden" id="e-rekey-prog"><div></div></div>
