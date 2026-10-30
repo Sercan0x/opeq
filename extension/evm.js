@@ -55,6 +55,26 @@ function last(text, hash) {
   hide("e-last", false);
 }
 
+const RECENT_MAX = 30;
+const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const recentKey = () => `opeq:evm-recent:${chain.vaultId}`;
+
+async function recentList() {
+  let list = [];
+  try { list = (await chrome.storage.local.get(recentKey()))[recentKey()]; } catch {}
+  return Array.isArray(list) ? list.filter((a) => typeof a === "string" && /^0x[0-9a-f]{40}$/.test(a)) : [];
+}
+
+async function remember(to) {
+  const list = [to, ...(await recentList()).filter((a) => a !== to)].slice(0, RECENT_MAX);
+  try { await chrome.storage.local.set({ [recentKey()]: list }); } catch {}
+}
+
+async function lookalike(to) {
+  const twin = (await recentList()).find((a) => a !== to && a.slice(2, 6) === to.slice(2, 6) && a.slice(-4) === to.slice(-4));
+  if (twin) throw new Error(`this address starts and ends like one you sent to before (${twin.slice(0, 8)}…${twin.slice(-6)}) but is a different address. Scammers create look-alike addresses. Copy the address from the receiver again, not from your history`);
+}
+
 const tokKey = () => `opeq:evm-tokens:${chain.vaultId}:${chain.id}`;
 
 async function loadTokens() {
@@ -87,7 +107,7 @@ export async function forget(id) {
   const prefix = `${id}:evm:`;
   for (const r of await store.all()) if (typeof r.id === "string" && r.id.startsWith(prefix)) await store.del(r.id);
   try {
-    const keys = Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith(`opeq:evm-tokens:${id}:`));
+    const keys = Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith(`opeq:evm-tokens:${id}:`) || k === `opeq:evm-recent:${id}`);
     if (keys.length) await chrome.storage.local.remove(keys);
   } catch {}
 }
@@ -133,6 +153,7 @@ async function refresh() {
   $("e-bal").textContent = formatUnits(s.bal, 18);
   $("e-sym").textContent = sym;
   $("e-gas-bal").textContent = `${formatUnits(s.feeBal, 18)} ${sym}`;
+  c.gasSurplus().then((x) => { if (c === chain) hide("e-sweep", !(x > 0n && s.state === "ready")); }).catch(() => hide("e-sweep", true));
   $("e-gas").classList.toggle("low", s.feeBal === 0n);
   $("e-state").textContent = { setup: s.st.deployed ? "needs setup" : "not set up", finish: "setup not finished", ready: "active", adopt: "finishing a rekey", other: "other device" }[s.state];
   $("e-tree").textContent = s.state === "ready" ? `tree ${s.st.epoch}` : "–";
@@ -318,6 +339,15 @@ function bind() {
     await refresh();
   });
   $("e-rekey-go").addEventListener("click", rekey);
+  $("e-sweep").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
+    const amount = await chain.gasSurplus();
+    if (!amount) throw new Error("the gas key holds no more than it needs for future fees");
+    if (!(await ui.ask({ ...tag(), title: `Move ${formatUnits(amount, 18, 8)} ${chain.chain.symbol} to your account`, rows: [["To", chain.account, true]],
+      notes: [{ text: "The gas key keeps enough for about ten future transactions. It is not quantum-safe, so savings belong in your account." }] }, "Move"))) return;
+    await chain.sweepGas((h) => last("Move sent.", h));
+    $("e-ok").textContent = "moved to your account";
+    await refresh();
+  }));
   $("e-pend-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
     if (!(await ui.ask({ ...tag(), title: "Cancel the pending transfer", rows: [["Network fee", await feeText(EXEC_GAS)]],
       notes: [{ text: "This signs an empty transaction with your next one-time key. Once it confirms, the earlier transfer can never go through." }, { text: "If the earlier transfer confirms first, it stands and this one does nothing.", warn: true }] }, "Cancel transfer"))) return;
@@ -343,14 +373,15 @@ function bind() {
   $("e-send-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
     const asset = $("e-asset").value;
     const to = checkAddress($("e-to").value);
+    await lookalike(to);
     const warn = await recipient(to);
     const s = await chain.status();
-    let calls, title, rows;
+    let calls, title, rows, sent = null, fakeNote = "";
     if (asset === "native") {
       const v = parseUnits($("e-amt").value, 18);
       if (v > s.bal) throw new Error(`not enough ${chain.chain.symbol}: the account holds ${formatUnits(s.bal, 18)}`);
       calls = [{ to, value: v, data: new Uint8Array(0) }];
-      title = `Send ${formatUnits(v, 18, 18)} ${chain.chain.symbol}`;
+      title = `Send ${formatUnits(v, 18, 18)} ${chain.chain.symbol} on ${chain.chain.name}`;
       rows = [["To", to, true]];
     } else {
       const t = await chain.token(asset);
@@ -358,7 +389,10 @@ function bind() {
       const v = parseUnits($("e-amt").value, t.decimals);
       if (v > t.balance) throw new Error(`not enough ${t.symbol}: the account holds ${formatUnits(t.balance, t.decimals, t.decimals)}`);
       calls = [{ to: t.address, value: 0n, data: encodeErc20Transfer(to, v) }];
-      title = `Send ${formatUnits(v, t.decimals, t.decimals)} ${t.symbol}`;
+      sent = { token: t.address, value: v };
+      const fake = t.symbol.toUpperCase() === chain.chain.symbol.toUpperCase();
+      title = `Send ${formatUnits(v, t.decimals, t.decimals)} ${t.symbol}${fake ? " token" : ""} on ${chain.chain.name}`;
+      if (fake) fakeNote = `This is a token contract that calls itself ${t.symbol}. It is not ${chain.chain.symbol}, the network's own coin.`;
       rows = [["To", to, true], ["Token contract", t.address, true]];
     }
     rows.push(["Network fee", await feeText(EXEC_GAS)]);
@@ -369,6 +403,7 @@ function bind() {
       notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18, 8)} ${chain.chain.symbol} from your account to it for future network fees.` });
     }
     if (asset !== "native") notes.push({ text: "Anyone can create a token with any name. Check the token contract above against the project's official site.", warn: true });
+    if (fakeNote) notes.push({ text: fakeNote, warn: true });
     if (warn) notes.push({ text: warn, warn: true });
     if (!(await ui.ask({ ...tag(), title, rows, notes }, "Send"))) return;
     const pr = progressTo("e-send-prog");
@@ -377,6 +412,13 @@ function bind() {
     try { res = await chain.execute(calls, (h) => { pr(0.7); last(`${title} sent.`, h); }); } finally { bar("e-send-prog", null); }
     $("e-ok").textContent = title.replace(/^Send/, "sent");
     last(`${title} confirmed.`, res.hash);
+    await remember(to);
+    if (sent && res.hash && !res.byOther) {
+      const rc = await chain.rpc.call("eth_getTransactionReceipt", [res.hash]).catch(() => null);
+      const pad = (a) => "0x" + a.slice(2).padStart(64, "0");
+      const moved = rc && Array.isArray(rc.logs) && rc.logs.some((l) => l.address && l.address.toLowerCase() === sent.token && l.topics && l.topics[0] === TRANSFER && l.topics[1] === pad(chain.account) && l.topics[2] === pad(to) && BigInt(l.data || "0x0") === sent.value);
+      if (!moved) $("e-err").textContent = "The transaction went through, but the token contract recorded no matching transfer. The tokens may not have moved; check the balance and the explorer.";
+    }
     ui.log(`EVM: ${title.toLowerCase()} on ${chain.chain.name}`, "ok");
     $("e-amt").value = "";
     await refresh();

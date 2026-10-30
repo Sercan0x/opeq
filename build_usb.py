@@ -37,8 +37,8 @@ REWORD = {
         ("Remove from this browser", "Remove from this USB", 1),
         ('autocomplete="new-password"', 'autocomplete="off"', 4),
         ('autocomplete="current-password"', 'autocomplete="off"', 2),
-        ('<p class="hint">One-time setup. Send at least 0.01 SOL to this activation address from any wallet. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>',
-         '<ol class="steps act-steps"><li>Copy the activation address below.</li><li>From Phantom, an exchange or any other Solana wallet, send at least 0.01 SOL to that address. You do this once.</li><li>When the SOL arrives, OPEQ shows it here. Then press Activate.</li></ol>\n        <p class="hint">About 0.0015 SOL pays for the setup, 0.005 SOL stays on the fee key that pays network fees, and the rest moves into your OPEQ wallet.</p>', 1),
+        ('<p class="hint">One-time setup. Send at least 0.01 SOL, and only SOL, never tokens, to this activation address from any wallet. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>',
+         '<ol class="steps act-steps"><li>Copy the activation address below.</li><li>From Phantom, an exchange or any other Solana wallet, send at least 0.01 SOL to that address, and only SOL, never tokens. You do this once.</li><li>When the SOL arrives, OPEQ shows it here. Then press Activate.</li></ol>\n        <p class="hint">About 0.0015 SOL pays for the setup, 0.005 SOL stays on the fee key that pays network fees, and the rest moves into your OPEQ wallet.</p>', 1),
         ('<p class="hint" id="i-bal"></p>', '<p class="hint" id="i-bal"></p>\n        <p class="act-wait" id="i-wait" role="status"></p>', 1),
     ],
     "lib/engine.js": [

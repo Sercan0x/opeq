@@ -146,3 +146,4 @@
 .chain-ico.l-base { background-image: url("assets/chain-base.svg"); }
 .chain-ico.l-arb { background-image: url("assets/chain-arb.svg"); background-size: 112% auto; }
 .chain-ico.l-hood { background-image: url("assets/chain-hood.svg"); background-size: auto 100%; }
+.words { user-select: none; -webkit-user-select: none; }

@@ -124,8 +124,8 @@ async function check(e) {
         const h = await holdings(a.bytes);
         const sys = !acc || owner === pubkey(SYSTEM).join(",");
         render("safe", "There is no private key behind this address.",
-          sys ? "It is a program address, the kind OPEQ wallets use. Coins here move only when the program that controls it says so. In OPEQ that program checks hash-based one-time signatures, which have no public key to break."
-              : "It is controlled by a program, not by a key of its own. How safe it is depends on that program and on whoever it accepts signatures from.", h);
+          sys ? "It is a program address. Coins here move only when the program that controls it says so. This check does not show which program that is, who controls it, or that it is an OPEQ wallet. Never send funds because this page found no key."
+              : "It is controlled by a program, not by a key of its own. How safe it is depends on that program and on whoever it accepts signatures from. This check does not show who that is.", h);
         last = { kind: "safe", total: h.total };
       }
     }
@@ -140,8 +140,8 @@ async function check(e) {
 async function copy() {
   if (!last) return;
   const text = last.kind === "risk"
-    ? `My Solana wallet holds ${usd(last.total)} behind a public key that a large quantum computer could break. Check yours: https://opeq.io/scan`
-    : `This Solana address has no public key for a quantum computer to break. Check yours: https://opeq.io/scan`;
+    ? `My Solana wallet sits behind a public key that a large quantum computer could break. Check yours: https://opeq.io/scan`
+    : `I checked a Solana address for quantum exposure. Check yours: https://opeq.io/scan`;
   try { await navigator.clipboard.writeText(text); $("r-copy").textContent = "Copied"; setTimeout(() => { $("r-copy").textContent = "Copy result"; }, 1600); } catch {}
 }
 

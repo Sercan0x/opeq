@@ -117,7 +117,24 @@ function show(id) {
   for (const v of VIEWS) $(v).classList.toggle("hidden", v !== id);
   document.dispatchEvent(new CustomEvent("opeq:view", { detail: id }));
 }
-const short = (a) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+const short = (a) => `${a.slice(0, 6)}…${a.slice(-6)}`;
+const recentKey = () => `opeq:recent:${session.id}`;
+
+async function recentList() {
+  let list = [];
+  try { list = (await chrome.storage.local.get(recentKey()))[recentKey()]; } catch {}
+  return Array.isArray(list) ? list.filter((a) => typeof a === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a)) : [];
+}
+
+async function rememberTo(to) {
+  const list = [to, ...(await recentList()).filter((a) => a !== to)].slice(0, 30);
+  try { await chrome.storage.local.set({ [recentKey()]: list }); } catch {}
+}
+
+async function lookalike(to) {
+  const twin = (await recentList()).find((a) => a !== to && a.slice(0, 4) === to.slice(0, 4) && a.slice(-4) === to.slice(-4));
+  if (twin) throw new Error(`this address starts and ends like one you sent to before (${twin.slice(0, 6)}…${twin.slice(-6)}) but is a different address. Scammers create look-alike addresses. Copy the address from the receiver again, not from your history`);
+}
 
 function setProgress(id, frac) {
   const el = $(id);
@@ -478,9 +495,8 @@ const tokenName = (mint) => {
   const known = KNOWN.get(pubkey(mint).join(","));
   if (known) return known;
   const l = labels.get(mint);
-  if (!l) return short(mint);
-  const bare = confusable(l);
-  return [...KNOWN_NAMES].some((k) => bare.includes(k)) ? `${l} (unverified)` : l;
+  if (!l || /\.[a-z]{2,}$/i.test(l) || /https?:|www\./i.test(l)) return short(mint);
+  return `${l} (unverified)`;
 };
 
 async function refreshTokens() {
@@ -929,6 +945,7 @@ function initWallet() {
   $("s-go").addEventListener("click", () => guard("s-err", "s-ok", async () => {
     needPayer();
     const to = addrOf($("s-to").value);
+    await lookalike(b58encode(to));
     const lamports = parseSol($("s-amt").value);
     const amount = $("s-amt").value.trim();
     const warn = await checkRecipient(to, false);
@@ -936,12 +953,13 @@ function initWallet() {
     const low = await solCheck(lamports);
     const inner = [[SYSTEM, [[session.wallet, true, true], [to, false, true]], concat(u32(2), u64(lamports))]];
     const plan = await planTopup(inner, [], lamports);
-    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Send ${sol(lamports)} ${NET.sol}`,
+    if (!(await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: `Send ${sol(lamports)} ${NET.sol}`,
       rows: [["To", b58encode(to), true], ["Network fee", `about ${sol(await networkFee(CU_SEND))} SOL`]],
       notes: notes(plan.note, low, warn) }, "Send"))) return;
     const sig = await run("reserving a key, grinding the signature", inner, plan, { spend: lamports });
     $("s-ok").textContent = `sent ${amount} SOL`;
     log(`sent ${amount} SOL to ${short(b58encode(to))}: ${sig}`, "ok");
+    await rememberTo(b58encode(to));
     $("s-amt").value = "";
     await refreshWallet();
   }));
@@ -950,6 +968,7 @@ function initWallet() {
     const t = tokens.find((x) => x.mint === $("t-sel").value);
     if (!t) throw new Error("no token selected");
     const to = addrOf($("t-to").value);
+    await lookalike(b58encode(to));
     const warn = await checkRecipient(to, true);
     const amount = T.parseAmount($("t-amt").value, t.decimals);
     if (amount > t.amount) throw new Error("not enough of this token in the wallet");
@@ -962,12 +981,13 @@ function initWallet() {
       T.transferChecked(prog, pubkey(t.account), mint, T.ata(to, mint, prog), session.wallet, amount, t.decimals)];
     const tables = await lookupTables();
     const plan = await planTopup(inner, tables, 2100000n);
-    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Send ${shown} ${name}`,
+    if (!(await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: `Send ${shown} ${name}`,
       rows: [["To", b58encode(to), true], ["Token mint", t.mint, true], ["Network fee", `about ${sol(await networkFee(CU_TOKEN))} SOL`]],
       notes: notes(rent, ext, plan.note, warn) }, "Send"))) return;
     const sig = await run("signing the token transfer", inner, plan, { cu: CU_TOKEN, tables, spend: 2100000n });
     $("t-ok").textContent = `sent ${shown} ${name}`;
     log(`sent ${shown} ${name} to ${short(b58encode(to))}: ${sig}`, "ok");
+    await rememberTo(b58encode(to));
     $("t-amt").value = "";
     await refreshWallet();
   }));
@@ -1012,7 +1032,11 @@ function initWallet() {
       const rent = plan.legs.reduce((n, l) => n + l.rent, 0n);
       const spend = (from === SOL_MINT ? amount : 0n) + rent + BigInt(ntx) * 200000n;
       const low = from === SOL_MINT ? await solCheck(amount + rent) : "";
-      const ext = ti.prog.join(",") === T.TOKEN22.join(",") ? await T.mintWarnings(rpc, pubkey(to), ti.prog) : "";
+      let ext = ti.prog.join(",") === T.TOKEN22.join(",") ? await T.mintWarnings(rpc, pubkey(to), ti.prog) : "";
+      if (to !== SOL_MINT && !KNOWN.has(pubkey(to).join(","))) {
+        const ma = await rpc.account(pubkey(to)).catch(() => null);
+        if (ma && ma.data && ma.data.length >= 82 && ma.data[46] === 1) ext = `${ext}\nWarning: this token's issuer can freeze your balance, so you may never be able to sell or send it.`;
+      }
       if (/transfer fee/.test(ext)) throw new Error(`${symOf(to)} charges a fee on every transfer, which this wallet cannot swap into yet. Nothing was signed`);
       const first = plan.legs[0];
       const topPlan = await planTopup(first.txs[0], first.tables, spend, false);
@@ -1021,7 +1045,7 @@ function initWallet() {
       const rows = [["You get about", `${T.formatAmount(plan.out, ti.decimals)} ${symOf(to)}`], ["At least", `${T.formatAmount(plan.min, ti.decimals)} ${symOf(to)}`], ["Route", `${route} (Jupiter)`]];
       if (to !== SOL_MINT && !KNOWN.has(pubkey(to).join(","))) rows.push(["Token mint", to, true]);
       rows.push(["Network fee", `about ${sol((await networkFee(CU_JUP)) * ntx)} SOL${ntx > 1 ? ` for ${ntx} transactions` : ""}`]);
-      if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Swap ${shown} ${symOf(from)} for ${symOf(to)}`, rows,
+      if (!(await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: `Swap ${shown} ${symOf(from)} for ${symOf(to)}`, rows,
         notes: notes(`If the price moves more than ${slip / 100}%, the swap is cancelled and only the network fee is spent.`,
           rent ? `This creates a token account for ${symOf(to)} in your wallet. Its rent is about ${sol(rent)} SOL, paid once.` : "",
           plan.via ? "There is no direct pool, so this is two swaps through SOL. If the price moves between them, the second swap is skipped and you keep the SOL." : "",
@@ -1078,7 +1102,7 @@ function initWallet() {
     const inner = T.swapInner(session.wallet, session.wallet, buy, amt, minOut);
     const spend = (buy ? amt : 0n) + 4200000n;
     const plan = await planTopup(inner, tables, spend);
-    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: `Swap ${label}`,
+    if (!(await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: `Swap ${label}`,
       rows: [["Network fee", `about ${sol(await networkFee(CU_SWAP))} SOL`]],
       notes: notes("You get at least 99% of that or the swap is cancelled.", "If you hold no DEMO account yet, your wallet pays its rent, about 0.002 SOL.", plan.note) }, "Swap"))) return;
     const sig = await run("signing the swap", inner, plan, { cu: CU_SWAP, tables, spend });
@@ -1092,7 +1116,7 @@ function initWallet() {
   $("k-rekey").addEventListener("click", () => guard("k-err", "k-ok", async () => {
     needPayer();
     const plan = await planTopup([], [], 0n);
-    if (!(await ask({ tag: NET.mainnet ? "Mainnet, real funds" : "Devnet test funds", title: "Move to a fresh key tree",
+    if (!(await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: "Move to a fresh key tree",
       notes: notes("Your address, balance and words stay the same. This sends one transaction.", plan.note) }, "Rekey"))) return;
     await topup(plan, 0n);
     const sig = await signed("building the next tree", (pr) => session.rekey(pr));

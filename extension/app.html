@@ -152,10 +152,10 @@
         </div>
       </div>
       <div class="gasline hidden" id="e-gas">
-        <span class="gas-k">Gas key</span>
+        <span class="gas-k" title="Pays network fees only. Do not deposit here.">Gas key, fees only</span>
         <span class="mono gas-addr" id="e-gas-addr"></span>
         <button class="icon-btn small" id="e-gas-copy" type="button" title="Copy gas key address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy gas key address</span></button>
-        <span class="gas-bal mono" id="e-gas-bal"></span>
+        <span class="gas-bal mono" id="e-gas-bal"></span><button class="fe-go hidden" id="e-sweep" type="button" title="Move ETH the gas key does not need to your account">Move to account</button>
       </div>
       <div class="rw urgent hidden" id="e-pend" role="status"><p id="e-pend-text"></p><button class="btn btn-sm rw-go" id="e-pend-go" type="button">Cancel it</button></div>
       <div class="rw hidden" id="e-rw" role="status"><p id="e-rw-text"></p><button class="btn btn-sm rw-go" id="e-rw-go" type="button">Rekey now</button></div>
@@ -170,7 +170,7 @@
       </div>
       <div class="card hidden" id="e-take">
         <h2 class="silk"><span>TPM</span><b>use on this device</b></h2>
-        <p class="hint">Another copy of these words signs on this network. Use on this device sends one rekey and makes this copy the only signer here.</p>
+        <p class="hint">Another copy of these words signs on this network. Use on this device sends one rekey and makes this copy the only signer here. Do it on one device only, and do not retry it on a second device while one attempt may still land. If you did not use your words anywhere else, someone else has them: move your funds to a new wallet.</p>
         <div class="row"><button class="btn btn-solid btn-sm" id="e-take-go" type="button">Use on this device</button></div>
         <div class="progress hidden" id="e-take-prog"><div></div></div>
       </div>
@@ -225,7 +225,7 @@
 
 <div class="card hidden" id="w-take-box">
       <h2 class="silk"><span>TPM</span><b>use on this device</b></h2>
-      <p class="hint">This copy of the wallet is not signing yet. Your words may be active in another browser or device. Choose Use on this device to make this copy the only one that signs. Any other copy stops until you do the same there.</p>
+      <p class="hint">This copy of the wallet is not signing yet. Your words may be active in another browser or device. Choose Use on this device to make this copy the only one that signs. Any other copy stops until you do the same there. If you did not enter your words anywhere else, someone else has them: create a new wallet now and move everything to it.</p>
       <p class="hint">Fee key, pays the fee for this step:</p>
       <div class="addr-row"><p class="mono addr" id="t-fee-addr"></p><button class="icon-btn small" id="t-fee-copy" type="button" title="Copy fee key address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy fee key address</span></button></div>
       <p class="hint" id="t-fee-bal"></p>
@@ -234,7 +234,7 @@
     </div>
 <div class="card hidden" id="w-init-box">
         <h2 class="silk"><span>PCIE_0</span><b>activate on chain</b></h2>
-        <p class="hint" data-only="devnet">One-time setup. Send at least 0.01 devnet SOL to this activation address from any wallet or from <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p><p class="hint" data-only="mainnet">One-time setup. Send at least 0.01 SOL to this activation address from any wallet. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>
+        <p class="hint" data-only="devnet">One-time setup. Send at least 0.01 devnet SOL to this activation address from any wallet or from <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a>. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p><p class="hint" data-only="mainnet">One-time setup. Send at least 0.01 SOL, and only SOL, never tokens, to this activation address from any wallet. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>
         <p class="mono addr" id="i-addr"></p>
         <p class="hint" id="i-bal"></p>
         <div class="row"><button class="btn btn-line" id="i-copy" type="button">Copy activation address</button><button class="btn btn-line" id="i-check" type="button">Check balance</button><button class="btn btn-solid" id="w-init" type="button">Activate</button></div>
@@ -331,6 +331,7 @@
             <p class="hint">Shows your 24 words after you enter the password again. Write them on paper. They hide themselves after 60 seconds.</p>
             <div class="row"><button class="btn btn-line" id="k-words" type="button">Show recovery words</button></div>
             <div id="k-auth" class="hidden">
+              <p class="warn"><b>No one from OPEQ will ever ask for your words.</b> Stop if someone is watching your screen or told you to open this.</p>
               <label class="f" for="k-pw">Password</label><input type="password" id="k-pw" autocomplete="current-password">
               <div class="row"><button class="btn btn-solid" id="k-show" type="button">Show</button><button class="btn btn-quiet" id="k-cancel" type="button">Cancel</button></div>
             </div>
