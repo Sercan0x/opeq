@@ -79,6 +79,29 @@ contract OpeqAccountTest is Asserts {
         assertEq(account.epoch(), 1, "bootstrap moved to epoch 1");
     }
 
+    function testBootstrapHasNoDeadline() public {
+        OpeqFactory f2 = new OpeqFactory();
+        OpeqAccount fresh = OpeqAccount(payable(f2.create(identity.pubSeed(), identity.root())));
+        bytes16 digest = fresh.rekeyDigest(signer.pubSeed(), signer.root(), 2, 0, 0, RND);
+        bytes memory proof = identity.sign(2, digest);
+        vm.warp(block.timestamp + 365 days);
+        fresh.rekey(signer.pubSeed(), signer.root(), 2, 0, 0, RND, proof);
+        assertEq(fresh.epoch(), 1, "late bootstrap still lands");
+        (bytes16 ps, bytes16 rt) = (signer.pubSeed(), signer.root());
+        vm.expectRevert(OpeqAccount.Expired.selector);
+        fresh.rekey(ps, rt, 2, 0, 0, RND, proof);
+    }
+
+    function testLaterRekeyStillExpires() public {
+        Signer next = new Signer(keccak256("test words chain epoch 2"), bytes16(keccak256("pub seed 2")), 1);
+        uint64 deadline = uint64(block.timestamp + 600);
+        bytes memory proof = signer.sign(0, account.rekeyDigest(next.pubSeed(), next.root(), 0, deadline, 0, RND));
+        (bytes16 ps, bytes16 rt) = (next.pubSeed(), next.root());
+        vm.warp(block.timestamp + 601);
+        vm.expectRevert(OpeqAccount.Expired.selector);
+        account.rekey(ps, rt, 0, deadline, 0, RND, proof);
+    }
+
     function testExecuteFromIdentityTreeIsRejected() public {
         OpeqFactory f2 = new OpeqFactory();
         OpeqAccount fresh = OpeqAccount(payable(f2.create(identity.pubSeed(), identity.root())));

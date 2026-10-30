@@ -1,5 +1,6 @@
 import { keccak256 } from "./keccak.js";
 import { sha256 } from "./sha256.js";
+import { FACTORY_INIT, ACCOUNT_INIT } from "./evmcode.js";
 
 export const N = 16;
 export const W = 256;
@@ -248,4 +249,71 @@ export function encodeRekey(newPubSeed, newRoot, leaf, deadline, salt, rnd, proo
 
 export function encodeCreate(pubSeed, root) {
   return concat(CREATE_SELECTOR, leftWord(pubSeed), leftWord(root));
+}
+
+export const CREATE2_DEPLOYER = "0x4e59b44847b379578588920ca78fbf26c0b4956c";
+
+function fromHex(h) {
+  return Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16));
+}
+
+function toAddr(b) {
+  return "0x" + Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+function create2(deployer, salt, initHash) {
+  return toAddr(keccak256(Uint8Array.of(0xff), addressBytes(deployer), salt, initHash).slice(12));
+}
+
+const FACTORY_INIT_BYTES = fromHex(FACTORY_INIT);
+const ACCOUNT_INIT_BYTES = fromHex(ACCOUNT_INIT);
+
+export function factoryAddress() {
+  return create2(CREATE2_DEPLOYER, new Uint8Array(32), keccak256(FACTORY_INIT_BYTES));
+}
+
+export function factoryDeployData() {
+  return concat(new Uint8Array(32), FACTORY_INIT_BYTES);
+}
+
+export function accountSalt(pubSeed, root) {
+  const tag = enc.encode("opeq/evm/id/v1");
+  return keccak256(word(96), leftWord(pubSeed), leftWord(root), dynBytes(tag));
+}
+
+export function accountAddress(pubSeed, root, factory = factoryAddress()) {
+  return create2(factory, accountSalt(pubSeed, root), keccak256(ACCOUNT_INIT_BYTES, leftWord(pubSeed), leftWord(root)));
+}
+
+export function bootSeeds(master, chainId) {
+  chainSlot(chainId);
+  return {
+    pubSeed: sha256(enc.encode("opeq/evm/chain/pub/v1"), master, u64be(chainId)).slice(0, N),
+    rnd: sha256(enc.encode("opeq/evm/boot/rnd/v1"), master, u64be(chainId)).slice(0, N),
+  };
+}
+
+export function bootstrapCall(master, chainId, account, identity, progress) {
+  const { pubSeed, rnd } = bootSeeds(master, chainId);
+  const tree = deriveChainTree(master, chainId, 1, pubSeed, progress);
+  const slot = chainSlot(chainId);
+  const g = grind(rekeyHasher(rnd, chainId, account, 0, slot, 0, tree.pubSeed, tree.root));
+  return { tree, calldata: encodeRekey(tree.pubSeed, tree.root, slot, 0, g.salt, rnd, identity.sign(slot, g.digest)) };
+}
+
+export function treeFromLeaves(skSeed, pubSeed, bytes) {
+  if (bytes.length !== LEAVES * N) throw new Error("stored key tree has the wrong size");
+  const leaves = [];
+  for (let i = 0; i < LEAVES; i++) leaves.push(bytes.slice(i * N, i * N + N));
+  return new EvmTreeKey(skSeed, pubSeed, leaves);
+}
+
+export function leavesBytes(tree) {
+  const out = new Uint8Array(LEAVES * N);
+  tree.levels[0].forEach((l, i) => out.set(l, i * N));
+  return out;
+}
+
+export function encodeErc20Transfer(to, amount) {
+  return concat(keccak256(enc.encode("transfer(address,uint256)")).slice(0, 4), addressWord(to), word(amount));
 }

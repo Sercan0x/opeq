@@ -28,6 +28,8 @@ contract Asserts {
 }
 
 contract MockToken {
+    uint8 public constant decimals = 6;
+    string public constant symbol = "MOCK";
     mapping(address => uint256) public balanceOf;
 
     function mint(address to, uint256 amount) external {

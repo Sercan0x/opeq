@@ -93,7 +93,7 @@ contract OpeqAccount {
         bytes16 rnd,
         bytes calldata proof
     ) external {
-        _window(deadline);
+        if (epoch != 0) _window(deadline);
         if (leaf < next) revert LeafUsed();
         if (leaf >= Wots.LEAVES) revert LeafOutOfRange();
         if (newRoot == root) revert SameRoot();

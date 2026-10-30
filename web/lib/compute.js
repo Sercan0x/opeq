@@ -2,6 +2,7 @@ import * as M from "./mnemonic.js";
 import * as P from "./protocol.js";
 import { TreeKey, leafPk } from "./wots.js";
 import { eq } from "./solana.js";
+import * as E from "./evmwots.js";
 
 export function treeFor({ master, epoch, program, pubSeed }, progress) {
   const t = M.deriveTree(master, epoch, progress, program, pubSeed);
@@ -28,7 +29,44 @@ export function signRekey(a, progress) {
   return { salt: g.salt, ...tree.sign(a.leaf, g.digest), newPubSeed: next.pubSeed, newRoot: next.root, newLeaves: next.leavesBytes() };
 }
 
-export const OPS = { treeFor, signExec, signRekey };
+function evmIdentity({ master }, progress) {
+  const t = E.deriveIdentityTree(master, progress);
+  return { pubSeed: t.pubSeed, root: t.root };
+}
+
+function evmBoot({ master, chainId, account }, progress) {
+  const identity = E.deriveIdentityTree(master, progress && ((p) => progress(p * 0.5)));
+  const b = E.bootstrapCall(master, chainId, account, identity, progress && ((p) => progress(0.5 + p * 0.5)));
+  return { pubSeed: b.tree.pubSeed, root: b.tree.root, leaves: E.leavesBytes(b.tree), calldata: b.calldata };
+}
+
+function evmTree({ master, chainId, epoch, pubSeed }, progress) {
+  const t = E.deriveChainTree(master, chainId, epoch, pubSeed, progress);
+  return { root: t.root, leaves: E.leavesBytes(t) };
+}
+
+function evmLoad(a) {
+  const { skSeed, pubSeed } = E.chainTreeSeeds(a.master, a.chainId, a.epoch, a.pubSeed);
+  const tree = E.treeFromLeaves(skSeed, pubSeed, a.leaves);
+  if (!eq(E.leafPk(skSeed, pubSeed, a.leaf), tree.levels[0][a.leaf])) throw new Error("secret seed does not match the stored EVM key tree, refusing to sign");
+  if (!eq(tree.root, a.root)) throw new Error("stored EVM key tree does not match the root on chain, refusing to sign");
+  return tree;
+}
+
+function evmSignExec(a, progress) {
+  const tree = evmLoad(a);
+  const g = E.grind(E.execHasher(a.rnd, a.chainId, a.account, a.epoch, a.leaf, a.deadline, a.calls), E.GRIND_TRIES, progress);
+  return E.encodeExecute(a.calls, a.leaf, a.deadline, g.salt, a.rnd, tree.sign(a.leaf, g.digest));
+}
+
+function evmSignRekey(a, progress) {
+  const tree = evmLoad(a);
+  const next = E.deriveChainTree(a.master, a.chainId, a.epoch + 1, a.newPubSeed, progress && ((p) => progress(p * 0.9)));
+  const g = E.grind(E.rekeyHasher(a.rnd, a.chainId, a.account, a.epoch, a.leaf, a.deadline, next.pubSeed, next.root), 1 << 14);
+  return { calldata: E.encodeRekey(next.pubSeed, next.root, a.leaf, a.deadline, g.salt, a.rnd, tree.sign(a.leaf, g.digest)), newRoot: next.root, newLeaves: E.leavesBytes(next) };
+}
+
+export const OPS = { treeFor, signExec, signRekey, evmIdentity, evmBoot, evmTree, evmSignExec, evmSignRekey };
 
 export const localCompute = {
   run: async (op, args, progress) => OPS[op](args, progress),
