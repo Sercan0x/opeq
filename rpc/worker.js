@@ -8,6 +8,8 @@ const EVM_METHODS = new Set([
   "eth_sendRawTransaction", "eth_getTransactionReceipt", "eth_getBlockByNumber", "eth_maxPriorityFeePerGas", "eth_gasPrice",
 ]);
 const EVM_SEND = new Set(["eth_sendRawTransaction", "eth_estimateGas"]);
+const EVM_CALL = new Set(["eth_call"]);
+const NO_RETRY = new Set(["eth_call", "eth_estimateGas"]);
 const EVM_DEFAULT = {
   1: ["https://ethereum-rpc.publicnode.com"],
   8453: ["https://mainnet.base.org"],
@@ -65,6 +67,7 @@ function upstreams(env) {
 }
 
 const seen = new Map();
+let pruned = 0;
 
 function localLimited(key, max) {
   const now = Date.now();
@@ -72,7 +75,11 @@ function localLimited(key, max) {
   if (!e || now - e.start > 60000) e = { start: now, n: 0 };
   e.n += 1;
   seen.set(key, e);
-  if (seen.size > 5000) for (const [k, v] of seen) if (now - v.start > 60000) seen.delete(k);
+  if (seen.size > 5000 && now - pruned > 10000) {
+    pruned = now;
+    for (const [k, v] of seen) if (now - v.start > 60000) seen.delete(k);
+    if (seen.size > 20000) seen.clear();
+  }
   return e.n > max;
 }
 
@@ -98,19 +105,19 @@ function ip6(ip) {
   const [head, tail = ""] = ip.split("::");
   const h = head ? head.split(":") : [], t = tail ? tail.split(":") : [];
   const full = ip.includes("::") ? [...h, ...Array(8 - h.length - t.length).fill("0"), ...t] : h;
-  return full.slice(0, 4).map((g) => parseInt(g || "0", 16).toString(16)).join(":") + "::/64";
+  return full.slice(0, 3).map((g) => parseInt(g || "0", 16).toString(16)).join(":") + "::/48";
 }
 
-async function limited(env, ip, method) {
+async function limited(env, ip, method, evm) {
   const bucket = ip.includes(":") ? ip6(ip.toLowerCase()) : ip;
   const send = method === "sendTransaction" || method === "simulateTransaction" || EVM_SEND.has(method);
   const key = send ? `send:${bucket}` : `read:${bucket}`;
   if (localLimited(key, send ? 30 : 300)) return true;
-  if (env.GLOBAL && !(await env.GLOBAL.limit({ key: "all" })).success) return true;
+  if (EVM_CALL.has(method) && localLimited(`call:${bucket}`, 120)) return true;
   const binding = send ? env.SEND_LIMIT : env.LIMIT;
-  if (!binding) return false;
-  const { success } = await binding.limit({ key });
-  return !success;
+  if (binding && !(await binding.limit({ key })).success) return true;
+  if (env.GLOBAL && !(await env.GLOBAL.limit({ key: evm ? "evm" : "sol" })).success) return true;
+  return false;
 }
 
 export default {
@@ -137,13 +144,13 @@ export default {
     if (evm && !evmParamsOk(body.method, body.params || [])) return fail(origin, 400, -32602, "params not allowed", id);
     if (body.method === "getMultipleAccounts" && !(Array.isArray(body.params?.[0]) && body.params[0].length <= 100)) return fail(origin, 400, -32602, "at most 100 accounts", id);
     const ip = request.headers.get("cf-connecting-ip") || "unknown";
-    if (await limited(env, ip, body.method)) return fail(origin, 429, -32005, "too many requests, slow down", id);
+    if (await limited(env, ip, body.method, !!evm)) return fail(origin, 429, -32005, "too many requests, slow down", id);
     const out = JSON.stringify({ jsonrpc: "2.0", id, method: body.method, params: body.params || [] });
     let last = null;
     for (const up of evm ? evmUpstreams(env, evm[1]) : upstreams(env)) {
       try {
         const res = await fetch(up, { method: "POST", headers: { "content-type": "application/json" }, body: out });
-        if (res.status === 429 || res.status >= 500) { last = res.status; continue; }
+        if ((res.status === 429 || res.status >= 500) && !NO_RETRY.has(body.method)) { last = res.status; continue; }
         return new Response(res.body, { status: res.status, headers: { ...cors(origin), "content-type": "application/json" } });
       } catch {
         last = "network";
