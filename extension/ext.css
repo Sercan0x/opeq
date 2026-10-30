@@ -147,3 +147,10 @@
 .chain-ico.l-arb { background-image: url("assets/chain-arb.svg"); background-size: 112% auto; }
 .chain-ico.l-hood { background-image: url("assets/chain-hood.svg"); background-size: auto 100%; }
 .words { user-select: none; -webkit-user-select: none; }
+#evm-view .ev-beta { margin: 8px 0 0; padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 201, 74, 0.35); background: rgba(255, 201, 74, 0.07); font-size: 12px; line-height: 1.45; color: var(--text); }
+.gasline { flex-wrap: wrap; row-gap: 6px; }
+.gasline .gas-addr { min-width: 110px; }
+.gasline .fe-go { color: var(--ice); font-weight: 600; }
+.gasline .fe-go:hover { color: #fff; }
+.gasline .fe-go:first-of-type:not(.hidden), .gasline .fe-go:not(.hidden) { margin-left: auto; }
+.gasline .fe-go:not(.hidden) ~ .fe-go:not(.hidden) { margin-left: 12px; }

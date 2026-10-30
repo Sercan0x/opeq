@@ -322,7 +322,7 @@ function bind() {
     const gas = (fresh ? SETUP_GAS.factory : 0n) + (deployed ? 0n : SETUP_GAS.account) + REKEY_GAS * (finishing ? 1n : 2n);
     if (!(await ui.ask({ ...tag(), title: `Set up on ${chain.chain.name}`,
       rows: [["Your EVM address", chain.account, true], ["Network fee", await feeText(gas)]],
-      notes: [{ text: `${((n) => (n === 1 ? "One transaction" : `Up to ${n} transactions`))((finishing ? 1 : 2) + (fresh ? 1 : 0) + (deployed ? 0 : 1))} from your gas key.${fresh ? " The first one installs the OPEQ factory on this network, once for everyone." : ""}` }, { text: "This builds key trees for this network and ends on one that only this device knows. It takes about 40 seconds." }] }, "Set up"))) return;
+      notes: [{ text: `${((n) => (n === 1 ? "One transaction" : `Up to ${n} transactions`))((finishing ? 1 : 2) + (fresh ? 1 : 0) + (deployed ? 0 : 1))} from your gas key.${fresh ? " The first one installs the OPEQ factory on this network, once for everyone." : ""}` }, { text: "This builds key trees for this network and ends on one that only this device knows. It takes about 40 seconds." }, { text: "Beta: the EVM contracts have had four internal security reviews but no external audit yet. Start with small amounts.", warn: true }] }, "Set up"))) return;
     $("e-setup-step").textContent = "";
     try {
       await chain.setup(progressTo("e-setup-prog"), (m) => { $("e-setup-step").textContent = m.charAt(0).toUpperCase() + m.slice(1); });
