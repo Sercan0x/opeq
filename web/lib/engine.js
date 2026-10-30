@@ -15,6 +15,7 @@ export const TX_LIMIT = 1232;
 export const BASE_FEE = 5000;
 const RENT_MIN = 1000000, RENT_MAX = 2000000;
 const CONFIRM_MS = 90000;
+const HISTORY_PAGES = 5;
 
 const b64 = (b) => btoa(String.fromCharCode(...b));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -485,11 +486,20 @@ export class Session {
   }
 
   async failedLeaves(state) {
-    const sigs = await this.e.rpc.call("getSignaturesForAddress", [b58encode(state), { limit: 300, commitment: "confirmed" }]);
-    if (!Array.isArray(sigs)) throw new Error("the RPC returned a malformed signature list");
+    const sigs = [];
+    let before = null, complete = false;
+    for (let page = 0; page < HISTORY_PAGES; page++) {
+      const got = await this.e.rpc.call("getSignaturesForAddress", [b58encode(state), { limit: 1000, commitment: "confirmed", ...(before ? { before } : {}) }]);
+      if (!Array.isArray(got)) throw new Error("the RPC returned a malformed signature list");
+      sigs.push(...got);
+      if (got.length < 1000) { complete = true; break; }
+      before = got[got.length - 1] && got[got.length - 1].signature;
+      if (typeof before !== "string") throw new Error("the RPC returned a malformed signature list");
+    }
+    if (!complete) throw new Error("this wallet has too much history to check every earlier takeover attempt; take over from the device that is active, or wait for it to rekey");
     const out = new Set();
     const failed = sigs.filter((x) => x && x.err);
-    if (failed.length > 100) throw new Error("this wallet has too many recent failed transactions to check safely; take over from the device that is active, or wait for it to rekey");
+    if (failed.length > 300) throw new Error("this wallet has too many failed transactions to check safely; take over from the device that is active, or wait for it to rekey");
     for (const s of failed) {
       let tx = null;
       for (let i = 0; i < 4 && !tx; i++) {
