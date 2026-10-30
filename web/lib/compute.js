@@ -37,7 +37,7 @@ function evmIdentity({ master }, progress) {
 function evmBoot({ master, chainId, account }, progress) {
   const identity = E.deriveIdentityTree(master, progress && ((p) => progress(p * 0.5)));
   const b = E.bootstrapCall(master, chainId, account, identity, progress && ((p) => progress(0.5 + p * 0.5)));
-  return { pubSeed: b.tree.pubSeed, root: b.tree.root, leaves: E.leavesBytes(b.tree), calldata: b.calldata };
+  return { pubSeed: b.tree.pubSeed, root: b.tree.root, leaves: E.leavesBytes(b.tree), calldata: b.calldata, cost: b.cost };
 }
 
 function evmTree({ master, chainId, epoch, pubSeed }, progress) {
@@ -56,14 +56,14 @@ function evmLoad(a) {
 function evmSignExec(a, progress) {
   const tree = evmLoad(a);
   const g = E.grind(E.execHasher(a.rnd, a.chainId, a.account, a.epoch, a.leaf, a.deadline, a.calls), E.GRIND_TRIES, progress);
-  return E.encodeExecute(a.calls, a.leaf, a.deadline, g.salt, a.rnd, tree.sign(a.leaf, g.digest));
+  return { calldata: E.encodeExecute(a.calls, a.leaf, a.deadline, g.salt, a.rnd, tree.sign(a.leaf, g.digest)), cost: g.cost };
 }
 
 function evmSignRekey(a, progress) {
   const tree = evmLoad(a);
   const next = E.deriveChainTree(a.master, a.chainId, a.epoch + 1, a.newPubSeed, progress && ((p) => progress(p * 0.9)));
   const g = E.grind(E.rekeyHasher(a.rnd, a.chainId, a.account, a.epoch, a.leaf, a.deadline, next.pubSeed, next.root), 1 << 14);
-  return { calldata: E.encodeRekey(next.pubSeed, next.root, a.leaf, a.deadline, g.salt, a.rnd, tree.sign(a.leaf, g.digest)), newRoot: next.root, newLeaves: E.leavesBytes(next) };
+  return { calldata: E.encodeRekey(next.pubSeed, next.root, a.leaf, a.deadline, g.salt, a.rnd, tree.sign(a.leaf, g.digest)), cost: g.cost, newRoot: next.root, newLeaves: E.leavesBytes(next) };
 }
 
 export const OPS = { treeFor, signExec, signRekey, evmIdentity, evmBoot, evmTree, evmSignExec, evmSignRekey };

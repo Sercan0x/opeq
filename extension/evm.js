@@ -129,10 +129,11 @@ async function refresh() {
   $("e-sym").textContent = sym;
   $("e-gas-bal").textContent = `${formatUnits(s.feeBal, 18)} ${sym}`;
   $("e-gas").classList.toggle("low", s.feeBal === 0n);
-  $("e-state").textContent = { setup: s.st.deployed ? "needs setup" : "not set up", ready: "active", adopt: "finishing a rekey", other: "other device" }[s.state];
+  $("e-state").textContent = { setup: s.st.deployed ? "needs setup" : "not set up", finish: "setup not finished", ready: "active", adopt: "finishing a rekey", other: "other device" }[s.state];
   $("e-tree").textContent = s.state === "ready" ? `tree ${s.st.epoch}` : "–";
   $("e-left").textContent = s.state === "ready" ? String(s.left) : "–";
-  hide("e-setup", s.state !== "setup");
+  hide("e-setup", s.state !== "setup" && s.state !== "finish");
+  $("e-setup-go").textContent = s.state === "finish" ? "Finish setup" : "Set up";
   hide("e-take", s.state !== "other");
   hide("e-send", s.state !== "ready");
   hide("e-rekey", s.state !== "ready");
@@ -263,10 +264,11 @@ function bind() {
   $("e-setup-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
     const fresh = (await chain.rpc.code(chain.factory)) === "0x";
     const deployed = status && status.st.deployed;
-    const gas = (fresh ? SETUP_GAS.factory : 0n) + (deployed ? 0n : SETUP_GAS.account) + REKEY_GAS;
+    const finishing = status && status.state === "finish";
+    const gas = (fresh ? SETUP_GAS.factory : 0n) + (deployed ? 0n : SETUP_GAS.account) + REKEY_GAS * (finishing ? 1n : 2n);
     if (!(await ui.ask({ ...tag(), title: `Set up on ${chain.chain.name}`,
       rows: [["Your EVM address", chain.account, true], ["Network fee", await feeText(gas)]],
-      notes: [{ text: `Up to ${1 + (fresh ? 1 : 0) + (deployed ? 0 : 1)} transactions from your gas key.${fresh ? " The first one installs the OPEQ factory on this network, once for everyone." : ""}` }, { text: "This builds a key tree for this network. It takes about 20 seconds." }] }, "Set up"))) return;
+      notes: [{ text: `${((n) => (n === 1 ? "One transaction" : `Up to ${n} transactions`))((finishing ? 1 : 2) + (fresh ? 1 : 0) + (deployed ? 0 : 1))} from your gas key.${fresh ? " The first one installs the OPEQ factory on this network, once for everyone." : ""}` }, { text: "This builds key trees for this network and ends on one that only this device knows. It takes about 40 seconds." }] }, "Set up"))) return;
     $("e-setup-step").textContent = "";
     try {
       await chain.setup(progressTo("e-setup-prog"), (m) => { $("e-setup-step").textContent = m.charAt(0).toUpperCase() + m.slice(1); });

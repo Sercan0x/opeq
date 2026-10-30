@@ -17,7 +17,8 @@ const GAS_HEADROOM = 13n;
 export const EXEC_GAS = 320000n;
 export const REKEY_GAS = 300000n;
 export const TOPUP_LOW = 3n;
-export const TAKEOVER_LO = 1016;
+export const TAKEOVER_LO = 992;
+const REKEY_EXTRA = 70000n;
 const PENDING_REKEYS = 4;
 export const TOPUP_TARGET = 10n;
 export const SETUP_GAS = { factory: 1700000n, account: 1300000n };
@@ -81,11 +82,13 @@ export class EvmRpc {
 }
 
 export class EvmChain {
-  constructor({ chain, store, macKey, legacyMac, vaultId, master, compute, rpcUrl }) {
+  constructor({ chain, store, macKey, legacyMac, vaultId, master, compute, rpcUrl, checkUrl }) {
     this.legacyMac = legacyMac || null;
     this.chain = chain;
     this.id = chain.chainId;
     this.rpc = new EvmRpc(rpcUrl || chain.rpc);
+    const ck = checkUrl === undefined ? chain.check : checkUrl;
+    this.check = ck ? new EvmRpc(ck) : null;
     this.store = store;
     this.macKey = macKey;
     this.vaultId = vaultId;
@@ -94,7 +97,7 @@ export class EvmChain {
     this.fee = S.feeKeyFromMaster(master);
     this.feeAddress = S.addressOf(this.fee);
     this.factory = E.factoryAddress();
-    this.key = `${vaultId}:evm:${this.id}`;
+    this.key = null;
     this.identity = null;
     this.minBlock = 0;
   }
@@ -114,6 +117,44 @@ export class EvmChain {
   async checkNetwork() {
     const id = Number(await this.rpc.call("eth_chainId"));
     if (id !== this.id) throw new Error(`the RPC is on chain ${id}, not ${this.chain.name} (${this.id})`);
+    if (this.check && Number(await this.check.call("eth_chainId")) !== this.id) throw new Error(`the second network source is not on ${this.chain.name}`);
+  }
+
+  async run(op, args, progress) {
+    const m = this.master.slice();
+    try { return await this.compute.run(op, { ...args, master: m }, progress); }
+    finally { m.fill(0); }
+  }
+
+  async agree(st, keys) {
+    if (!this.check) return;
+    for (let i = 0; i < 10; i++) {
+      const w = await this.chainStateAt("latest", this.check).catch(() => null);
+      if (w && keys.every((k) => w[k] === st[k])) return;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    throw new Error("two independent network sources disagree about your account, so nothing was signed. Try again in a minute");
+  }
+
+  async gasFor(len, steps, calls = [], extra = 0n) {
+    const filler = crypto.getRandomValues(new Uint8Array(len));
+    const base = BigInt(await this.rpc.call("eth_estimateGas", [{ from: this.feeAddress, to: this.feeAddress, data: bytesToHex(filler) }]));
+    return ((base + 30000n + BigInt(steps) * 80n + (await this.callsGas(calls)) + extra) * GAS_HEADROOM) / 10n;
+  }
+
+  async callsGas(calls) {
+    let inner = 0n;
+    for (const c of calls) {
+      let g;
+      try { g = BigInt(await this.rpc.call("eth_estimateGas", [{ from: this.account, to: c.to, value: "0x" + BigInt(c.value || 0).toString(16), data: bytesToHex(c.data || new Uint8Array(0)) }])); }
+      catch (e) { throw new Error(`this transfer would fail on chain (${String(e.message).slice(0, 120)}). Nothing was signed`); }
+      inner += (g > 21000n ? g - 21000n : 0n) + 12000n;
+    }
+    return inner;
+  }
+
+  bootPubSeed() {
+    return bytesToHex(E.bootSeeds(this.master, this.id).pubSeed);
   }
 
   async loadIdentity(progress) {
@@ -124,11 +165,12 @@ export class EvmChain {
       await this.verify(c);
       if (c.pub_seed !== bytesToHex(pubSeed)) throw new Error("the saved EVM identity does not match these words");
     } else {
-      const t = await this.compute.run("evmIdentity", { master: this.master.slice() }, progress);
+      const t = await this.run("evmIdentity", {}, progress);
       c = await this.put({ id: key, pub_seed: bytesToHex(t.pubSeed), root: bytesToHex(t.root) });
     }
     this.identity = { pubSeed, root: hexToBytes(c.root) };
     this.account = E.accountAddress(this.identity.pubSeed, this.identity.root, this.factory);
+    this.key = `${this.vaultId}:evm:${this.id}:${this.account}`;
     return this.account;
   }
 
@@ -160,11 +202,11 @@ export class EvmChain {
     return this.at((b) => this.chainStateAt(b));
   }
 
-  async chainStateAt(block) {
-    const code = await this.rpc.code(this.account, block);
+  async chainStateAt(block, rpc = this.rpc) {
+    const code = await rpc.code(this.account, block);
     if (code === "0x") return { deployed: false, epoch: 0, next: 0, pubSeed: null, root: null };
     if (lower(code.slice(2)) !== lower(ACCOUNT_RUNTIME)) throw new Error("the code at your account address is not the OPEQ account contract, refusing to use it");
-    const [ep, nx, ps, rt] = await Promise.all([SEL.epoch, SEL.next, SEL.pubSeed, SEL.root].map((s) => this.rpc.ethCall(this.account, s, block)));
+    const [ep, nx, ps, rt] = await Promise.all([SEL.epoch, SEL.next, SEL.pubSeed, SEL.root].map((s) => rpc.ethCall(this.account, s, block)));
     return { deployed: true, epoch: Number(word(ep)), next: Number(word(nx)), pubSeed: ps.slice(0, 34), root: rt.slice(0, 34) };
   }
 
@@ -176,17 +218,12 @@ export class EvmChain {
     let state, next = null;
     const same = r && r.epoch === st.epoch && r.pub_seed === st.pubSeed && r.root === st.root;
     if (!st.deployed || st.epoch === 0) state = "setup";
-    else if (same && r.active && !r.pending_boot) state = "ready";
-    else if (same && r.pending_boot && r.boot_tx && st.epoch === 1 && (await this.landed(r.boot_tx))) { delete r.pending_boot; delete r.boot_tx; await this.put(r); state = "ready"; }
+    else if (same && r.active && st.pubSeed !== this.bootPubSeed()) state = "ready";
+    else if (st.epoch === 1 && st.pubSeed === this.bootPubSeed()) state = "finish";
     else if (r && st.epoch === r.epoch + 1 && (next = (r.rekeys || []).find((k) => k.pub_seed === st.pubSeed && k.root === st.root))) state = "adopt";
     else state = "other";
     const left = state === "ready" ? Math.max(0, E.EXEC_LIMIT - Math.max(r.next_leaf, st.next)) : 0;
     return { state, st, r, bal, feeBal, left, next };
-  }
-
-  async landed(hash) {
-    const rc = await this.rpc.call("eth_getTransactionReceipt", [hash]).catch(() => null);
-    return !!(rc && rc.status === "0x1");
   }
 
   async fees() {
@@ -254,20 +291,22 @@ export class EvmChain {
         st = await this.chainState();
         if (!st.deployed) throw new Error("the account contract did not appear at the expected address");
       }
-      if (st.epoch !== 0) return this.status();
-      await this.gasCheck(REKEY_GAS);
-      step("building the key tree for this network");
-      const b = await this.compute.run("evmBoot", { master: this.master.slice(), chainId: this.id, account: this.account }, progress);
-      const old = await this.record();
-      if (old && old.epoch >= 1 && !(old.epoch === 1 && old.pending_boot)) throw new Error("this browser already holds a newer key tree for this network, refusing to set it up again");
-      const r = { id: this.key, epoch: 1, next_leaf: old && old.epoch === 1 ? old.next_leaf : 0, pub_seed: bytesToHex(b.pubSeed), root: bytesToHex(b.root), leaves: b64(b.leaves), active: true, pending_boot: true };
-      await this.put(r);
-      step("moving the account to its own key tree");
-      const gas = (await this.estimate(this.account, b.calldata)) + BigInt(crypto.getRandomValues(new Uint16Array(1))[0]);
-      await this.sendTx(this.account, b.calldata, 0n, gas, async (h) => { r.boot_tx = h; await this.put(r); });
-      delete r.pending_boot;
-      delete r.boot_tx;
-      await this.put(r);
+      let boot = null;
+      if (st.epoch === 0) {
+        await this.agree(st, ["deployed", "epoch"]);
+        await this.gasCheck(REKEY_GAS * 2n);
+        step("building the key tree for this network");
+        boot = await this.run("evmBoot", { chainId: this.id, account: this.account }, progress && ((p) => progress(p * 0.5)));
+        step("moving the account off its identity key");
+        const gas = await this.gasFor(boot.calldata.length, boot.cost, [], REKEY_EXTRA);
+        try { await this.sendTx(this.account, boot.calldata, 0n, gas); }
+        catch (e) { if (!e.reverted || (await this.chainState()).epoch === 0) throw e; }
+        st = await this.chainState();
+      }
+      if (st.epoch === 1 && st.pubSeed === this.bootPubSeed()) {
+        step("moving the account to a key tree only this device knows");
+        await this._takeover(progress && ((p) => progress(0.5 + p * 0.5)), null, boot);
+      }
       return this.status();
     });
   }
@@ -280,14 +319,17 @@ export class EvmChain {
     await this.checkNetwork();
     return this.lock(async () => {
       let s = await this.status();
-      if (s.state === "adopt") { await this.adopt(s); s = await this.status(); }
+      if (s.state === "adopt") { await this.agree(s.st, ["epoch", "pubSeed", "root"]); await this.adopt(s); s = await this.status(); }
       if (s.state !== "ready") throw new Error(s.state === "setup" ? "set up this network first" : "this copy of the wallet is not signing on this network. Choose Use on this device first");
       return fn(s);
     });
   }
 
   async topupPlan(spend) {
-    const [f, [fee, bal]] = await Promise.all([this.fees(), this.at((b) => Promise.all([this.rpc.balance(this.feeAddress, b), this.rpc.balance(this.account, b)]))]);
+    const [f, [fee, main]] = await Promise.all([this.fees(), this.at((b) => Promise.all([this.rpc.balance(this.feeAddress, b), this.rpc.balance(this.account, b)]))]);
+    this.feeCheck(f);
+    const seen = this.check ? await this.check.balance(this.account).catch(() => 0n) : main;
+    const bal = seen < main ? seen : main;
     const per = (EXEC_GAS * f.maxFeePerGas * 3n) / 2n;
     if (fee >= per * TOPUP_LOW) return 0n;
     const free = bal - spend;
@@ -318,16 +360,19 @@ export class EvmChain {
   async execute(calls, onHash) {
     return this.sign(async ({ r, st }) => {
       await this.gasCheck(EXEC_GAS + 40000n * BigInt(calls.length));
+      const inner = await this.callsGas(calls);
       const f = await this.fees();
       const leaf = await this.reserve(r, st, E.EXEC_LIMIT);
       const rnd = crypto.getRandomValues(new Uint8Array(16));
       const deadline = f.now + DEADLINE_S;
-      const cd = await this.compute.run("evmSignExec", { master: this.master.slice(), chainId: this.id, account: this.account, epoch: r.epoch, pubSeed: hexToBytes(r.pub_seed), root: hexToBytes(r.root), leaves: unb64(r.leaves), leaf, deadline, rnd, calls });
-      try { return await this.sendTx(this.account, cd, 0n, null, onHash); }
+      const out = await this.run("evmSignExec", { chainId: this.id, account: this.account, epoch: r.epoch, pubSeed: hexToBytes(r.pub_seed), root: hexToBytes(r.root), leaves: unb64(r.leaves), leaf, deadline, rnd, calls });
+      const gas = await this.gasFor(out.calldata.length, out.cost, [], inner);
+      try { return await this.sendTx(this.account, out.calldata, 0n, gas, onHash); }
       catch (e) {
         if (!e.reverted) throw e;
         const now = await this.chainState();
-        if (now.epoch === r.epoch && now.next > leaf) return { hash: e.hash, gasUsed: 0n, byOther: true };
+        const seen = this.check ? await this.chainStateAt("latest", this.check).catch(() => null) : now;
+        if (now.epoch === r.epoch && now.next > leaf && seen && seen.epoch === r.epoch && seen.next > leaf) return { hash: e.hash, gasUsed: 0n, byOther: true };
         throw e;
       }
     });
@@ -347,35 +392,43 @@ export class EvmChain {
       const s = await this.status();
       if (s.state === "ready") return s;
       if (s.state === "setup") throw new Error("set up this network first");
-      if (s.state === "adopt") { await this.adopt(s); return this.status(); }
-      const st = s.st;
-      await this.gasCheck(REKEY_GAS);
-      const cur = await this.compute.run("evmTree", { master: this.master.slice(), chainId: this.id, epoch: st.epoch, pubSeed: hexToBytes(st.pubSeed) }, progress && ((p) => progress(p * 0.5)));
-      if (bytesToHex(cur.root) !== st.root) throw new Error("these words do not control the key tree on chain, refusing to sign");
-      const old = await this.record();
-      if (old && old.epoch > st.epoch) throw new Error("this browser has a newer key tree than the chain, refusing to go back");
-      const mine = old && old.epoch === st.epoch && old.pub_seed === st.pubSeed ? old : null;
-      const used = new Set(mine ? mine.used || [] : []);
-      const free = [];
-      for (let i = Math.max(st.next, TAKEOVER_LO); i < E.LEAVES; i++) if (!used.has(i)) free.push(i);
-      if (!free.length) throw new Error("this copy has used all its takeover keys on the current tree. Rekey from the device that signs now, or wait for a pending takeover to confirm");
-      const leaf = free[crypto.getRandomValues(new Uint32Array(1))[0] % free.length];
-      const r = { id: this.key, epoch: st.epoch, next_leaf: mine ? mine.next_leaf : 0, pub_seed: st.pubSeed, root: st.root, leaves: b64(cur.leaves), active: false, used: [...used, leaf], rekeys: mine ? mine.rekeys || [] : [] };
-      await this.put(r);
-      return this._rekey(r, leaf, hexToBytes(st.pubSeed), hexToBytes(st.root), cur.leaves, progress && ((p) => progress(0.5 + p * 0.5)), onHash);
+      if (s.state === "adopt") { await this.agree(s.st, ["epoch", "pubSeed", "root"]); await this.adopt(s); return this.status(); }
+      await this._takeover(progress, onHash, null);
+      return this.status();
     });
+  }
+
+  async _takeover(progress, onHash, boot) {
+    const st = await this.chainState();
+    await this.agree(st, ["deployed", "epoch", "pubSeed", "root"]);
+    await this.gasCheck(REKEY_GAS);
+    const cur = boot && bytesToHex(boot.pubSeed) === st.pubSeed ? { root: boot.root, leaves: boot.leaves }
+      : await this.run("evmTree", { chainId: this.id, epoch: st.epoch, pubSeed: hexToBytes(st.pubSeed) }, progress && ((p) => progress(p * 0.5)));
+    if (bytesToHex(cur.root) !== st.root) throw new Error("these words do not control the key tree on chain, refusing to sign");
+    const old = await this.record();
+    if (old && old.epoch > st.epoch) throw new Error("this browser has a newer key tree than the chain, refusing to go back");
+    const mine = old && old.epoch === st.epoch && old.pub_seed === st.pubSeed ? old : null;
+    const used = new Set(mine ? mine.used || [] : []);
+    const free = [];
+    for (let i = Math.max(st.next, TAKEOVER_LO); i < E.LEAVES; i++) if (!used.has(i)) free.push(i);
+    if (!free.length) throw new Error("this copy has used all its takeover keys on the current tree. Rekey from the device that signs now, or wait for a pending takeover to confirm");
+    const leaf = free[crypto.getRandomValues(new Uint32Array(1))[0] % free.length];
+    const r = { id: this.key, epoch: st.epoch, next_leaf: mine ? mine.next_leaf : 0, pub_seed: st.pubSeed, root: st.root, leaves: b64(cur.leaves), active: false, used: [...used, leaf], rekeys: mine ? mine.rekeys || [] : [] };
+    await this.put(r);
+    return this._rekey(r, leaf, hexToBytes(st.pubSeed), hexToBytes(st.root), cur.leaves, progress && ((p) => progress(0.5 + p * 0.5)), onHash);
   }
 
   async _rekey(r, leaf, pubSeed, root, leaves, progress, onHash) {
     const f = await this.fees();
     const newPubSeed = crypto.getRandomValues(new Uint8Array(16));
     const rnd = crypto.getRandomValues(new Uint8Array(16));
-    const out = await this.compute.run("evmSignRekey", { master: this.master.slice(), chainId: this.id, account: this.account, epoch: r.epoch, pubSeed, root, leaves, leaf, deadline: f.now + DEADLINE_S, rnd, newPubSeed }, progress);
+    const out = await this.run("evmSignRekey", { chainId: this.id, account: this.account, epoch: r.epoch, pubSeed, root, leaves, leaf, deadline: f.now + DEADLINE_S, rnd, newPubSeed }, progress);
     r.rekeys = [...(r.rekeys || []), { pub_seed: bytesToHex(newPubSeed), root: bytesToHex(out.newRoot), leaves: b64(out.newLeaves) }].slice(-PENDING_REKEYS);
     await this.put(r);
-    const res = await this.sendTx(this.account, out.calldata, 0n, null, onHash);
+    const gas = await this.gasFor(out.calldata.length, out.cost, [], REKEY_EXTRA);
+    const res = await this.sendTx(this.account, out.calldata, 0n, gas, onHash);
     const s = await this.status();
-    if (s.state === "adopt") await this.adopt(s);
+    if (s.state === "adopt") { await this.agree(s.st, ["epoch", "pubSeed", "root"]); await this.adopt(s); }
     return res;
   }
 
@@ -389,6 +442,10 @@ export class EvmChain {
       this.rpc.ethCall(a, SEL.balanceOf + "000000000000000000000000" + this.account.slice(2)),
     ]);
     const decimals = Number(word(dec));
+    if (this.check) {
+      const again = await this.check.ethCall(a, SEL.decimals).catch(() => null);
+      if (again === null || Number(word(again)) !== decimals) throw new Error("two independent network sources disagree about this token's decimals, so the amount could be wrong. Nothing was signed");
+    }
     if (!(decimals >= 0 && decimals <= 36)) throw new Error("that contract does not look like an ERC-20 token");
     return { address: a, decimals, symbol: decodeSymbol(sym), balance: word(bal) };
   }

@@ -7,7 +7,7 @@ import { sha256 } from "../web/lib/sha256.js";
 import * as E from "../web/lib/evmwots.js";
 import { encodeErc20Transfer } from "../web/lib/evmwots.js";
 
-const BOOT_PIN = "674e4c0c56ea2b9094d2a26395b3cb63fd60336757e8c06f4840764e52613500";
+const BOOT_PIN = "e4a3dde0ba8c4df52687e86a0c0c6ce90b249d37a828cca03cf1c0c30169d998";
 const RPC = process.argv[2] || "http://127.0.0.1:8549";
 const ANVIL0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const CHAIN = { chainId: 31337, name: "Local test", symbol: "ETH", rpc: RPC };
@@ -59,7 +59,7 @@ ok((await A.status()).bal === 10n ** 18n, "funds arrive at the account address b
 t0 = Date.now();
 s = await A.setup(null, (m) => steps.push(m));
 console.log("  setup took", Date.now() - t0, "ms:", steps.join(" / "));
-ok(s.state === "ready" && s.st.epoch === 1 && s.left === E.EXEC_LIMIT, "account ready on its own tree, 1008 keys left");
+ok(s.state === "ready" && s.st.epoch === 2 && s.st.pubSeed !== A.bootPubSeed() && s.left === E.EXEC_LIMIT, `account ready on a private tree (epoch 2), ${E.EXEC_LIMIT} keys left`);
 const again = await localCompute.run("evmBoot", { master: master.slice(), chainId: CHAIN.chainId, account: A.account });
 const again2 = await localCompute.run("evmBoot", { master: master.slice(), chainId: CHAIN.chainId, account: A.account });
 ok(Buffer.from(again.calldata).equals(Buffer.from(again2.calldata)), "bootstrap signature is identical on every retry");
@@ -130,7 +130,7 @@ await throws(B.execute([{ to: bob, value: 1n, data: new Uint8Array(0) }]), /Use 
 t0 = Date.now();
 await B.takeover(null);
 s = await B.status();
-ok(s.state === "ready" && s.st.epoch === 2, `takeover moved the account to the second device's tree (${Date.now() - t0} ms)`);
+ok(s.state === "ready" && s.st.epoch === 3, `takeover moved the account to the second device's tree (${Date.now() - t0} ms)`);
 ok((await A.status()).state === "other", "first device sees it is no longer the signer");
 await throws(A.execute([{ to: bob, value: 1n, data: new Uint8Array(0) }]), /Use on this device/, "first device refuses to sign");
 await B.execute([{ to: bob, value: 5n, data: new Uint8Array(0) }]);
@@ -140,7 +140,7 @@ console.log("rekey");
 const before = (await B.status()).st.root;
 await B.rekey(null);
 s = await B.status();
-ok(s.state === "ready" && s.st.epoch === 3 && s.st.root !== before && s.left === E.EXEC_LIMIT, "rekey moved to a fresh tree, same address");
+ok(s.state === "ready" && s.st.epoch === 4 && s.st.root !== before && s.left === E.EXEC_LIMIT, "rekey moved to a fresh tree, same address");
 await B.execute([{ to: bob, value: 7n, data: new Uint8Array(0) }]);
 ok((await B.status()).st.next === 1, "send after rekey");
 
@@ -150,26 +150,32 @@ await C.loadIdentity(null);
 const realC = C.sendTx.bind(C);
 C.sendTx = async () => { throw new Error("simulated stuck takeover"); };
 const picked = [];
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 4; i++) {
   await throws(C.takeover(null), /simulated stuck/, `takeover attempt ${i + 1} interrupted`);
   picked.push((await C.store.get(C.key)).used.at(-1));
 }
-ok(new Set(picked).size === 8 && picked.every((l) => l >= 1016 && l < 1024), `8 retries used 8 different takeover keys: ${picked.join(",")}`);
-await throws(C.takeover(null), /used all its takeover keys/, "9th retry refuses instead of reusing a key");
+ok(new Set(picked).size === 4 && picked.every((l) => l >= 992 && l < 1024), `4 retries used 4 different takeover keys: ${picked.join(",")}`);
+const cr = await C.store.get(C.key);
+const keepOne = 1023 - (picked.includes(1023) ? 1 : 0) - (picked.includes(1022) && picked.includes(1023) ? 1 : 0);
+const all = []; for (let i = 992; i < 1024; i++) if (i !== keepOne) all.push(i);
+await C.put({ ...cr, used: all });
+await throws(C.takeover(null), /simulated stuck/, "one more attempt takes the last free key");
+ok((await C.store.get(C.key)).used.at(-1) === keepOne, `the last free key ${keepOne} was used`);
+await throws(C.takeover(null), /used all its takeover keys/, "then it refuses instead of reusing a key");
 C.sendTx = realC;
 const Bs = await B.status();
 ok(Bs.state === "ready", "the real signer is unaffected by the stuck takeovers");
 
 console.log("owner rekey stays below the takeover range");
 const own = await B.store.get(B.key);
-await B.store.put({ ...own, next_leaf: 1015 });
+await B.store.put({ ...own, next_leaf: 991 });
 await B.put({ ...(await B.store.get(B.key)) });
 const leafSeen = [];
 const realB = B._rekey.bind(B);
 B._rekey = async (r, leaf) => { leafSeen.push(leaf); throw new Error("stop"); };
 await throws(B.rekey(null), /stop/, "owner rekey at the edge");
 await throws(B.rekey(null), /no keys left/, "owner rekey refuses to enter the takeover range");
-ok(leafSeen.join() === "1015", `owner rekey used leaf ${leafSeen.join()}`);
+ok(leafSeen.join() === "991", `owner rekey used leaf ${leafSeen.join()}`);
 B._rekey = realB;
 
 console.log("bootstrap: only the copy whose own bootstrap lands signs");
@@ -182,10 +188,10 @@ const realX = X.sendTx.bind(X);
 X.sendTx = async (to, data, value, gas, onHash) => { if (to === X.account && data.length > 400) throw new Error("simulated lost bootstrap"); return realX(to, data, value, gas, onHash); };
 await throws(X.setup(null), /lost bootstrap/, "X's bootstrap never reached the chain");
 X.sendTx = realX;
-ok((await X.store.get(X.key)).pending_boot === true, "X keeps its epoch-1 record pending");
 await Y.setup(null);
-ok((await Y.status()).state === "ready", "Y's bootstrap landed, Y signs");
-ok((await X.status()).state === "other", "X does not sign on the shared epoch-1 tree, it must take over");
+const ys = await Y.status();
+ok(ys.state === "ready" && ys.st.epoch === 2, "Y set up and ended on its own private tree");
+ok((await X.status()).state === "other", "X does not sign, it must take over");
 const boot = await localCompute.run("evmBoot", { master: master.slice(), chainId: CHAIN.chainId, account: A.account });
 const { createHash } = await import("node:crypto");
 const pin = createHash("sha256").update(boot.calldata).digest("hex");
@@ -203,6 +209,12 @@ Y.sendTx = async (to, data, value, gas, onHash) => {
 const fr = await Y.execute([{ to: bob, value: 11n, data: new Uint8Array(0) }]);
 Y.sendTx = realSendB;
 ok(fr.byOther === true && Y._frontrunPaid === 11n, "a front-run copy is reported as done, not as failed");
+
+console.log("second network source disagrees");
+const Z = new EvmChain({ chain: CHAIN, store: new MemoryStore(), macKey, vaultId: "vaultA", master: master.slice(), compute: localCompute, checkUrl: process.argv[3] || "http://127.0.0.1:8550" });
+await Z.loadIdentity(null);
+await throws(Z.takeover(null), /disagree/, "takeover refused when the second source sees a different account");
+await throws(Z.token(token), /disagree/, "token refused when the second source disagrees about decimals");
 
 console.log("wrong network");
 const W = new EvmChain({ chain: { ...CHAIN, chainId: 84532, name: "Base Sepolia" }, store: storeA, macKey, vaultId: "vaultA", master: master.slice(), compute: localCompute, rpcUrl: RPC });

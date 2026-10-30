@@ -12,7 +12,7 @@ contract OpeqAccount {
 
     bytes32 public constant TAG_EXEC = keccak256("opeq/evm/exec/v1");
     bytes32 public constant TAG_REKEY = keccak256("opeq/evm/rekey/v1");
-    uint32 public constant REKEY_RESERVE = 16;
+    uint32 public constant REKEY_RESERVE = 64;
     uint32 public constant EXEC_LIMIT = uint32(Wots.LEAVES) - REKEY_RESERVE;
     uint256 public constant MAX_AHEAD = 1 hours;
 

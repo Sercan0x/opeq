@@ -10,7 +10,7 @@ export const LEAVES = 1 << HEIGHT;
 export const SIG_LEN = CHAINS * N;
 export const PATH_LEN = HEIGHT * N;
 export const PROOF_LEN = SIG_LEN + PATH_LEN;
-export const REKEY_RESERVE = 16;
+export const REKEY_RESERVE = 64;
 export const EXEC_LIMIT = LEAVES - REKEY_RESERVE;
 export const GRIND_TRIES = 1 << 17;
 
@@ -298,7 +298,7 @@ export function bootstrapCall(master, chainId, account, identity, progress) {
   const tree = deriveChainTree(master, chainId, 1, pubSeed, progress);
   const slot = chainSlot(chainId);
   const g = grind(rekeyHasher(rnd, chainId, account, 0, slot, 0, tree.pubSeed, tree.root));
-  return { tree, calldata: encodeRekey(tree.pubSeed, tree.root, slot, 0, g.salt, rnd, identity.sign(slot, g.digest)) };
+  return { tree, cost: g.cost, calldata: encodeRekey(tree.pubSeed, tree.root, slot, 0, g.salt, rnd, identity.sign(slot, g.digest)) };
 }
 
 export function treeFromLeaves(skSeed, pubSeed, bytes) {

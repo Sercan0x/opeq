@@ -139,3 +139,4 @@
 .ev-last { margin: 0; }
 .ev-last a { color: var(--ice); }
 @media (prefers-reduced-motion: reduce) { .chain-chev { transition: none; } }
+#evm-view .ev-note { margin: 10px 0 0; font-size: 12px; }
