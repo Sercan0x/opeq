@@ -34,7 +34,7 @@ function net() { return NETS.find((n) => String(n.chainId) === picked) || NETS[0
 const evmOn = () => picked !== "sol";
 const CHOICES = () => [{ v: "sol", name: "Solana", tag: NET.mainnet ? "" : "devnet", sol: true }, ...NETS.map((n) => ({ v: String(n.chainId), name: n.name.replace(/ Sepolia$/, ""), tag: /sepolia|test/i.test(n.name) ? "testnet" : "", color: COLORS[n.chainId] || "#8a96a8" }))];
 
-const LOGOS = { 1: "eth", 11155111: "eth", 8453: "base", 84532: "base" };
+const LOGOS = { 1: "eth", 11155111: "eth", 8453: "base", 84532: "base", 42161: "arb", 421614: "arb", 4663: "hood" };
 
 function icon(el, c) {
   const logo = c.sol ? "sol" : LOGOS[c.v];

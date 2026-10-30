@@ -144,3 +144,5 @@
 .chain-ico.l-sol { background-image: url("assets/chain-sol.svg"); background-size: 88% auto; }
 .chain-ico.l-eth { background-image: url("assets/chain-eth.svg"); background-size: 120% auto; }
 .chain-ico.l-base { background-image: url("assets/chain-base.svg"); border-radius: 3px; }
+.chain-ico.l-arb { background-image: url("assets/chain-arb.svg"); background-size: 112% auto; }
+.chain-ico.l-hood { background-image: url("assets/chain-hood.svg"); background-size: auto 100%; }
