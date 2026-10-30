@@ -61,7 +61,7 @@
       <h2 class="silk"><span>PORTS</span><b>wallets in this browser</b></h2>
       <div id="ports" class="ports"></div>
       <button class="port-empty" id="go-create" type="button"><span class="port-mouth"></span><span><b>Plug in a new wallet</b><small>creates 24 recovery words</small></span></button>
-      <button class="port-empty" id="go-recover" type="button"><span class="port-mouth"></span><span><b>Insert an existing wallet</b><small>recover from 24 words</small></span></button>
+      <button class="port-empty" id="go-recover" type="button"><span class="port-mouth"></span><span><b>Recover a wallet</b><small>only in the extension or USB app</small></span></button>
     </section>
   </aside>
 
@@ -70,7 +70,7 @@
     <div class="view" id="v-welcome">
       <div class="card">
         <h2 class="silk"><span>BOOT</span><b>get started</b></h2>
-        <p>Create a quantum-proof wallet, or recover one from your 24 words.</p>
+        <p>Create a test wallet on devnet. To recover a wallet from its 24 words, use the OPEQ Chrome extension or USB app, never a website.</p>
         <ol class="steps">
           <li>Install Phantom (or another Solana wallet) and switch it to devnet.</li>
           <li>Get free devnet SOL from <a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">faucet.solana.com</a> for fees.</li>
@@ -106,15 +106,8 @@
 
     <div class="view hidden" id="v-recover">
       <div class="card">
-        <h2 class="silk"><span>RESTORE</span><b>insert an existing wallet</b></h2>
-        <p class="hint">Use your words in one place at a time. If the wallet is already active elsewhere, this copy asks you to choose Use on this device, and the other copy stops signing.</p>
-        <label class="f" for="r-words">24 words, separated by spaces. The first 4 letters of each word are enough.</label>
-        <textarea id="r-words" spellcheck="false" autocomplete="off"></textarea>
-        <label class="f" for="r-pw">New password for this browser</label><input type="password" id="r-pw" autocomplete="new-password">
-        <label class="f" for="r-pw2">Repeat password</label><input type="password" id="r-pw2" autocomplete="new-password">
-        <div class="row"><button class="btn btn-solid" id="r-go" type="button">Recover</button></div>
-        <div class="progress hidden" id="r-prog"><div></div></div>
-        <p class="err" id="r-err" role="alert"></p>
+        <h2 class="silk"><span>RESTORE</span><b>not on a website</b></h2>
+        <p class="warn"><b>No website, opeq.io included, will ever ask for your 24 words.</b> Recover a wallet only in the OPEQ Chrome extension or the OPEQ USB app on your own computer. If a page asks for your words, close it.</p>
       </div>
     </div>
 

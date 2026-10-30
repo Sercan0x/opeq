@@ -1170,6 +1170,7 @@ function validRpc(u) {
 
 function setRpc(u) {
   rpc.url = u;
+  engine.refRpc = u === NET.rpc ? null : new Rpc(NET.rpc);
   engine._genesisOk = false;
   altCache = null;
   jcache.mints.clear();

@@ -298,7 +298,7 @@ function lockVault(reason) {
   hideWords();
   if (pending) { pending.words = null; pending.pw = null; pending = null; }
   $("c-words").textContent = "";
-  for (const id of ["u-pw", "c-pw", "c-pw2", "r-pw", "r-pw2", "r-words"]) $(id).value = "";
+  for (const id of ["u-pw", "c-pw", "c-pw2"]) $(id).value = "";
   if (current) {
     openVault(current);
     $("u-note").textContent = reason || "";
@@ -386,32 +386,9 @@ function initCreate() {
 
 function initRecover() {
   $("go-recover").addEventListener("click", () => {
-    $("r-words").value = $("r-pw").value = $("r-pw2").value = "";
-    $("r-err").textContent = "";
     show("v-recover");
     setDrive("idle", "restore key");
   });
-  $("r-go").addEventListener("click", () => guard("r-err", null, async () => {
-    const pw = $("r-pw").value;
-    if (pw.length < 10) throw new Error("use at least 10 characters");
-    if (pw !== $("r-pw2").value) throw new Error("passwords do not match");
-    setProgress("r-prog", 0);
-    const words = $("r-words").value;
-    let record = await engine.recover(words, pw, (p) => setProgress("r-prog", p));
-    const existing = await store.get(record.id);
-    if (existing) {
-      setProgress("r-prog", null);
-      if (!confirm("This wallet already exists in this browser. Replace its password with the new one? Its key counter is kept.")) return;
-      record = await engine.replace(record.id, words, pw, (p) => setProgress("r-prog", p));
-    } else await engine.save(record);
-    setProgress("r-prog", null);
-    session = await engine.unlock(record, pw);
-    current = session.id;
-    remember(current);
-    $("r-words").value = "";
-    log(`wallet ${short(session.id)} recovered at tree ${record.epoch}`, "ok");
-    await showWallet();
-  }));
 }
 
 function initUnlock() {

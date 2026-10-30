@@ -1,7 +1,7 @@
 import * as M from "./mnemonic.js";
 import * as P from "./protocol.js";
 import * as V from "./vaultstore.js";
-import { LEAVES, PATH_LEN, SIG_LEN } from "./wots.js";
+import { LEAVES, PATH_LEN, SIG_LEN, verify as wotsVerify } from "./wots.js";
 import {
   COMPUTE_BUDGET, SYSTEM, b58decode, b58encode, compileV0, concat, eq, hex, pubkey, u32, u64, unhex, unsignedTx,
 } from "./solana.js";
@@ -15,9 +15,43 @@ export const TX_LIMIT = 1232;
 export const BASE_FEE = 5000;
 const RENT_MIN = 1000000, RENT_MAX = 2000000;
 const CONFIRM_MS = 90000;
-const HISTORY_PAGES = 5;
+const HISTORY_PAGES = 100;
+const FAILED_MAX = 3000;
 
 const b64 = (b) => btoa(String.fromCharCode(...b));
+const rd32 = (d, o) => (d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24)) >>> 0;
+const rd64 = (d, o) => { let v = 0n; for (let i = 7; i >= 0; i--) v = (v << 8n) | BigInt(d[o + i]); return v; };
+
+export function signedLeaf(d, keys, program, cur) {
+  const SIG_END = P.SIG_OFF + SIG_LEN, PATH_END = SIG_END + PATH_LEN;
+  if (d.length < PATH_END || (d[0] !== P.IX_EXEC && d[0] !== P.IX_REKEY)) return null;
+  const leaf = rd32(d, 1);
+  if (leaf >= LEAVES) return null;
+  const expiry = rd64(d, 5), salt = rd32(d, P.SALT_OFF), r = d.slice(P.R_OFF, P.R_OFF + P.R_LEN);
+  const sig = d.slice(P.SIG_OFF, SIG_END), path = d.slice(SIG_END, PATH_END);
+  let h;
+  if (d[0] === P.IX_REKEY) {
+    if (d.length !== PATH_END + 32) return null;
+    h = P.rekeyHasher(program, cur.aid, cur.epoch, leaf, expiry, d.slice(PATH_END, PATH_END + 16), d.slice(PATH_END + 16, PATH_END + 32), r);
+  } else {
+    const key = (i) => { if (i >= keys.length) throw new Error("bad key index"); return b58decode(keys[i]); };
+    let o = PATH_END;
+    const count = d[o++];
+    const inner = [];
+    for (let k = 0; k < count; k++) {
+      const prog = key(d[o++]), ml = d[o++], metas = [];
+      for (let j = 0; j < ml; j++) { const idx = d[o++], fl = d[o++]; metas.push([key(idx), !!(fl & P.F_SIGNER), !!(fl & P.F_WRITABLE)]); }
+      const dl = d[o] | (d[o + 1] << 8);
+      o += 2;
+      if (o + dl > d.length) return null;
+      inner.push([prog, metas, d.slice(o, o + dl)]);
+      o += dl;
+    }
+    if (o !== d.length) return null;
+    h = P.execHasher(program, cur.aid, cur.epoch, leaf, expiry, inner, r);
+  }
+  return wotsVerify(cur.pubSeed, cur.root, leaf, P.salted(h, salt), sig, path) ? leaf : null;
+}
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 export class Failed extends Error {}
@@ -39,6 +73,7 @@ export class Engine {
     this.program = typeof program === "string" ? pubkey(program) : program;
     this.store = store;
     this.compute = compute;
+    this.refRpc = null;
     this.payer = payer;
     this.priceFor = null;
     this.maxPriority = 100000;
@@ -104,6 +139,13 @@ export class Engine {
       pub_seed: hex(t.pubSeed), root: hex(t.root), leaves: b64(t.leaves), enc: blob, created: Date.now(), active, ...keep,
     };
     return V.signRecord(macKey, record);
+  }
+
+  async expirySlot() {
+    const a = await this.rpc.slot();
+    if (!this.refRpc) return a;
+    const b = await this.refRpc.slot().catch(() => 0);
+    return Math.min(a, b);
   }
 
   async save(record) { await this.store.put(record); }
@@ -224,7 +266,7 @@ export class Engine {
       }
       if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig;
       let slot = 0;
-      try { slot = await this.rpc.slot(); } catch { slot = 0; }
+      try { slot = await this.expirySlot(); } catch { slot = 0; }
       if (slot > expiry + 2) {
         let again = null;
         try { again = await this.rpc.status(sig); } catch { again = null; }
@@ -337,7 +379,7 @@ export class Session {
       await this.put(r);
       return { state: "landed", message: `an interrupted transaction (key ${leaf}) can no longer execute, but it may have gone through; check the balance before sending again` };
     }
-    const slot = await this.e.rpc.slot();
+    const slot = await this.e.expirySlot();
     if (slot <= expiry + 2) {
       return { state: "pending", message: `an interrupted transaction (key ${leaf}) may still go through until slot ${expiry}; wait about a minute, refresh and check the balance before sending again` };
     }
@@ -470,7 +512,7 @@ export class Session {
       }
       await this.pendingRekey(r, st);
       const tk = (await this.e.store.get(`tk:${r.aid}`)) || { id: `tk:${r.aid}`, used: {} };
-      const seen = await this.failedLeaves(P.statePda(unhex(r.aid), this.e.program).key);
+      const seen = await this.failedLeaves(P.statePda(unhex(r.aid), this.e.program).key, { epoch: st.epoch, pubSeed: unhex(r.pub_seed), root: unhex(r.root), aid: unhex(r.aid) });
       const used = [...new Set([...(r.takeover && r.takeover.epoch === st.epoch ? r.takeover.used : []), ...(tk.used[st.epoch] || []), ...seen])];
       const lo = Math.max(TAKEOVER_FLOOR, st.next + RESTORE_GAP, r.next_leaf > TAKEOVER_FLOOR ? r.next_leaf : 0);
       const free = [];
@@ -485,7 +527,7 @@ export class Session {
     });
   }
 
-  async failedLeaves(state) {
+  async failedLeaves(state, cur) {
     const sigs = [];
     let before = null, complete = false;
     for (let page = 0; page < HISTORY_PAGES; page++) {
@@ -497,10 +539,11 @@ export class Session {
       if (typeof before !== "string") throw new Error("the RPC returned a malformed signature list");
     }
     if (!complete) throw new Error("this wallet has too much history to check every earlier takeover attempt; take over from the device that is active, or wait for it to rekey");
-    const out = new Set();
     const failed = sigs.filter((x) => x && x.err);
-    if (failed.length > 300) throw new Error("this wallet has too many failed transactions to check safely; take over from the device that is active, or wait for it to rekey");
+    if (failed.length > FAILED_MAX) throw new Error("this wallet has too many failed transactions to check; take over from the device that is active, or wait for it to rekey");
+    const out = new Set();
     for (const s of failed) {
+      if (failed.length > 200) await new Promise((r) => setTimeout(r, 250));
       let tx = null;
       for (let i = 0; i < 4 && !tx; i++) {
         tx = await this.e.rpc.call("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
@@ -510,8 +553,9 @@ export class Session {
       const keys = [...tx.transaction.message.accountKeys, ...((tx.meta && tx.meta.loadedAddresses && [...tx.meta.loadedAddresses.writable, ...tx.meta.loadedAddresses.readonly]) || [])];
       for (const ix of tx.transaction.message.instructions) {
         if (keys[ix.programIdIndex] !== b58encode(this.e.program)) continue;
-        const d = b58decode(ix.data);
-        if ((d[0] === P.IX_EXEC || d[0] === P.IX_REKEY) && d.length >= 5) out.add(d[1] | (d[2] << 8) | (d[3] << 16) | (d[4] << 24));
+        let leaf;
+        try { leaf = signedLeaf(b58decode(ix.data), keys, this.e.program, cur); } catch { leaf = null; }
+        if (leaf !== null) out.add(leaf);
       }
     }
     return [...out];
@@ -519,7 +563,7 @@ export class Session {
 
   async pendingRekey(r, st) {
     const m = r.rekeying;
-    if (m && Number(m.epoch) === st.epoch + 1 && (await this.e.rpc.slot()) <= Number(m.expiry) + 2)
+    if (m && Number(m.epoch) === st.epoch + 1 && (await this.e.expirySlot()) <= Number(m.expiry) + 2)
       throw new Error("an earlier rekey from this copy may still land; wait about a minute, then try again");
   }
 

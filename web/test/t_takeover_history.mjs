@@ -1,58 +1,86 @@
 import { Session } from "../lib/engine.js";
 import * as P from "../lib/protocol.js";
+import { TreeKey } from "../lib/wots.js";
 import { b58encode } from "../lib/solana.js";
+import { sha256 } from "../lib/sha256.js";
 
+const enc = new TextEncoder();
 const program = new Uint8Array(32).fill(7);
 const state = new Uint8Array(32).fill(9);
+const other = new Uint8Array(32).fill(11);
+const aid = sha256(enc.encode("aid")).slice(0, 32);
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log("PASS", m); } else { fail++; console.log("FAIL", m); } };
 
-function chainWith(total, failedAt) {
-  const sigs = Array.from({ length: total }, (_, i) => ({ signature: `sig${i}`, err: failedAt.has(i) ? { InstructionError: [0, "x"] } : null }));
-  const calls = [];
+const tree = TreeKey.generate(sha256(enc.encode("sk")), sha256(enc.encode("pub")).slice(0, 16));
+const cur = { epoch: 3, pubSeed: tree.pubSeed, root: tree.root, aid };
+const keys = [program, state, other].map(b58encode);
+const outer = [program, state, other];
+
+function rekeyIx(leaf, epoch, signed = true) {
+  const r = new Uint8Array(16).fill(leaf & 255), expiry = 5000n, salt = 7;
+  const np = new Uint8Array(16).fill(1), nr = new Uint8Array(16).fill(2);
+  const d = P.salted(P.rekeyHasher(program, aid, epoch, leaf, expiry, np, nr, r), salt);
+  const { sig, path } = signed ? tree.sign(leaf, d) : { sig: new Uint8Array(288).fill(3), path: new Uint8Array(160).fill(4) };
+  return P.buildRekey(leaf, expiry, salt, r, sig, path, np, nr);
+}
+
+function execIx(leaf) {
+  const r = new Uint8Array(16).fill(9), expiry = 6000n, salt = 11;
+  const inner = [[other, [[state, false, true]], Uint8Array.of(1, 2, 3)]];
+  const d = P.salted(P.execHasher(program, aid, cur.epoch, leaf, expiry, inner, r), salt);
+  const { sig, path } = tree.sign(leaf, d);
+  return P.buildExec(leaf, expiry, salt, r, sig, path, inner, outer);
+}
+
+function chainWith(total, failed) {
+  const sigs = Array.from({ length: total }, (_, i) => ({ signature: `sig${i}`, err: failed.has(i) ? { InstructionError: [0, "x"] } : null }));
   const rpc = {
     async call(method, params) {
-      calls.push(method);
       if (method === "getSignaturesForAddress") {
         const o = params[1];
         const start = o.before ? sigs.findIndex((s) => s.signature === o.before) + 1 : 0;
         return sigs.slice(start, start + o.limit);
       }
       if (method === "getTransaction") {
-        const i = Number(params[0].slice(3));
-        const leaf = failedAt.get(i);
-        const data = Uint8Array.of(P.IX_REKEY, leaf & 255, (leaf >> 8) & 255, 0, 0);
-        return { transaction: { message: { accountKeys: [b58encode(program)], instructions: [{ programIdIndex: 0, data: b58encode(data) }] } }, meta: {} };
+        const ixs = failed.get(Number(params[0].slice(3)));
+        return { transaction: { message: { accountKeys: keys, instructions: ixs.map((d) => ({ programIdIndex: 0, data: b58encode(d) })) } }, meta: {} };
       }
       throw new Error("unexpected " + method);
     },
   };
-  return { rpc, calls };
+  return rpc;
 }
 
-const run = (rpc) => Session.prototype.failedLeaves.call({ e: { rpc, program } }, state);
+const run = (rpc) => Session.prototype.failedLeaves.call({ e: { rpc, program } }, state, cur);
 
 {
-  const { rpc } = chainWith(1500, new Map([[1200, 900]]));
-  const got = await run(rpc);
-  ok(got.includes(900), "a failed takeover 1200 transactions back is still found (the old 300 window missed it)");
+  const got = await run(chainWith(1500, new Map([[1200, [rekeyIx(900, cur.epoch)]]])));
+  ok(got.join() === "900", "a signed failed takeover 1200 transactions back is found");
 }
 {
-  const { rpc } = chainWith(5000, new Map([[10, 800]]));
+  const junk = [rekeyIx(901, cur.epoch, false), rekeyIx(902, cur.epoch, false), rekeyIx(903, cur.epoch, false)];
+  const got = await run(chainWith(50, new Map([[3, junk], [4, [Uint8Array.of(P.IX_REKEY, 0x90, 3, 0, 0)]]])));
+  ok(got.length === 0, "unsigned or truncated look-alike instructions are ignored, so they cannot shrink the free keys");
+}
+{
+  const got = await run(chainWith(50, new Map([[5, [rekeyIx(904, cur.epoch - 1)]]])));
+  ok(got.length === 0, "a signature made for another epoch does not count against this tree");
+}
+{
+  const got = await run(chainWith(50, new Map([[6, [execIx(905)]]])));
+  ok(got.join() === "905", "a signed failed transfer is found too");
+}
+{
+  const flood = new Map(Array.from({ length: 3001 }, (_, i) => [i, [rekeyIx(906, cur.epoch, false)]]));
   let err = null;
-  try { await run(rpc); } catch (e) { err = e; }
-  ok(err && /too much history/.test(err.message), "history longer than the scan refuses instead of guessing");
+  try { await run(chainWith(3500, flood)); } catch (e) { err = e; }
+  ok(err && /too many failed/.test(err.message), "an extreme flood refuses instead of guessing");
 }
 {
-  const failedAt = new Map(Array.from({ length: 301 }, (_, i) => [i, 800 + (i % 200)]));
-  const { rpc } = chainWith(400, failedAt);
   let err = null;
-  try { await run(rpc); } catch (e) { err = e; }
-  ok(err && /too many failed/.test(err.message), "a flood of failed transactions refuses instead of guessing");
-}
-{
-  const { rpc } = chainWith(20, new Map());
-  ok((await run(rpc)).length === 0, "a short clean history gives no used keys");
+  try { await run(chainWith(100000, new Map())); } catch (e) { err = e; }
+  ok(err && /too much history/.test(err.message), "history beyond 100 pages refuses instead of guessing");
 }
 console.log(fail ? `${fail} FAILED` : "ALL PASSED");
 process.exit(fail ? 1 : 0);
