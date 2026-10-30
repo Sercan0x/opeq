@@ -17,7 +17,7 @@ const GAS_HEADROOM = 13n;
 export const EXEC_GAS = 320000n;
 export const REKEY_GAS = 300000n;
 export const TOPUP_LOW = 3n;
-export const TAKEOVER_LO = 992;
+export const TAKEOVER_LO = 968;
 const REKEY_EXTRA = 70000n;
 const PENDING_REKEYS = 4;
 export const TOPUP_TARGET = 10n;
@@ -282,23 +282,42 @@ export class EvmChain {
     return gas * f.maxFeePerGas;
   }
 
-  async sendTx(to, data, value = 0n, gas = null, onHash) {
+  async sendTx(to, data, value = 0n, gas = null, onHash, opts = {}) {
+    this.sent = false;
     const f = await this.fees();
     this.feeCheck(f);
+    let maxFee = f.maxFeePerGas, prio = f.maxPriorityFeePerGas;
+    if (opts.minFee && maxFee < opts.minFee) maxFee = opts.minFee;
+    if (opts.minPrio && prio < opts.minPrio) prio = opts.minPrio;
+    if (prio > maxFee) maxFee = prio;
     const g = gas || (await this.estimate(to, data, value));
-    const nonce = Math.max(Number(await this.rpc.call("eth_getTransactionCount", [this.feeAddress, "pending"])), this.nextNonce || 0);
-    const need = g * f.maxFeePerGas + value;
+    const nonce = opts.nonce !== undefined ? opts.nonce : await this.nonceFor();
+    const need = g * maxFee + value;
     const have = await this.rpc.balance(this.feeAddress);
     if (have < need) throw new Error(`the gas key needs about ${formatUnits(need, 18)} ${this.chain.symbol} for this step and holds ${formatUnits(have, 18)}. Send a little ${this.chain.symbol} on ${this.chain.name} to ${this.feeAddress}`);
-    const { raw, hash } = signTx1559({ chainId: this.id, nonce, maxPriorityFeePerGas: f.maxPriorityFeePerGas, maxFeePerGas: f.maxFeePerGas, gas: g, to, value, data }, this.fee);
-    let got;
-    try { got = await this.rpc.call("eth_sendRawTransaction", [raw]); }
-    catch (e) { e.broadcast = true; e.hash = hash; if (!this.check) throw e; got = hash; }
-    if (this.check) await this.check.call("eth_sendRawTransaction", [raw]).catch(() => null);
-    if (lower(got) !== lower(hash)) { const e = new Error("the network returned a different transaction hash, refusing to trust it"); e.broadcast = true; e.hash = hash; throw e; }
+    const { raw, hash } = signTx1559({ chainId: this.id, nonce, maxPriorityFeePerGas: prio, maxFeePerGas: maxFee, gas: g, to, value, data }, this.fee);
+    this.sent = true;
+    this.lastTx = { nonce, maxFee: maxFee.toString(), prio: prio.toString() };
+    if (opts.onSigned) await opts.onSigned(this.lastTx);
+    const same = (x) => typeof x === "string" && lower(x) === lower(hash);
+    let accepted = false, wrong = false;
+    try { const got = await this.rpc.call("eth_sendRawTransaction", [raw]); if (same(got)) accepted = true; else wrong = true; } catch {}
+    if (this.check) { try { if (same(await this.check.call("eth_sendRawTransaction", [raw]))) accepted = true; } catch {} }
+    if (!accepted || (wrong && !this.check)) { const e = new Error("no network source accepted the transaction"); e.broadcast = true; e.hash = hash; e.pending = true; throw e; }
     this.nextNonce = nonce + 1;
-    if (onHash) onHash(hash);
+    if (onHash) { try { onHash(hash); } catch {} }
     return this.wait(hash);
+  }
+
+  async nonceFor() {
+    return Math.max(Number(await this.rpc.call("eth_getTransactionCount", [this.feeAddress, "pending"])), this.nextNonce || 0);
+  }
+
+  async idle() {
+    for (const rpc of this.check ? [this.rpc, this.check] : [this.rpc]) {
+      const [p, l] = await Promise.all(["pending", "latest"].map((t) => rpc.call("eth_getTransactionCount", [this.feeAddress, t])));
+      if (Number(p) > Number(l)) throw new Error("a transaction from your gas key is still waiting in the network. Wait until it confirms, or cancel it. Nothing new was signed");
+    }
   }
 
   async wait(hash, ms = 120000) {
@@ -412,34 +431,46 @@ export class EvmChain {
   async execute(calls, onHash, cancel = false) {
     return this.sign(async ({ r, st }) => {
       if (cancel && !r.pending) return { hash: null, gasUsed: 0n, nothing: true };
-      if (!cancel) await this.resolvePending(r);
+      if (!cancel) { await this.resolvePending(r); await this.idle(); }
       await this.gasCheck(EXEC_GAS + 40000n * BigInt(calls.length));
       const inner = await this.callsGas(calls);
       const deadline = (await this.clock()) + DEADLINE_S;
       const leaf = Math.max(r.next_leaf, st.next);
-      r.pending = { leaf, deadline };
+      const prev = cancel ? r.pending : null;
+      const opts = {};
+      if (prev && prev.nonce !== undefined) {
+        opts.nonce = prev.nonce;
+        opts.minFee = (BigInt(prev.maxFee || "0") * 5n) / 4n + 1n;
+        opts.minPrio = (BigInt(prev.prio || "0") * 5n) / 4n + 1n;
+      }
+      r.pending = { leaf, deadline, ...(prev ? { prev } : {}) };
       await this.reserve(r, st, E.EXEC_LIMIT);
       const rnd = crypto.getRandomValues(new Uint8Array(16));
       const out = await this.run("evmSignExec", { chainId: this.id, account: this.account, epoch: r.epoch, pubSeed: hexToBytes(r.pub_seed), root: hexToBytes(r.root), leaves: unb64(r.leaves), leaf, deadline, rnd, calls });
-      const clear = async () => { const cur = await this.record(); if (cur && cur.pending && cur.pending.leaf <= leaf) { delete cur.pending; await this.put(cur); } };
+      const mine = (p) => p && p.leaf === leaf;
+      const done = async () => { const cur = await this.record(); if (cur && mine(cur.pending)) { delete cur.pending; await this.put(cur); } };
+      const unsent = async () => { const cur = await this.record(); if (cur && mine(cur.pending)) { if (prev) cur.pending = prev; else delete cur.pending; await this.put(cur); } };
+      opts.onSigned = async (tx) => { const cur = await this.record(); if (cur && mine(cur.pending)) { cur.pending = { ...cur.pending, nonce: tx.nonce, maxFee: tx.maxFee, prio: tx.prio }; await this.put(cur); } };
       let res;
+      this.sent = false;
       try {
         const gas = await this.gasFor(out.calldata.length, out.cost, [], inner);
-        res = await this.sendTx(this.account, out.calldata, 0n, gas, onHash);
+        res = await this.sendTx(this.account, out.calldata, 0n, gas, onHash, opts);
       } catch (e) {
-        if (!e.broadcast) { await clear(); throw e; }
+        if (!this.sent && !e.broadcast) { await unsent(); throw e; }
         const { a, b } = await this.seenBoth().catch(() => ({}));
-        if (a && b && a.epoch === r.epoch && b.epoch === r.epoch && a.next > leaf && b.next > leaf) { await clear(); return { hash: e.hash, gasUsed: 0n, byOther: true }; }
+        if (a && b && a.epoch === r.epoch && b.epoch === r.epoch && a.next > leaf && b.next > leaf) { await done(); return { hash: e.hash, gasUsed: 0n, byOther: true }; }
         e.message = `${e.message}. ${this.pendingText({ deadline })[0].toUpperCase()}${this.pendingText({ deadline }).slice(1)}`;
         throw e;
       }
-      await clear();
+      await done();
       return res;
     });
   }
 
   async rekey(progress, onHash) {
     return this.sign(async ({ r, st }) => {
+      await this.idle();
       await this.gasCheck(REKEY_GAS);
       const leaf = await this.reserve(r, st, TAKEOVER_LO);
       return this._rekey(r, leaf, hexToBytes(r.pub_seed), hexToBytes(r.root), unb64(r.leaves), progress, onHash);
@@ -462,6 +493,7 @@ export class EvmChain {
     const st = await this.chainState();
     if (st.next > E.EXEC_LIMIT) throw new Error("the network reports an impossible key counter for your account, so nothing was signed");
     await this.agree(st, ["deployed", "epoch", "pubSeed", "root", "next"]);
+    await this.idle();
     await this.gasCheck(REKEY_GAS);
     const cur = boot && bytesToHex(boot.pubSeed) === st.pubSeed ? { root: boot.root, leaves: boot.leaves }
       : await this.run("evmTree", { chainId: this.id, account: this.account, epoch: st.epoch, pubSeed: hexToBytes(st.pubSeed) }, progress && ((p) => progress(p * 0.5)));

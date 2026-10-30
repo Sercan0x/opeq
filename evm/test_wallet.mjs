@@ -154,10 +154,10 @@ for (let i = 0; i < 4; i++) {
   await throws(C.takeover(null), /simulated stuck/, `takeover attempt ${i + 1} interrupted`);
   picked.push((await C.store.get(C.key)).used.at(-1));
 }
-ok(new Set(picked).size === 4 && picked.every((l) => l >= 992 && l < 1024), `4 retries used 4 different takeover keys: ${picked.join(",")}`);
+ok(new Set(picked).size === 4 && picked.every((l) => l >= 968 && l < 1024), `4 retries used 4 different takeover keys: ${picked.join(",")}`);
 const cr = await C.store.get(C.key);
 const keepOne = 1023 - (picked.includes(1023) ? 1 : 0) - (picked.includes(1022) && picked.includes(1023) ? 1 : 0);
-const all = []; for (let i = 992; i < 1024; i++) if (i !== keepOne) all.push(i);
+const all = []; for (let i = 968; i < 1024; i++) if (i !== keepOne) all.push(i);
 await C.put({ ...cr, used: all });
 await throws(C.takeover(null), /simulated stuck/, "one more attempt takes the last free key");
 ok((await C.store.get(C.key)).used.at(-1) === keepOne, `the last free key ${keepOne} was used`);
@@ -168,14 +168,14 @@ ok(Bs.state === "ready", "the real signer is unaffected by the stuck takeovers")
 
 console.log("owner rekey stays below the takeover range");
 const own = await B.store.get(B.key);
-await B.store.put({ ...own, next_leaf: 991 });
+await B.store.put({ ...own, next_leaf: 967 });
 await B.put({ ...(await B.store.get(B.key)) });
 const leafSeen = [];
 const realB = B._rekey.bind(B);
 B._rekey = async (r, leaf) => { leafSeen.push(leaf); throw new Error("stop"); };
 await throws(B.rekey(null), /stop/, "owner rekey at the edge");
 await throws(B.rekey(null), /no keys left/, "owner rekey refuses to enter the takeover range");
-ok(leafSeen.join() === "991", `owner rekey used leaf ${leafSeen.join()}`);
+ok(leafSeen.join() === "967", `owner rekey used leaf ${leafSeen.join()}`);
 B._rekey = realB;
 
 console.log("bootstrap: only the copy whose own bootstrap lands signs");
