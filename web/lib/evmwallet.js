@@ -17,6 +17,8 @@ const GAS_HEADROOM = 13n;
 export const EXEC_GAS = 320000n;
 export const REKEY_GAS = 300000n;
 export const TOPUP_LOW = 3n;
+export const TAKEOVER_LO = 1016;
+const PENDING_REKEYS = 4;
 export const TOPUP_TARGET = 10n;
 export const SETUP_GAS = { factory: 1700000n, account: 1300000n };
 const b64 = (b) => btoa(String.fromCharCode(...b));
@@ -171,13 +173,20 @@ export class EvmChain {
       this.at((b) => Promise.all([this.chainStateAt(b), this.rpc.balance(this.account, b), this.rpc.balance(this.feeAddress, b)])),
       this.record(),
     ]);
-    let state;
+    let state, next = null;
+    const same = r && r.epoch === st.epoch && r.pub_seed === st.pubSeed && r.root === st.root;
     if (!st.deployed || st.epoch === 0) state = "setup";
-    else if (r && r.epoch === st.epoch && r.pub_seed === st.pubSeed && r.root === st.root && r.active) state = "ready";
-    else if (r && r.rekeying && st.epoch === r.epoch + 1 && r.rekeying.pub_seed === st.pubSeed && r.rekeying.root === st.root) state = "adopt";
+    else if (same && r.active && !r.pending_boot) state = "ready";
+    else if (same && r.pending_boot && r.boot_tx && st.epoch === 1 && (await this.landed(r.boot_tx))) { delete r.pending_boot; delete r.boot_tx; await this.put(r); state = "ready"; }
+    else if (r && st.epoch === r.epoch + 1 && (next = (r.rekeys || []).find((k) => k.pub_seed === st.pubSeed && k.root === st.root))) state = "adopt";
     else state = "other";
     const left = state === "ready" ? Math.max(0, E.EXEC_LIMIT - Math.max(r.next_leaf, st.next)) : 0;
-    return { state, st, r, bal, feeBal, left };
+    return { state, st, r, bal, feeBal, left, next };
+  }
+
+  async landed(hash) {
+    const rc = await this.rpc.call("eth_getTransactionReceipt", [hash]).catch(() => null);
+    return !!(rc && rc.status === "0x1");
   }
 
   async fees() {
@@ -218,7 +227,8 @@ export class EvmChain {
     while (Date.now() < end) {
       const rc = await this.rpc.call("eth_getTransactionReceipt", [hash]).catch(() => null);
       if (rc) {
-        if (rc.status !== "0x1") { const e = new Error(`the transaction failed on chain (${hash})`); e.hash = hash; throw e; }
+        this.minBlock = Math.max(this.minBlock, Number(rc.blockNumber));
+        if (rc.status !== "0x1") { const e = new Error(`the transaction failed on chain (${hash})`); e.hash = hash; e.reverted = true; throw e; }
         this.minBlock = Math.max(this.minBlock, Number(rc.blockNumber));
         return { hash, gasUsed: BigInt(rc.gasUsed) };
       }
@@ -249,16 +259,21 @@ export class EvmChain {
       step("building the key tree for this network");
       const b = await this.compute.run("evmBoot", { master: this.master.slice(), chainId: this.id, account: this.account }, progress);
       const old = await this.record();
-      if (!old || old.epoch < 1) await this.put({ id: this.key, epoch: 1, next_leaf: 0, pub_seed: bytesToHex(b.pubSeed), root: bytesToHex(b.root), leaves: b64(b.leaves), active: true });
+      if (old && old.epoch >= 1 && !(old.epoch === 1 && old.pending_boot)) throw new Error("this browser already holds a newer key tree for this network, refusing to set it up again");
+      const r = { id: this.key, epoch: 1, next_leaf: old && old.epoch === 1 ? old.next_leaf : 0, pub_seed: bytesToHex(b.pubSeed), root: bytesToHex(b.root), leaves: b64(b.leaves), active: true, pending_boot: true };
+      await this.put(r);
       step("moving the account to its own key tree");
-      await this.sendTx(this.account, b.calldata);
+      const gas = (await this.estimate(this.account, b.calldata)) + BigInt(crypto.getRandomValues(new Uint16Array(1))[0]);
+      await this.sendTx(this.account, b.calldata, 0n, gas, async (h) => { r.boot_tx = h; await this.put(r); });
+      delete r.pending_boot;
+      delete r.boot_tx;
+      await this.put(r);
       return this.status();
     });
   }
 
   async adopt(s) {
-    const r = s.r;
-    await this.put({ id: this.key, epoch: r.epoch + 1, next_leaf: 0, pub_seed: r.rekeying.pub_seed, root: r.rekeying.root, leaves: r.rekeying.leaves, active: true });
+    await this.put({ id: this.key, epoch: s.r.epoch + 1, next_leaf: 0, pub_seed: s.next.pub_seed, root: s.next.root, leaves: s.next.leaves, active: true });
   }
 
   async sign(fn) {
@@ -308,14 +323,20 @@ export class EvmChain {
       const rnd = crypto.getRandomValues(new Uint8Array(16));
       const deadline = f.now + DEADLINE_S;
       const cd = await this.compute.run("evmSignExec", { master: this.master.slice(), chainId: this.id, account: this.account, epoch: r.epoch, pubSeed: hexToBytes(r.pub_seed), root: hexToBytes(r.root), leaves: unb64(r.leaves), leaf, deadline, rnd, calls });
-      return this.sendTx(this.account, cd, 0n, null, onHash);
+      try { return await this.sendTx(this.account, cd, 0n, null, onHash); }
+      catch (e) {
+        if (!e.reverted) throw e;
+        const now = await this.chainState();
+        if (now.epoch === r.epoch && now.next > leaf) return { hash: e.hash, gasUsed: 0n, byOther: true };
+        throw e;
+      }
     });
   }
 
   async rekey(progress, onHash) {
     return this.sign(async ({ r, st }) => {
       await this.gasCheck(REKEY_GAS);
-      const leaf = await this.reserve(r, st, E.LEAVES);
+      const leaf = await this.reserve(r, st, TAKEOVER_LO);
       return this._rekey(r, leaf, hexToBytes(r.pub_seed), hexToBytes(r.root), unb64(r.leaves), progress, onHash);
     });
   }
@@ -331,13 +352,15 @@ export class EvmChain {
       await this.gasCheck(REKEY_GAS);
       const cur = await this.compute.run("evmTree", { master: this.master.slice(), chainId: this.id, epoch: st.epoch, pubSeed: hexToBytes(st.pubSeed) }, progress && ((p) => progress(p * 0.5)));
       if (bytesToHex(cur.root) !== st.root) throw new Error("these words do not control the key tree on chain, refusing to sign");
-      const lo = Math.max(st.next, E.EXEC_LIMIT);
-      if (lo >= E.LEAVES) throw new Error("no rekey keys left on the current tree");
-      const leaf = lo + (crypto.getRandomValues(new Uint32Array(1))[0] % (E.LEAVES - lo));
-      const r = { id: this.key, epoch: st.epoch, next_leaf: leaf + 1, pub_seed: st.pubSeed, root: st.root, leaves: b64(cur.leaves), active: false };
       const old = await this.record();
-      if (old && old.epoch === st.epoch && old.next_leaf > r.next_leaf) r.next_leaf = old.next_leaf;
       if (old && old.epoch > st.epoch) throw new Error("this browser has a newer key tree than the chain, refusing to go back");
+      const mine = old && old.epoch === st.epoch && old.pub_seed === st.pubSeed ? old : null;
+      const used = new Set(mine ? mine.used || [] : []);
+      const free = [];
+      for (let i = Math.max(st.next, TAKEOVER_LO); i < E.LEAVES; i++) if (!used.has(i)) free.push(i);
+      if (!free.length) throw new Error("this copy has used all its takeover keys on the current tree. Rekey from the device that signs now, or wait for a pending takeover to confirm");
+      const leaf = free[crypto.getRandomValues(new Uint32Array(1))[0] % free.length];
+      const r = { id: this.key, epoch: st.epoch, next_leaf: mine ? mine.next_leaf : 0, pub_seed: st.pubSeed, root: st.root, leaves: b64(cur.leaves), active: false, used: [...used, leaf], rekeys: mine ? mine.rekeys || [] : [] };
       await this.put(r);
       return this._rekey(r, leaf, hexToBytes(st.pubSeed), hexToBytes(st.root), cur.leaves, progress && ((p) => progress(0.5 + p * 0.5)), onHash);
     });
@@ -348,7 +371,7 @@ export class EvmChain {
     const newPubSeed = crypto.getRandomValues(new Uint8Array(16));
     const rnd = crypto.getRandomValues(new Uint8Array(16));
     const out = await this.compute.run("evmSignRekey", { master: this.master.slice(), chainId: this.id, account: this.account, epoch: r.epoch, pubSeed, root, leaves, leaf, deadline: f.now + DEADLINE_S, rnd, newPubSeed }, progress);
-    r.rekeying = { pub_seed: bytesToHex(newPubSeed), root: bytesToHex(out.newRoot), leaves: b64(out.newLeaves) };
+    r.rekeys = [...(r.rekeys || []), { pub_seed: bytesToHex(newPubSeed), root: bytesToHex(out.newRoot), leaves: b64(out.newLeaves) }].slice(-PENDING_REKEYS);
     await this.put(r);
     const res = await this.sendTx(this.account, out.calldata, 0n, null, onHash);
     const s = await this.status();

@@ -102,6 +102,14 @@ contract OpeqAccountTest is Asserts {
         account.rekey(ps, rt, 0, deadline, 0, RND, proof);
     }
 
+    function testReceivesNftsSafely() public view {
+        assertTrue(account.onERC721Received(address(1), address(2), 3, "") == bytes4(0x150b7a02), "erc721 hook");
+        assertTrue(account.onERC1155Received(address(1), address(2), 3, 4, "") == bytes4(0xf23a6e61), "erc1155 hook");
+        assertTrue(account.onERC1155BatchReceived(address(1), address(2), new uint256[](0), new uint256[](0), "") == bytes4(0xbc197c81), "erc1155 batch hook");
+        assertTrue(account.supportsInterface(0x150b7a02) && account.supportsInterface(0x4e2312e0) && account.supportsInterface(0x01ffc9a7), "erc165");
+        assertTrue(!account.supportsInterface(0xffffffff), "erc165 rejects 0xffffffff");
+    }
+
     function testExecuteFromIdentityTreeIsRejected() public {
         OpeqFactory f2 = new OpeqFactory();
         OpeqAccount fresh = OpeqAccount(payable(f2.create(identity.pubSeed(), identity.root())));

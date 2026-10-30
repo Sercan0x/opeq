@@ -7,6 +7,7 @@ import { sha256 } from "../web/lib/sha256.js";
 import * as E from "../web/lib/evmwots.js";
 import { encodeErc20Transfer } from "../web/lib/evmwots.js";
 
+const BOOT_PIN = "674e4c0c56ea2b9094d2a26395b3cb63fd60336757e8c06f4840764e52613500";
 const RPC = process.argv[2] || "http://127.0.0.1:8549";
 const ANVIL0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const CHAIN = { chainId: 31337, name: "Local test", symbol: "ETH", rpc: RPC };
@@ -142,6 +143,66 @@ s = await B.status();
 ok(s.state === "ready" && s.st.epoch === 3 && s.st.root !== before && s.left === E.EXEC_LIMIT, "rekey moved to a fresh tree, same address");
 await B.execute([{ to: bob, value: 7n, data: new Uint8Array(0) }]);
 ok((await B.status()).st.next === 1, "send after rekey");
+
+console.log("takeover retries never reuse a key");
+const C = device(new MemoryStore());
+await C.loadIdentity(null);
+const realC = C.sendTx.bind(C);
+C.sendTx = async () => { throw new Error("simulated stuck takeover"); };
+const picked = [];
+for (let i = 0; i < 8; i++) {
+  await throws(C.takeover(null), /simulated stuck/, `takeover attempt ${i + 1} interrupted`);
+  picked.push((await C.store.get(C.key)).used.at(-1));
+}
+ok(new Set(picked).size === 8 && picked.every((l) => l >= 1016 && l < 1024), `8 retries used 8 different takeover keys: ${picked.join(",")}`);
+await throws(C.takeover(null), /used all its takeover keys/, "9th retry refuses instead of reusing a key");
+C.sendTx = realC;
+const Bs = await B.status();
+ok(Bs.state === "ready", "the real signer is unaffected by the stuck takeovers");
+
+console.log("owner rekey stays below the takeover range");
+const own = await B.store.get(B.key);
+await B.store.put({ ...own, next_leaf: 1015 });
+await B.put({ ...(await B.store.get(B.key)) });
+const leafSeen = [];
+const realB = B._rekey.bind(B);
+B._rekey = async (r, leaf) => { leafSeen.push(leaf); throw new Error("stop"); };
+await throws(B.rekey(null), /stop/, "owner rekey at the edge");
+await throws(B.rekey(null), /no keys left/, "owner rekey refuses to enter the takeover range");
+ok(leafSeen.join() === "1015", `owner rekey used leaf ${leafSeen.join()}`);
+B._rekey = realB;
+
+console.log("bootstrap: only the copy whose own bootstrap lands signs");
+const master2 = sha256(enc.encode("opeq evm wallet test master 2"));
+const dev2 = (store) => new EvmChain({ chain: CHAIN, store, macKey, vaultId: "vault2", master: master2.slice(), compute: localCompute });
+const X = dev2(new MemoryStore()), Y = dev2(new MemoryStore());
+await X.loadIdentity(null); await Y.loadIdentity(null);
+cast("send", X.feeAddress, "--value", "1ether", "--private-key", ANVIL0);
+const realX = X.sendTx.bind(X);
+X.sendTx = async (to, data, value, gas, onHash) => { if (to === X.account && data.length > 400) throw new Error("simulated lost bootstrap"); return realX(to, data, value, gas, onHash); };
+await throws(X.setup(null), /lost bootstrap/, "X's bootstrap never reached the chain");
+X.sendTx = realX;
+ok((await X.store.get(X.key)).pending_boot === true, "X keeps its epoch-1 record pending");
+await Y.setup(null);
+ok((await Y.status()).state === "ready", "Y's bootstrap landed, Y signs");
+ok((await X.status()).state === "other", "X does not sign on the shared epoch-1 tree, it must take over");
+const boot = await localCompute.run("evmBoot", { master: master.slice(), chainId: CHAIN.chainId, account: A.account });
+const { createHash } = await import("node:crypto");
+const pin = createHash("sha256").update(boot.calldata).digest("hex");
+ok(pin === BOOT_PIN, `bootstrap calldata pinned (${pin.slice(0, 16)}…): changing it would let one slot key sign two messages`);
+
+console.log("someone else submits the signed transaction first");
+cast("send", Y.account, "--value", "1ether", "--private-key", ANVIL0);
+const realSendB = Y.sendTx.bind(B);
+Y.sendTx = async (to, data, value, gas, onHash) => {
+  if (to !== Y.account) return realSendB(to, data, value, gas, onHash);
+  const before = BigInt(cast("balance", bob));
+  cast("send", Y.account, "0x" + Buffer.from(data).toString("hex"), "--private-key", ANVIL0);
+  const e = new Error("the transaction failed on chain (0xabc)"); e.hash = "0xabc"; e.reverted = true; Y._frontrunPaid = BigInt(cast("balance", bob)) - before; throw e;
+};
+const fr = await Y.execute([{ to: bob, value: 11n, data: new Uint8Array(0) }]);
+Y.sendTx = realSendB;
+ok(fr.byOther === true && Y._frontrunPaid === 11n, "a front-run copy is reported as done, not as failed");
 
 console.log("wrong network");
 const W = new EvmChain({ chain: { ...CHAIN, chainId: 84532, name: "Base Sepolia" }, store: storeA, macKey, vaultId: "vaultA", master: master.slice(), compute: localCompute, rpcUrl: RPC });

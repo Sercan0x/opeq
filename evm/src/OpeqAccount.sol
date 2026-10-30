@@ -40,6 +40,26 @@ contract OpeqAccount {
 
     receive() external payable {}
 
+    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata)
+        external
+        pure
+        returns (bytes4)
+    {
+        return this.onERC1155BatchReceived.selector;
+    }
+
+    function supportsInterface(bytes4 id) external pure returns (bool) {
+        return id == 0x01ffc9a7 || id == 0x150b7a02 || id == 0x4e2312e0;
+    }
+
     function execDigest(Call[] calldata calls, uint32 leaf, uint64 deadline, uint32 salt, bytes16 rnd)
         public
         view
