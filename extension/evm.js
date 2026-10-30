@@ -14,7 +14,7 @@ let tokens = [];
 let loading = null;
 
 export function available() {
-  return NETS.length > 0 && !!$("pane-evm");
+  return NETS.length > 0 && !!$("evm-view");
 }
 
 function hide(id, on) { $(id).classList.toggle("hidden", on); }
@@ -26,7 +26,14 @@ function bar(id, frac) {
   el.firstElementChild.style.width = `${Math.round(frac * 100)}%`;
 }
 
-function net() { return NETS.find((n) => String(n.chainId) === $("e-net").value) || NETS[0]; }
+const CHAIN_KEY = "opeq:chain";
+function net() { return NETS.find((n) => String(n.chainId) === $("chain").value) || NETS[0]; }
+const evmOn = () => $("chain").value !== "sol";
+
+function mode() {
+  $("v-wallet").classList.toggle("evm-mode", evmOn());
+  hide("evm-view", !evmOn());
+}
 
 function explorer(kind, v) { return `${net().explorer}/${kind}/${v}`; }
 
@@ -144,16 +151,29 @@ async function recipient(text) {
 }
 
 function bind() {
-  $("e-net").textContent = "";
-  for (const n of NETS) { const o = document.createElement("option"); o.value = String(n.chainId); o.textContent = n.name; $("e-net").append(o); }
-  $("e-net").addEventListener("change", () => ui.guard("e-err", null, async () => { if (chain) chain.master.fill(0); chain = null; await open(); }));
+  const sel = $("chain");
+  sel.textContent = "";
+  const add = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); };
+  add("sol", NET.mainnet ? "Solana" : "Solana Devnet");
+  for (const n of NETS) add(String(n.chainId), n.name);
+  let saved = null;
+  try { saved = localStorage.getItem(CHAIN_KEY); } catch {}
+  if ([...sel.options].some((o) => o.value === saved)) sel.value = saved;
+  hide("chainbar", false);
+  mode();
   const tryOpen = () => {
-    if ($("pane-evm").classList.contains("hidden") || !ui.session()) return;
+    if (!evmOn() || !ui.session() || $("v-wallet").classList.contains("hidden")) return;
     if (ui.busy()) { setTimeout(tryOpen, 400); return; }
     ui.guard("e-err", null, open);
   };
-  $("tab-evm").addEventListener("click", () => setTimeout(tryOpen, 0));
-  $("tab-evm").addEventListener("focus", () => setTimeout(tryOpen, 0));
+  sel.addEventListener("change", () => {
+    try { localStorage.setItem(CHAIN_KEY, sel.value); } catch {}
+    $("e-ok").textContent = $("e-err").textContent = "";
+    hide("e-last", true);
+    mode();
+    tryOpen();
+  });
+  document.addEventListener("opeq:view", (e) => { if (e.detail === "v-wallet") setTimeout(tryOpen, 0); });
   $("e-refresh").addEventListener("click", () => ui.guard("e-err", null, refresh));
   $("e-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.account, "EVM address copied"));
   $("e-gas-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.feeAddress, "gas key address copied"));
@@ -246,8 +266,8 @@ function bind() {
 
 export function init(api) {
   if (!available()) {
-    if ($("tab-evm")) $("tab-evm").remove();
-    if ($("pane-evm")) $("pane-evm").remove();
+    if ($("chainbar")) $("chainbar").remove();
+    if ($("evm-view")) $("evm-view").remove();
     return;
   }
   ui = api;
