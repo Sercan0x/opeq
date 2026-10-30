@@ -7,7 +7,7 @@ import { sha256 } from "../web/lib/sha256.js";
 import * as E from "../web/lib/evmwots.js";
 import { encodeErc20Transfer } from "../web/lib/evmwots.js";
 
-const BOOT_PIN = "e4a3dde0ba8c4df52687e86a0c0c6ce90b249d37a828cca03cf1c0c30169d998";
+const BOOT_PIN = "16573a931ff597c4fa8c5f0ecb9c3e5404ea37c2534c2191715bd3d276f856e6";
 const RPC = process.argv[2] || "http://127.0.0.1:8549";
 const ANVIL0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const CHAIN = { chainId: 31337, name: "Local test", symbol: "ETH", rpc: RPC };
@@ -42,10 +42,10 @@ const A2 = device(storeA);
 t0 = Date.now();
 await A2.loadIdentity(null);
 ok(A2.account === A.account && Date.now() - t0 < 1000, "saved identity gives the same account without rebuilding");
-const idRec = await storeA.get("vaultA:evm:id");
-storeA.m.set("vaultA:evm:id", { ...idRec, root: "0x" + "ab".repeat(16) });
+const idRec = await storeA.get("vaultA:evm:id:" + E.factoryAddress());
+storeA.m.set("vaultA:evm:id:" + E.factoryAddress(), { ...idRec, root: "0x" + "ab".repeat(16) });
 await throws(device(storeA).loadIdentity(null), /modified outside opeq/, "identity record edited outside opeq is refused");
-storeA.m.set("vaultA:evm:id", idRec);
+storeA.m.set("vaultA:evm:id:" + E.factoryAddress(), idRec);
 const other = new EvmChain({ chain: CHAIN, store: storeA, macKey, vaultId: "vaultA", master: sha256(enc.encode("other words")), compute: localCompute });
 await throws(other.loadIdentity(null), /does not match/, "identity saved for other words is refused");
 
@@ -204,17 +204,39 @@ Y.sendTx = async (to, data, value, gas, onHash) => {
   if (to !== Y.account) return realSendB(to, data, value, gas, onHash);
   const before = BigInt(cast("balance", bob));
   cast("send", Y.account, "0x" + Buffer.from(data).toString("hex"), "--private-key", ANVIL0);
-  const e = new Error("the transaction failed on chain (0xabc)"); e.hash = "0xabc"; e.reverted = true; Y._frontrunPaid = BigInt(cast("balance", bob)) - before; throw e;
+  const e = new Error("the transaction failed on chain (0xabc)"); e.hash = "0xabc"; e.reverted = true; e.broadcast = true; Y._frontrunPaid = BigInt(cast("balance", bob)) - before; throw e;
 };
 const fr = await Y.execute([{ to: bob, value: 11n, data: new Uint8Array(0) }]);
 Y.sendTx = realSendB;
 ok(fr.byOther === true && Y._frontrunPaid === 11n, "a front-run copy is reported as done, not as failed");
+
+console.log("a send that never confirmed blocks the next one until it is cancelled");
+let leaked = null;
+const realSendY = Y.sendTx.bind(Y);
+Y.sendTx = async (to, data, value, gas, onHash) => { if (to === Y.account) { leaked = data; const e = new Error("withheld by the RPC"); e.broadcast = true; e.pending = true; e.hash = "0x01"; throw e; } return realSendY(to, data, value, gas, onHash); };
+await throws(Y.execute([{ to: bob, value: 3n * 10n ** 15n, data: new Uint8Array(0) }]), /may still go through until/, "first send was signed but never confirmed");
+Y.sendTx = realSendY;
+await throws(Y.execute([{ to: bob, value: 3n * 10n ** 15n, data: new Uint8Array(0) }]), /cancel it first/, "a second send is refused while the first may still land");
+const bobBefore = BigInt(cast("balance", bob));
+const canc = await Y.cancelPending();
+ok(canc.hash && !(await Y.store.get(Y.key)).pending, "cancel landed and cleared the pending transfer");
+let replayed = true;
+try { cast("send", Y.account, "0x" + Buffer.from(leaked).toString("hex"), "--private-key", ANVIL0); } catch { replayed = false; }
+ok(!replayed && BigInt(cast("balance", bob)) === bobBefore, "the leaked earlier transfer can no longer go through");
+await Y.execute([{ to: bob, value: 1n, data: new Uint8Array(0) }]);
+ok(BigInt(cast("balance", bob)) === bobBefore + 1n, "sending works again after the cancel");
 
 console.log("second network source disagrees");
 const Z = new EvmChain({ chain: CHAIN, store: new MemoryStore(), macKey, vaultId: "vaultA", master: master.slice(), compute: localCompute, checkUrl: process.argv[3] || "http://127.0.0.1:8550" });
 await Z.loadIdentity(null);
 await throws(Z.takeover(null), /disagree/, "takeover refused when the second source sees a different account");
 await throws(Z.token(token), /disagree/, "token refused when the second source disagrees about decimals");
+
+console.log("identity is bound to the factory");
+const idTree = E.deriveIdentityTree(master);
+const otherFactoryId = E.identitySeeds(master, "0x00000000000000000000000000000000000fac70");
+ok(Buffer.compare(Buffer.from(otherFactoryId.pubSeed), Buffer.from(idTree.pubSeed)) !== 0, "another factory version gets a different identity tree");
+await throws(Promise.resolve().then(() => E.bootstrapCall(master, CHAIN.chainId, "0x00000000000000000000000000000000000b0b5b", idTree)), /not this identity's account/, "a bootstrap for a foreign account is refused before signing");
 
 console.log("wrong network");
 const W = new EvmChain({ chain: { ...CHAIN, chainId: 84532, name: "Base Sepolia" }, store: storeA, macKey, vaultId: "vaultA", master: master.slice(), compute: localCompute, rpcUrl: RPC });

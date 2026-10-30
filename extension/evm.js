@@ -125,6 +125,7 @@ async function open() {
 async function refresh() {
   if (!chain) return;
   const c = chain;
+  await c.tidy();
   const s = await c.status();
   if (c !== chain) return;
   status = s;
@@ -142,6 +143,9 @@ async function refresh() {
   hide("e-send", s.state !== "ready");
   hide("e-rekey", s.state !== "ready");
   hide("e-rw", !(s.state === "ready" && s.left <= REKEY_SOON));
+  const p = s.state === "ready" && s.r && s.r.pending;
+  hide("e-pend", !p);
+  if (p) $("e-pend-text").textContent = `A transfer you signed may still go through until ${new Date(p.deadline * 1000).toLocaleTimeString()}. New sends wait until it confirms, that time passes, or you cancel it.`;
   $("e-rw-text").textContent = `${s.left} signatures left on this network's key tree. Rekey soon, it takes one transaction.`;
   await refreshTokens();
 }
@@ -314,6 +318,14 @@ function bind() {
     await refresh();
   });
   $("e-rekey-go").addEventListener("click", rekey);
+  $("e-pend-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
+    if (!(await ui.ask({ ...tag(), title: "Cancel the pending transfer", rows: [["Network fee", await feeText(EXEC_GAS)]],
+      notes: [{ text: "This signs an empty transaction with your next one-time key. Once it confirms, the earlier transfer can never go through." }, { text: "If the earlier transfer confirms first, it stands and this one does nothing.", warn: true }] }, "Cancel transfer"))) return;
+    const res = await chain.cancelPending((h) => last("Cancel sent.", h));
+    $("e-ok").textContent = res.nothing ? "nothing was pending" : "the earlier transfer can no longer go through";
+    ui.log(`EVM: pending transfer cancelled on ${chain.chain.name}`, "ok");
+    await refresh();
+  }));
   $("e-rw-go").addEventListener("click", rekey);
 
   $("e-tok-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {

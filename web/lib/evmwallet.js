@@ -129,12 +129,44 @@ export class EvmChain {
 
   async agree(st, keys) {
     if (!this.check) return;
+    let answered = false;
     for (let i = 0; i < 10; i++) {
       const w = await this.chainStateAt("latest", this.check).catch(() => null);
+      if (w) answered = true;
       if (w && keys.every((k) => w[k] === st[k])) return;
       await new Promise((r) => setTimeout(r, 1500));
     }
-    throw new Error("two independent network sources disagree about your account, so nothing was signed. Try again in a minute");
+    throw new Error(answered ? "two independent network sources disagree about your account, so nothing was signed. Try again in a minute" : "the second network source did not answer, so nothing was signed. Try again in a minute");
+  }
+
+  async clock() {
+    const a = Number((await this.rpc.call("eth_getBlockByNumber", ["latest", false])).timestamp);
+    if (!this.check) return a;
+    const b = Number((await this.check.call("eth_getBlockByNumber", ["latest", false])).timestamp);
+    if (Math.abs(a - b) > 120) throw new Error("the two network sources disagree about the time, so nothing was signed. Try again in a minute");
+    return Math.min(a, b);
+  }
+
+  async seenBoth() {
+    const a = await this.chainState();
+    const b = this.check ? await this.chainStateAt("latest", this.check).catch(() => null) : a;
+    return { a, b };
+  }
+
+  pendingText(p) {
+    return `a transfer you signed earlier may still go through until ${new Date(p.deadline * 1000).toLocaleTimeString()}. Wait until it confirms or that time passes, or cancel it first. Nothing new was signed`;
+  }
+
+  async resolvePending(r) {
+    const p = r.pending;
+    if (!p) return;
+    const { a, b } = await this.seenBoth();
+    const gone = (x) => x && (x.epoch !== r.epoch || x.next > p.leaf);
+    let done = gone(a) && gone(b);
+    if (!done) done = (await this.clock()) > p.deadline;
+    if (!done) { const e = new Error(this.pendingText(p)); e.pendingBlock = true; throw e; }
+    delete r.pending;
+    await this.put(r);
   }
 
   async gasFor(len, steps, calls = [], extra = 0n) {
@@ -155,12 +187,12 @@ export class EvmChain {
   }
 
   bootPubSeed() {
-    return bytesToHex(E.bootSeeds(this.master, this.id).pubSeed);
+    return bytesToHex(E.bootSeeds(this.master, this.id, this.account).pubSeed);
   }
 
   async loadIdentity(progress) {
-    const key = `${this.vaultId}:evm:id`;
-    const pubSeed = E.identitySeeds(this.master).pubSeed;
+    const key = `${this.vaultId}:evm:id:${this.factory}`;
+    const pubSeed = E.identitySeeds(this.master, this.factory).pubSeed;
     let c = await this.store.get(key);
     if (c) {
       await this.verify(c);
@@ -213,6 +245,10 @@ export class EvmChain {
     return { deployed: true, epoch: Number(word(ep)), next: Number(word(nx)), pubSeed: ps.slice(0, 34), root: rt.slice(0, 34) };
   }
 
+  async tidy() {
+    try { await this.lock(async () => { const r = await this.record(); if (r && r.pending) await this.resolvePending(r); }); } catch {}
+  }
+
   async status() {
     const [[st, bal, feeBal], r] = await Promise.all([
       this.at((b) => Promise.all([this.chainStateAt(b), this.rpc.balance(this.account, b), this.rpc.balance(this.feeAddress, b)])),
@@ -255,8 +291,11 @@ export class EvmChain {
     const have = await this.rpc.balance(this.feeAddress);
     if (have < need) throw new Error(`the gas key needs about ${formatUnits(need, 18)} ${this.chain.symbol} for this step and holds ${formatUnits(have, 18)}. Send a little ${this.chain.symbol} on ${this.chain.name} to ${this.feeAddress}`);
     const { raw, hash } = signTx1559({ chainId: this.id, nonce, maxPriorityFeePerGas: f.maxPriorityFeePerGas, maxFeePerGas: f.maxFeePerGas, gas: g, to, value, data }, this.fee);
-    const got = await this.rpc.call("eth_sendRawTransaction", [raw]);
-    if (lower(got) !== lower(hash)) throw new Error("the network returned a different transaction hash, refusing to trust it");
+    let got;
+    try { got = await this.rpc.call("eth_sendRawTransaction", [raw]); }
+    catch (e) { e.broadcast = true; e.hash = hash; if (!this.check) throw e; got = hash; }
+    if (this.check) await this.check.call("eth_sendRawTransaction", [raw]).catch(() => null);
+    if (lower(got) !== lower(hash)) { const e = new Error("the network returned a different transaction hash, refusing to trust it"); e.broadcast = true; e.hash = hash; throw e; }
     this.nextNonce = nonce + 1;
     if (onHash) onHash(hash);
     return this.wait(hash);
@@ -264,18 +303,23 @@ export class EvmChain {
 
   async wait(hash, ms = 120000) {
     const end = Date.now() + ms;
+    let a = null, b = null;
     while (Date.now() < end) {
-      const rc = await this.rpc.call("eth_getTransactionReceipt", [hash]).catch(() => null);
-      if (rc) {
-        this.minBlock = Math.max(this.minBlock, Number(rc.blockNumber));
-        if (rc.status !== "0x1") { const e = new Error(`the transaction failed on chain (${hash})`); e.hash = hash; e.reverted = true; throw e; }
-        this.minBlock = Math.max(this.minBlock, Number(rc.blockNumber));
-        return { hash, gasUsed: BigInt(rc.gasUsed) };
+      a = a || (await this.rpc.call("eth_getTransactionReceipt", [hash]).catch(() => null));
+      b = !this.check ? a : b || (await this.check.call("eth_getTransactionReceipt", [hash]).catch(() => null));
+      if (a && b) {
+        this.minBlock = Math.max(this.minBlock, Number(a.blockNumber));
+        const okA = a.status === "0x1", okB = b.status === "0x1";
+        if (okA && okB) return { hash, gasUsed: BigInt(a.gasUsed) };
+        if (!okA && !okB) { const e = new Error(`the transaction failed on chain (${hash})`); e.hash = hash; e.reverted = true; e.broadcast = true; throw e; }
+        break;
       }
       await new Promise((r) => setTimeout(r, 1500));
     }
-    const e = new Error(`the transaction was sent but has not confirmed after 2 minutes. Check it on the explorer: ${hash}`);
+    const e = new Error(`the transaction was sent but the two network sources have not both confirmed it. Check it on the explorer: ${hash}`);
     e.hash = hash;
+    e.pending = true;
+    e.broadcast = true;
     throw e;
   }
 
@@ -361,24 +405,36 @@ export class EvmChain {
     return leaf;
   }
 
-  async execute(calls, onHash) {
+  async cancelPending(onHash) {
+    return this.execute([], onHash, true);
+  }
+
+  async execute(calls, onHash, cancel = false) {
     return this.sign(async ({ r, st }) => {
+      if (cancel && !r.pending) return { hash: null, gasUsed: 0n, nothing: true };
+      if (!cancel) await this.resolvePending(r);
       await this.gasCheck(EXEC_GAS + 40000n * BigInt(calls.length));
       const inner = await this.callsGas(calls);
-      const f = await this.fees();
-      const leaf = await this.reserve(r, st, E.EXEC_LIMIT);
+      const deadline = (await this.clock()) + DEADLINE_S;
+      const leaf = Math.max(r.next_leaf, st.next);
+      r.pending = { leaf, deadline };
+      await this.reserve(r, st, E.EXEC_LIMIT);
       const rnd = crypto.getRandomValues(new Uint8Array(16));
-      const deadline = f.now + DEADLINE_S;
       const out = await this.run("evmSignExec", { chainId: this.id, account: this.account, epoch: r.epoch, pubSeed: hexToBytes(r.pub_seed), root: hexToBytes(r.root), leaves: unb64(r.leaves), leaf, deadline, rnd, calls });
-      const gas = await this.gasFor(out.calldata.length, out.cost, [], inner);
-      try { return await this.sendTx(this.account, out.calldata, 0n, gas, onHash); }
-      catch (e) {
-        if (!e.reverted) throw e;
-        const now = await this.chainState();
-        const seen = this.check ? await this.chainStateAt("latest", this.check).catch(() => null) : now;
-        if (now.epoch === r.epoch && now.next > leaf && seen && seen.epoch === r.epoch && seen.next > leaf) return { hash: e.hash, gasUsed: 0n, byOther: true };
+      const clear = async () => { const cur = await this.record(); if (cur && cur.pending && cur.pending.leaf <= leaf) { delete cur.pending; await this.put(cur); } };
+      let res;
+      try {
+        const gas = await this.gasFor(out.calldata.length, out.cost, [], inner);
+        res = await this.sendTx(this.account, out.calldata, 0n, gas, onHash);
+      } catch (e) {
+        if (!e.broadcast) { await clear(); throw e; }
+        const { a, b } = await this.seenBoth().catch(() => ({}));
+        if (a && b && a.epoch === r.epoch && b.epoch === r.epoch && a.next > leaf && b.next > leaf) { await clear(); return { hash: e.hash, gasUsed: 0n, byOther: true }; }
+        e.message = `${e.message}. ${this.pendingText({ deadline })[0].toUpperCase()}${this.pendingText({ deadline }).slice(1)}`;
         throw e;
       }
+      await clear();
+      return res;
     });
   }
 
@@ -404,10 +460,11 @@ export class EvmChain {
 
   async _takeover(progress, onHash, boot) {
     const st = await this.chainState();
-    await this.agree(st, ["deployed", "epoch", "pubSeed", "root"]);
+    if (st.next > E.EXEC_LIMIT) throw new Error("the network reports an impossible key counter for your account, so nothing was signed");
+    await this.agree(st, ["deployed", "epoch", "pubSeed", "root", "next"]);
     await this.gasCheck(REKEY_GAS);
     const cur = boot && bytesToHex(boot.pubSeed) === st.pubSeed ? { root: boot.root, leaves: boot.leaves }
-      : await this.run("evmTree", { chainId: this.id, epoch: st.epoch, pubSeed: hexToBytes(st.pubSeed) }, progress && ((p) => progress(p * 0.5)));
+      : await this.run("evmTree", { chainId: this.id, account: this.account, epoch: st.epoch, pubSeed: hexToBytes(st.pubSeed) }, progress && ((p) => progress(p * 0.5)));
     if (bytesToHex(cur.root) !== st.root) throw new Error("these words do not control the key tree on chain, refusing to sign");
     const old = await this.record();
     if (old && old.epoch > st.epoch) throw new Error("this browser has a newer key tree than the chain, refusing to go back");

@@ -70,7 +70,7 @@ await send(account, new Uint8Array(0), FUND, "fund account");
 
 const pubSeed1 = crypto.getRandomValues(new Uint8Array(16));
 t0 = Date.now();
-const tree = E.deriveChainTree(master, chainId, 1, pubSeed1);
+const tree = E.deriveChainTree(master, chainId, account, 1, pubSeed1);
 console.log("chain tree built in", Date.now() - t0, "ms");
 const slot = E.chainSlot(chainId);
 const rnd0 = crypto.getRandomValues(new Uint8Array(16));

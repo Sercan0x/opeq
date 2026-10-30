@@ -40,13 +40,13 @@ function evmBoot({ master, chainId, account }, progress) {
   return { pubSeed: b.tree.pubSeed, root: b.tree.root, leaves: E.leavesBytes(b.tree), calldata: b.calldata, cost: b.cost };
 }
 
-function evmTree({ master, chainId, epoch, pubSeed }, progress) {
-  const t = E.deriveChainTree(master, chainId, epoch, pubSeed, progress);
+function evmTree({ master, chainId, account, epoch, pubSeed }, progress) {
+  const t = E.deriveChainTree(master, chainId, account, epoch, pubSeed, progress);
   return { root: t.root, leaves: E.leavesBytes(t) };
 }
 
 function evmLoad(a) {
-  const { skSeed, pubSeed } = E.chainTreeSeeds(a.master, a.chainId, a.epoch, a.pubSeed);
+  const { skSeed, pubSeed } = E.chainTreeSeeds(a.master, a.chainId, a.account, a.epoch, a.pubSeed);
   const tree = E.treeFromLeaves(skSeed, pubSeed, a.leaves);
   if (!eq(E.leafPk(skSeed, pubSeed, a.leaf), tree.levels[0][a.leaf])) throw new Error("secret seed does not match the stored EVM key tree, refusing to sign");
   if (!eq(tree.root, a.root)) throw new Error("stored EVM key tree does not match the root on chain, refusing to sign");
@@ -61,7 +61,7 @@ function evmSignExec(a, progress) {
 
 function evmSignRekey(a, progress) {
   const tree = evmLoad(a);
-  const next = E.deriveChainTree(a.master, a.chainId, a.epoch + 1, a.newPubSeed, progress && ((p) => progress(p * 0.9)));
+  const next = E.deriveChainTree(a.master, a.chainId, a.account, a.epoch + 1, a.newPubSeed, progress && ((p) => progress(p * 0.9)));
   const g = E.grind(E.rekeyHasher(a.rnd, a.chainId, a.account, a.epoch, a.leaf, a.deadline, next.pubSeed, next.root), 1 << 14);
   return { calldata: E.encodeRekey(next.pubSeed, next.root, a.leaf, a.deadline, g.salt, a.rnd, tree.sign(a.leaf, g.digest)), cost: g.cost, newRoot: next.root, newLeaves: E.leavesBytes(next) };
 }

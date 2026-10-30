@@ -128,27 +128,28 @@ export function chainSlot(chainId) {
   return s;
 }
 
-export function identitySeeds(master) {
+export function identitySeeds(master, factory = factoryAddress()) {
+  const f = addressBytes(factory);
   return {
-    skSeed: sha256(enc.encode("opeq/evm/tree/sk/v1"), master, u32be(0)),
-    pubSeed: sha256(enc.encode("opeq/evm/tree/pub/v1"), master, u32be(0)).slice(0, N),
+    skSeed: sha256(enc.encode("opeq/evm/id/sk/v2"), master, f),
+    pubSeed: sha256(enc.encode("opeq/evm/id/pub/v2"), master, f).slice(0, N),
   };
 }
 
-export function chainTreeSeeds(master, chainId, epoch, pubSeed) {
+export function chainTreeSeeds(master, chainId, account, epoch, pubSeed) {
   if (!Number.isInteger(epoch) || epoch < 1 || epoch > 0xffffffff) throw new Error("chain tree epoch must be 1 or more");
   if (!(pubSeed instanceof Uint8Array) || pubSeed.length !== N) throw new Error("pubSeed must be 16 bytes");
   chainSlot(chainId);
-  return { skSeed: sha256(enc.encode("opeq/evm/tree/sk/v2"), master, u64be(chainId), u32be(epoch), pubSeed), pubSeed: pubSeed.slice() };
+  return { skSeed: sha256(enc.encode("opeq/evm/tree/sk/v3"), master, u64be(chainId), addressBytes(account), u32be(epoch), pubSeed), pubSeed: pubSeed.slice() };
 }
 
-export function deriveIdentityTree(master, progress) {
-  const { skSeed, pubSeed } = identitySeeds(master);
+export function deriveIdentityTree(master, progress, factory = factoryAddress()) {
+  const { skSeed, pubSeed } = identitySeeds(master, factory);
   return EvmTreeKey.generate(skSeed, pubSeed, progress);
 }
 
-export function deriveChainTree(master, chainId, epoch, pubSeed, progress) {
-  const s = chainTreeSeeds(master, chainId, epoch, pubSeed);
+export function deriveChainTree(master, chainId, account, epoch, pubSeed, progress) {
+  const s = chainTreeSeeds(master, chainId, account, epoch, pubSeed);
   return EvmTreeKey.generate(s.skSeed, s.pubSeed, progress);
 }
 
@@ -285,17 +286,19 @@ export function accountAddress(pubSeed, root, factory = factoryAddress()) {
   return create2(factory, accountSalt(pubSeed, root), keccak256(ACCOUNT_INIT_BYTES, leftWord(pubSeed), leftWord(root)));
 }
 
-export function bootSeeds(master, chainId) {
+export function bootSeeds(master, chainId, account) {
   chainSlot(chainId);
+  const acct = addressBytes(account);
   return {
-    pubSeed: sha256(enc.encode("opeq/evm/chain/pub/v1"), master, u64be(chainId)).slice(0, N),
-    rnd: sha256(enc.encode("opeq/evm/boot/rnd/v1"), master, u64be(chainId)).slice(0, N),
+    pubSeed: sha256(enc.encode("opeq/evm/chain/pub/v2"), master, u64be(chainId), acct).slice(0, N),
+    rnd: sha256(enc.encode("opeq/evm/boot/rnd/v2"), master, u64be(chainId), acct).slice(0, N),
   };
 }
 
 export function bootstrapCall(master, chainId, account, identity, progress) {
-  const { pubSeed, rnd } = bootSeeds(master, chainId);
-  const tree = deriveChainTree(master, chainId, 1, pubSeed, progress);
+  if (account.toLowerCase() !== accountAddress(identity.pubSeed, identity.root)) throw new Error("refusing to sign a bootstrap for an account that is not this identity's account on the OPEQ factory");
+  const { pubSeed, rnd } = bootSeeds(master, chainId, account);
+  const tree = deriveChainTree(master, chainId, account, 1, pubSeed, progress);
   const slot = chainSlot(chainId);
   const g = grind(rekeyHasher(rnd, chainId, account, 0, slot, 0, tree.pubSeed, tree.root));
   return { tree, cost: g.cost, calldata: encodeRekey(tree.pubSeed, tree.root, slot, 0, g.salt, rnd, identity.sign(slot, g.digest)) };
