@@ -148,12 +148,23 @@ function Check-Code() {
     $version = ([System.IO.File]::ReadAllText((Join-Path $App "VERSION"))).Trim()
     if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { $result.state = "changed"; $result.changed = @("app/VERSION"); return $result }
     $result.version = $version
-    $local = @{}
-    foreach ($f in Get-ChildItem -LiteralPath $Root -Recurse -File -Force) {
+  } catch { $result.state = "changed"; $result.changed = @("app/VERSION (unreadable)"); return $result }
+  if ([System.IO.Path]::GetPathRoot($Root).TrimEnd("\") -eq $Root.TrimEnd("\")) { $result.state = "changed"; $result.changed = @("the OPEQ-USB folder must not be the root of the drive"); return $result }
+  $local = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([System.StringComparer]::Ordinal)
+  $seen = @{}
+  $bad = @()
+  try {
+    foreach ($f in Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction Stop) {
       $rel = $f.FullName.Substring($Root.Length).TrimStart("\").Replace("\", "/")
-      if ($rel -like "data/*" -or $f.Name -eq "desktop.ini" -or $f.Name -eq "Thumbs.db") { continue }
-      $local[$rel] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+      if ($rel -like "data/*" -or $f.Name -eq "desktop.ini" -or $f.Name -eq "Thumbs.db" -or $f.Name -eq ".DS_Store" -or $f.Name -eq ".directory" -or $f.Name.StartsWith("._")) { continue }
+      if ($seen.ContainsKey($rel)) { $bad += ($rel + " (two files differ only in case)"); continue }
+      $seen[$rel] = $true
+      try { $local[$rel] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() }
+      catch { $bad += ($rel + " (could not be read)") }
     }
+  } catch { $bad += "a file or folder on the stick could not be listed" }
+  if ($bad.Count) { $result.state = "changed"; $result.changed = @($bad | Sort-Object); return $result }
+  try {
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     try { $resp = Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri ($CheckUrl + $version + ".json") }
     catch {
@@ -163,7 +174,7 @@ function Check-Code() {
       throw
     }
     $list = ($resp.Content | ConvertFrom-Json).files
-    $want = @{}
+    $want = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([System.StringComparer]::Ordinal)
     foreach ($p in $list.PSObject.Properties) { $want[$p.Name] = [string]$p.Value }
     $changed = @()
     foreach ($k in $local.Keys) { if (-not $want.ContainsKey($k) -or $want[$k] -ne $local[$k]) { $changed += $k } }
@@ -191,11 +202,11 @@ function Handle($client) {
   $reqOrigin = $req.Headers["origin"]
   if ($reqOrigin -and $reqOrigin -ne $Origin) { Send-Text $stream 403 "wrong origin"; return }
   $path = $req.Path
-  if ($path -notmatch '^/[A-Za-z0-9._/-]*$' -or $path.Contains("..") -or $path.Contains("//")) { Send-Text $stream 400 "bad path"; return }
+  if ($path -notmatch '^/[A-Za-z0-9._/-]*$' -or $path.Contains("..") -or $path.Contains("//") -or $path.Contains("/./") -or $path.EndsWith("/.")) { Send-Text $stream 400 "bad path"; return }
   $isPut = $path -eq "/api/wallet" -and $req.Method -eq "PUT"
   if ($check.state -eq "changed") {
-    if ($path -eq "/api/wallet") { Send-Text $stream 423 "the OPEQ files on this stick were changed"; return }
-    if ($path -eq "/" -or $path -eq "/app.html") { Send-Response $stream 200 "text/html; charset=utf-8" ([System.Text.Encoding]::UTF8.GetBytes($Blocked)); return }
+    if ($path.StartsWith("/api/") -and $path -ne "/api/info" -and $path -ne "/api/alive") { Send-Text $stream 423 "the OPEQ files on this stick were changed"; return }
+    if (-not $path.StartsWith("/api/")) { Send-Response $stream 200 "text/html; charset=utf-8" ([System.Text.Encoding]::UTF8.GetBytes($Blocked)); return }
   }
   if ($path.StartsWith("/api/")) {
     if ($req.Headers["x-opeq-token"] -ne $Token) { Send-Text $stream 403 "missing token"; return }

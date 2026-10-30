@@ -177,6 +177,14 @@ def main():
     p.add_argument("--release", action="store_true")
     a = p.parse_args()
     if a.release:
+        import subprocess
+        if not a.zip:
+            raise SystemExit("--release needs --zip, so the zip and the check list come from the same build")
+        if os.path.exists(os.path.join(CHECKS, VERSION + ".json")):
+            raise SystemExit(f"web/usb/{VERSION}.json already exists; a released check list is never rewritten. Bump VERSION for a new release")
+        dirty = subprocess.run(["git", "-C", ROOT, "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip()
+        if dirty:
+            raise SystemExit("the git tree has uncommitted changes; a release must be built from a commit")
         bad = stale(a.src)
         if bad:
             raise SystemExit(f"{a.src} is older than the sources ({', '.join(bad[:5])}); rebuild the mainnet extension first")

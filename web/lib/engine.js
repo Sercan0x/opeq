@@ -16,6 +16,7 @@ export const BASE_FEE = 5000;
 const RENT_MIN = 1000000, RENT_MAX = 2000000;
 const CONFIRM_MS = 90000;
 const HISTORY_PAGES = 100;
+const FALLBACK_MS = 30 * 60 * 1000;
 const FAILED_MAX = 3000;
 
 const b64 = (b) => btoa(String.fromCharCode(...b));
@@ -123,9 +124,8 @@ export class Engine {
     return V.withLock(`opeq:${id}`, async () => {
       const r = await this.store.get(id);
       if (r && (r.rekeying || r.inflight)) {
-        const slot = await this.rpc.slot();
-        if (r.rekeying && slot <= Number(r.rekeying.expiry) + 2) throw new Error("a rekey or takeover from this browser may still land; wait about a minute, then remove");
-        if (r.inflight && slot <= Number(r.inflight.expiry) + 2) throw new Error("a transaction from this browser may still land; wait about a minute, then remove");
+        if (r.rekeying && !(await this.passed(Number(r.rekeying.expiry), Number(r.rekeying.at) || 0))) throw new Error("a rekey or takeover from this browser may still land; wait about a minute, then remove");
+        if (r.inflight && !(await this.passed(Number(r.inflight.expiry), Number(r.inflight.at) || 0))) throw new Error("a transaction from this browser may still land; wait about a minute, then remove");
       }
       await this.store.del(id);
     });
@@ -141,11 +141,11 @@ export class Engine {
     return V.signRecord(macKey, record);
   }
 
-  async expirySlot() {
+  async passed(expiry, at) {
     const a = await this.rpc.slot();
-    if (!this.refRpc) return a;
-    const b = await this.refRpc.slot().catch(() => 0);
-    return Math.min(a, b);
+    if (!this.refRpc) return a > expiry + 2;
+    try { return Math.min(a, await this.refRpc.slot()) > expiry + 2; }
+    catch { return a > expiry + 2 && at > 0 && Date.now() - at > FALLBACK_MS; }
   }
 
   async save(record) { await this.store.put(record); }
@@ -265,9 +265,9 @@ export class Engine {
         throw f;
       }
       if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig;
-      let slot = 0;
-      try { slot = await this.expirySlot(); } catch { slot = 0; }
-      if (slot > expiry + 2) {
+      let gone = false;
+      try { gone = await this.passed(expiry, started); } catch { gone = false; }
+      if (gone) {
         let again = null;
         try { again = await this.rpc.status(sig); } catch { again = null; }
         if (again && !again.err && (again.confirmationStatus === "confirmed" || again.confirmationStatus === "finalized")) return sig;
@@ -379,8 +379,7 @@ export class Session {
       await this.put(r);
       return { state: "landed", message: `an interrupted transaction (key ${leaf}) can no longer execute, but it may have gone through; check the balance before sending again` };
     }
-    const slot = await this.e.expirySlot();
-    if (slot <= expiry + 2) {
+    if (!(await this.e.passed(expiry, Number(f.at) || 0))) {
       return { state: "pending", message: `an interrupted transaction (key ${leaf}) may still go through until slot ${expiry}; wait about a minute, refresh and check the balance before sending again` };
     }
     delete r.inflight;
@@ -414,7 +413,7 @@ export class Session {
     const leaf = await this.reserve(r, st, isBurn ? SIGN_LIMIT : EXEC_LIMIT);
     const expiry = (await this.e.rpc.slot()) + EXPIRY_SLOTS;
     const prev = r.inflight;
-    r.inflight = prev ? { leaf: Math.min(Number(prev.leaf), leaf), expiry: Math.max(Number(prev.expiry), expiry) } : { leaf, expiry };
+    r.inflight = prev ? { leaf: Math.min(Number(prev.leaf), leaf), expiry: Math.max(Number(prev.expiry), expiry), at: Date.now() } : { leaf, expiry, at: Date.now() };
     await this.put(r);
     let sig;
     try {
@@ -493,7 +492,7 @@ export class Session {
     });
   }
 
-  takeover(progress) {
+  takeover(progress, opts = {}) {
     return this.lock(async () => {
       await this.e.checkCluster();
       let r = await this.load();
@@ -512,7 +511,13 @@ export class Session {
       }
       await this.pendingRekey(r, st);
       const tk = (await this.e.store.get(`tk:${r.aid}`)) || { id: `tk:${r.aid}`, used: {} };
-      const seen = await this.failedLeaves(P.statePda(unhex(r.aid), this.e.program).key, { epoch: st.epoch, pubSeed: unhex(r.pub_seed), root: unhex(r.root), aid: unhex(r.aid) });
+      const scan = await this.failedLeaves(P.statePda(unhex(r.aid), this.e.program).key, { epoch: st.epoch, pubSeed: unhex(r.pub_seed), root: unhex(r.root), aid: unhex(r.aid) });
+      if (!scan.complete && !opts.partialOk) {
+        const e = new Error("this wallet's history is too long, or holds too many failed transactions, to check every earlier attempt from another device");
+        e.incomplete = true;
+        throw e;
+      }
+      const seen = scan.leaves;
       const used = [...new Set([...(r.takeover && r.takeover.epoch === st.epoch ? r.takeover.used : []), ...(tk.used[st.epoch] || []), ...seen])];
       const lo = Math.max(TAKEOVER_FLOOR, st.next + RESTORE_GAP, r.next_leaf > TAKEOVER_FLOOR ? r.next_leaf : 0);
       const free = [];
@@ -528,42 +533,54 @@ export class Session {
   }
 
   async failedLeaves(state, cur) {
+    const out = new Set();
+    let complete = true;
+    for (const rpc of this.e.refRpc ? [this.e.rpc, this.e.refRpc] : [this.e.rpc]) {
+      const one = await this.scanFailed(rpc, state, cur);
+      one.leaves.forEach((l) => out.add(l));
+      if (!one.complete) complete = false;
+    }
+    return { leaves: [...out], complete };
+  }
+
+  async scanFailed(rpc, state, cur) {
     const sigs = [];
     let before = null, complete = false;
     for (let page = 0; page < HISTORY_PAGES; page++) {
-      const got = await this.e.rpc.call("getSignaturesForAddress", [b58encode(state), { limit: 1000, commitment: "confirmed", ...(before ? { before } : {}) }]);
+      const got = await rpc.call("getSignaturesForAddress", [b58encode(state), { limit: 1000, commitment: "confirmed", ...(before ? { before } : {}) }]);
       if (!Array.isArray(got)) throw new Error("the RPC returned a malformed signature list");
       sigs.push(...got);
       if (got.length < 1000) { complete = true; break; }
       before = got[got.length - 1] && got[got.length - 1].signature;
       if (typeof before !== "string") throw new Error("the RPC returned a malformed signature list");
     }
-    if (!complete) throw new Error("this wallet has too much history to check every earlier takeover attempt; take over from the device that is active, or wait for it to rekey");
-    const failed = sigs.filter((x) => x && x.err);
-    if (failed.length > FAILED_MAX) throw new Error("this wallet has too many failed transactions to check; take over from the device that is active, or wait for it to rekey");
+    let failed = sigs.filter((x) => x && x.err);
+    if (failed.length > FAILED_MAX) { failed = failed.slice(0, FAILED_MAX); complete = false; }
     const out = new Set();
+    const prog = b58encode(this.e.program);
     for (const s of failed) {
-      if (failed.length > 200) await new Promise((r) => setTimeout(r, 250));
+      if (failed.length > 200 && this.e.pace !== 0) await new Promise((r) => setTimeout(r, this.e.pace || 250));
       let tx = null;
       for (let i = 0; i < 4 && !tx; i++) {
-        tx = await this.e.rpc.call("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
+        tx = await rpc.call("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
         if (!tx) await new Promise((r) => setTimeout(r, 1500));
       }
-      if (!tx || !tx.transaction) throw new Error("could not read an earlier failed transaction of this wallet; try again in a minute");
+      if (!tx || !tx.transaction) { complete = false; continue; }
       const keys = [...tx.transaction.message.accountKeys, ...((tx.meta && tx.meta.loadedAddresses && [...tx.meta.loadedAddresses.writable, ...tx.meta.loadedAddresses.readonly]) || [])];
-      for (const ix of tx.transaction.message.instructions) {
-        if (keys[ix.programIdIndex] !== b58encode(this.e.program)) continue;
+      const ixs = [...tx.transaction.message.instructions, ...((tx.meta && Array.isArray(tx.meta.innerInstructions) && tx.meta.innerInstructions.flatMap((x) => (x && Array.isArray(x.instructions) ? x.instructions : []))) || [])];
+      for (const ix of ixs) {
+        if (!ix || keys[ix.programIdIndex] !== prog || typeof ix.data !== "string" || ix.data.length > 4000) continue;
         let leaf;
-        try { leaf = signedLeaf(b58decode(ix.data), keys, this.e.program, cur); } catch { leaf = null; }
+        try { leaf = signedLeaf(b58decode(ix.data), (ix.accounts || []).map((i) => keys[i]), this.e.program, cur); } catch { leaf = null; }
         if (leaf !== null) out.add(leaf);
       }
     }
-    return [...out];
+    return { leaves: [...out], complete };
   }
 
   async pendingRekey(r, st) {
     const m = r.rekeying;
-    if (m && Number(m.epoch) === st.epoch + 1 && (await this.e.expirySlot()) <= Number(m.expiry) + 2)
+    if (m && Number(m.epoch) === st.epoch + 1 && !(await this.e.passed(Number(m.expiry), Number(m.at) || 0)))
       throw new Error("an earlier rekey from this copy may still land; wait about a minute, then try again");
   }
 
@@ -574,7 +591,7 @@ export class Session {
     const price = await this.e.price(400000, [state]);
     await this.e.payerCovers(this.e.feeFor(400000, price));
     const newPubSeed = M.chainSeeded(this.e.program, st.epoch + 1) ? crypto.getRandomValues(new Uint8Array(16)) : undefined;
-    r.rekeying = { epoch: st.epoch + 1, leaf, expiry };
+    r.rekeying = { epoch: st.epoch + 1, leaf, expiry, at: Date.now() };
     if (newPubSeed) r.rekeying.pub_seed = hex(newPubSeed);
     await this.put(r);
     const rnd = crypto.getRandomValues(new Uint8Array(P.R_LEN));

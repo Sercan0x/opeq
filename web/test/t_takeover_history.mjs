@@ -14,7 +14,7 @@ const ok = (c, m) => { if (c) { pass++; console.log("PASS", m); } else { fail++;
 
 const tree = TreeKey.generate(sha256(enc.encode("sk")), sha256(enc.encode("pub")).slice(0, 16));
 const cur = { epoch: 3, pubSeed: tree.pubSeed, root: tree.root, aid };
-const keys = [program, state, other].map(b58encode);
+const keys = [b58encode(new Uint8Array(32).fill(5)), ...[program, state, other].map(b58encode)];
 const outer = [program, state, other];
 
 function rekeyIx(leaf, epoch, signed = true) {
@@ -44,7 +44,9 @@ function chainWith(total, failed) {
       }
       if (method === "getTransaction") {
         const ixs = failed.get(Number(params[0].slice(3)));
-        return { transaction: { message: { accountKeys: keys, instructions: ixs.map((d) => ({ programIdIndex: 0, data: b58encode(d) })) } }, meta: {} };
+        const top = ixs.filter((d) => !d.inner).map((d) => ({ programIdIndex: 1, accounts: [1, 2, 3], data: b58encode(d) }));
+        const inner = ixs.filter((d) => d.inner).map((d) => ({ programIdIndex: 1, accounts: [1, 2, 3], data: b58encode(d) }));
+        return { transaction: { message: { accountKeys: keys, instructions: top } }, meta: { innerInstructions: inner.length ? [{ index: 0, instructions: inner }] : [] } };
       }
       throw new Error("unexpected " + method);
     },
@@ -52,7 +54,8 @@ function chainWith(total, failed) {
   return rpc;
 }
 
-const run = (rpc) => Session.prototype.failedLeaves.call({ e: { rpc, program } }, state, cur);
+const self = (rpc) => ({ e: { rpc, program, pace: 0 }, scanFailed: Session.prototype.scanFailed });
+const run = async (rpc) => { const r = await Session.prototype.failedLeaves.call(self(rpc), state, cur); if (!r.complete) { const e = new Error(r.leaves.length ? "partial" : "incomplete scan"); e.result = r; throw e; } return r.leaves; };
 
 {
   const got = await run(chainWith(1500, new Map([[1200, [rekeyIx(900, cur.epoch)]]])));
@@ -75,12 +78,18 @@ const run = (rpc) => Session.prototype.failedLeaves.call({ e: { rpc, program } }
   const flood = new Map(Array.from({ length: 3001 }, (_, i) => [i, [rekeyIx(906, cur.epoch, false)]]));
   let err = null;
   try { await run(chainWith(3500, flood)); } catch (e) { err = e; }
-  ok(err && /too many failed/.test(err.message), "an extreme flood refuses instead of guessing");
+  ok(err && err.result && !err.result.complete, "an extreme flood is reported as an incomplete scan, so the user is asked instead of being locked out");
 }
 {
   let err = null;
   try { await run(chainWith(100000, new Map())); } catch (e) { err = e; }
-  ok(err && /too much history/.test(err.message), "history beyond 100 pages refuses instead of guessing");
+  ok(err && err.result && !err.result.complete, "history beyond 100 pages is reported as incomplete, not silently treated as complete");
+}
+{
+  const viaCpi = rekeyIx(907, cur.epoch);
+  viaCpi.inner = true;
+  const got = await run(chainWith(50, new Map([[7, [viaCpi]]])));
+  ok(got.join() === "907", "a signed takeover hidden inside another program's call (CPI) is found too");
 }
 console.log(fail ? `${fail} FAILED` : "ALL PASSED");
 process.exit(fail ? 1 : 0);

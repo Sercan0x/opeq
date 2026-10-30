@@ -937,8 +937,18 @@ function initWallet() {
     needPayer();
     if (!(await ask("Use this wallet on this device? This sends one rekey transaction. After it, any other browser or device that has these words stops signing until you choose Use on this device there.", "Use here"))) return;
     let sig;
-    try { sig = await signed("taking over on this device", (pr) => session.takeover(pr)); }
-    catch (e) { throw new Error(`${friendly(e)}\nThe takeover did not complete. Try again here, on this device, until it does. Do not start a takeover on another device meanwhile.`); }
+    let partialOk = false;
+    for (;;) {
+      try { sig = await signed("taking over on this device", (pr) => session.takeover(pr, { partialOk })); break; }
+      catch (e) {
+        if (e.incomplete && !partialOk) {
+          if (!(await ask(`${e.message}. If no other device tried Use on this device in the last days, continuing is safe. If one did and it failed, continuing has a small chance of exposing a one-time key. Continue anyway?`, "Continue"))) return;
+          partialOk = true;
+          continue;
+        }
+        throw new Error(`${friendly(e)}\nThe takeover did not complete. Try again here, on this device, until it does. Do not start a takeover on another device meanwhile.`);
+      }
+    }
     log(`this device now signs for the wallet: ${sig}`, "ok");
     await refreshWallet();
   }));

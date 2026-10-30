@@ -161,14 +161,14 @@ export class Rpc {
       } catch (e) {
         if (method !== "sendTransaction" && attempt < 3) { await new Promise((r) => setTimeout(r, 1000 * (attempt + 1))); continue; }
         throw new Error(`network error talking to the RPC (${method})`);
-      } finally {
-        clearTimeout(timer);
       }
       if ((res.status === 429 || res.status >= 500) && attempt < 4) {
+        clearTimeout(timer);
         await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
         continue;
       }
-      const j = await res.json();
+      let j;
+      try { j = await res.json(); } catch { throw new Error(`the RPC sent an unreadable answer (${method})`); } finally { clearTimeout(timer); }
       if (j.error) {
         const e = new Error(String(j.error.message || "RPC error").slice(0, 200));
         const logs = j.error.data && j.error.data.logs;
