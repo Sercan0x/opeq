@@ -61,15 +61,15 @@ The USB edition runs straight from a USB stick on Windows: plug it in, double-cl
 
 ### Code check
 
-The stick carries code as well as the wallet, so a computer with malware could change the code on the stick. At every start `opeq.ps1` hashes every file it ships with and compares them with `https://opeq.io/usb/<version>.json`, which `build_usb.py` writes to `web/usb/` and the site deploy publishes. If any file differs, or an extra file appears, the wallet refuses to open and lists the files. This catches untargeted changes; it runs from the stick itself, so a careful attacker can change the check too. The README on the stick tells users to plug it only into trusted computers and recommends a stick with a write-protect switch.
+The stick carries code as well as the wallet, so a computer with malware could change the code on the stick. At every start `opeq.ps1` hashes every file in the OPEQ-USB folder except `data/` and compares them with `https://opeq.io/usb/<version>.json`, which `build_usb.py --release` writes to `web/usb/` and the site deploy publishes. If any file differs, an extra file appears, or the version is not an official one, the local server itself refuses to open the wallet file and shows only a warning page listing the files. When a newer release is listed in `web/usb/latest.json`, the stick says so at start. This catches untargeted changes; it runs from the stick itself, so a careful attacker can change the check too. The README on the stick tells users to plug it only into trusted computers and recommends a stick with a write-protect switch.
 
 The key is still opened on the computer for the moment of signing, so this protects a wallet at rest, not against malware running on the computer while you sign. A hardware signer is a separate, later step.
 
 ```
-python3 build_usb.py --zip
+python3 build_usb.py --zip --release
 ```
 
-This writes `build/OPEQ-USB/` (`OPEQ.cmd`, `app/`, an empty `data/` and `README.txt` with the steps), `build/OPEQ-USB.zip` and `web/usb/<version>.json`. The zip is reproducible: the same commit always gives the same SHA-256.
+This writes `build/OPEQ-USB/` (`OPEQ.cmd`, `app/`, an empty `data/` and `README.txt` with the steps), `build/OPEQ-USB.zip` and `web/usb/<version>.json`. `--release` refuses an extension build older than the sources and never rewrites a check list that already exists; without it the build is a test build and writes no check list. The zip is reproducible: the same commit always gives the same SHA-256.
 
 ## How it works
 

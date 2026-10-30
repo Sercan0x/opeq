@@ -1,7 +1,7 @@
 @echo off
 if not exist "%~dp0app\opeq.ps1" goto zip
-echo "%~dp0" | find /i ".zip\" >nul && goto zip
-start "" conhost.exe --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0app\opeq.ps1"
+echo "%~dp0" | "%SystemRoot%\System32\find.exe" /i ".zip\" >nul && goto zip
+start "" "%SystemRoot%\System32\conhost.exe" --headless "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0app\opeq.ps1"
 exit /b
 :zip
 echo.

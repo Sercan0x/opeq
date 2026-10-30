@@ -121,6 +121,22 @@ def files_of(out):
     return found
 
 
+def stale(src):
+    pairs = [("app.css", os.path.join(ROOT, "web", "lab", "board", "app.css"))]
+    for d, base in (("lib", os.path.join(ROOT, "web", "lib")), ("assets", os.path.join(ROOT, "web", "assets"))):
+        for n in os.listdir(os.path.join(src, d)):
+            pairs.append((f"{d}/{n}", os.path.join(base, n)))
+    for n in os.listdir(src):
+        if n.endswith((".js", ".css")) and n not in ("net.js", "app.css"):
+            pairs.append((n, os.path.join(ROOT, "extension", n)))
+    bad = []
+    for rel, repo in pairs:
+        with open(os.path.join(src, rel), "rb") as a, open(repo, "rb") as b:
+            if a.read() != b.read():
+                bad.append(rel)
+    return bad
+
+
 def checklist(out):
     files = {}
     for rel, p in files_of(out):
@@ -128,6 +144,8 @@ def checklist(out):
             files[rel] = hashlib.sha256(f.read()).hexdigest()
     os.makedirs(CHECKS, exist_ok=True)
     path = os.path.join(CHECKS, VERSION + ".json")
+    if os.path.exists(path):
+        raise SystemExit(f"{path} already exists; a released check list is never rewritten. Bump VERSION for a new release")
     with open(path, "w", newline="\n") as f:
         json.dump({"version": VERSION, "files": files}, f, indent=1, sort_keys=True)
         f.write("\n")
@@ -158,6 +176,10 @@ def main():
     p.add_argument("--zip", action="store_true")
     p.add_argument("--release", action="store_true")
     a = p.parse_args()
+    if a.release:
+        bad = stale(a.src)
+        if bad:
+            raise SystemExit(f"{a.src} is older than the sources ({', '.join(bad[:5])}); rebuild the mainnet extension first")
     build(a.src, a.out)
     if a.release:
         print(f"built {a.out}, code check list {checklist(a.out)}")

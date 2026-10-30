@@ -149,13 +149,10 @@ function Check-Code() {
     if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { $result.state = "changed"; $result.changed = @("app/VERSION"); return $result }
     $result.version = $version
     $local = @{}
-    foreach ($f in Get-ChildItem -LiteralPath $App -Recurse -File -Force) {
-      $rel = "app/" + $f.FullName.Substring($App.Length).TrimStart("\").Replace("\", "/")
+    foreach ($f in Get-ChildItem -LiteralPath $Root -Recurse -File -Force) {
+      $rel = $f.FullName.Substring($Root.Length).TrimStart("\").Replace("\", "/")
+      if ($rel -like "data/*" -or $f.Name -eq "desktop.ini" -or $f.Name -eq "Thumbs.db") { continue }
       $local[$rel] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    }
-    foreach ($name in @("OPEQ.cmd", "README.txt")) {
-      $p = Join-Path $Root $name
-      if (Test-Path -LiteralPath $p) { $local[$name] = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() }
     }
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     try { $resp = Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri ($CheckUrl + $version + ".json") }
@@ -196,6 +193,10 @@ function Handle($client) {
   $path = $req.Path
   if ($path -notmatch '^/[A-Za-z0-9._/-]*$' -or $path.Contains("..") -or $path.Contains("//")) { Send-Text $stream 400 "bad path"; return }
   $isPut = $path -eq "/api/wallet" -and $req.Method -eq "PUT"
+  if ($check.state -eq "changed") {
+    if ($path -eq "/api/wallet") { Send-Text $stream 423 "the OPEQ files on this stick were changed"; return }
+    if ($path -eq "/" -or $path -eq "/app.html") { Send-Response $stream 200 "text/html; charset=utf-8" ([System.Text.Encoding]::UTF8.GetBytes($Blocked)); return }
+  }
   if ($path.StartsWith("/api/")) {
     if ($req.Headers["x-opeq-token"] -ne $Token) { Send-Text $stream 403 "missing token"; return }
   }
@@ -272,6 +273,8 @@ try { $listener.Start() } catch {
 }
 
 $check = Check-Code
+$list = (@($check.changed | Select-Object -First 20) | ForEach-Object { "<li>" + [System.Net.WebUtility]::HtmlEncode([string]$_) + "</li>" }) -join ""
+$Blocked = "<!doctype html><html lang=""en""><head><meta charset=""utf-8""><meta http-equiv=""Content-Security-Policy"" content=""default-src 'none'; style-src 'unsafe-inline'""><title>OPEQ stopped</title></head><body style=""font-family:Segoe UI,sans-serif;background:#070b11;color:#e8eef4;padding:40px;max-width:640px""><h1 style=""color:#ff7a6e"">OPEQ stopped</h1><p>The OPEQ files on this stick do not match the official release. Someone or something may have changed them. Do not enter your password or your 24 words.</p><p>Delete the OPEQ-USB folder except the data folder, copy a fresh OPEQ-USB from the official zip on github.com/Sercan0x/opeq, and put the data folder back.</p><ul>$list</ul></body></html>"
 $disk = Disk-Facts
 $Info = (@{ volume = $disk.volume; drive = $disk.drive; check = $check.state; version = $check.version; latest = $check.latest; changed = @($check.changed | Select-Object -First 20) } | ConvertTo-Json -Compress)
 
