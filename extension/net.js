@@ -8,4 +8,5 @@ export const NET = {
   sol: "devnet SOL",
   swap: true,
   jupiter: false,
+  evm: [{ chainId: 84532, name: "Base Sepolia", symbol: "ETH", rpc: "https://sepolia.base.org", explorer: "https://sepolia.basescan.org" }],
 };

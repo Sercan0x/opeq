@@ -84,3 +84,10 @@
   .tpm, .split { grid-template-columns: 1fr; }
   .rig, .rig > * { min-width: 0; }
 }
+#pane-evm .addr-row { display: flex; align-items: flex-start; gap: 6px; }
+#pane-evm .addr-row .addr { flex: 1; font-size: 13px; color: #fff; }
+#pane-evm .ev-k { margin: 14px 0 4px; }
+#pane-evm .ev-toks:not(:empty) { margin-top: 12px; }
+#pane-evm .rw { margin-top: 12px; }
+#pane-evm .progress { margin-top: 10px; }
+.ev-last a { color: var(--ice); }

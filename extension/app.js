@@ -7,6 +7,7 @@ import * as J from "./lib/jupiter.js";
 import { feePayer } from "./feekey.js";
 import * as keep from "./keep.js";
 import { NET } from "./net.js";
+import * as evm from "./evm.js";
 
 const PROGRAM = NET.program;
 const EXPLORER = "https://explorer.solana.com";
@@ -666,6 +667,7 @@ function lockVault(reason) {
   wipeInputs();
   if (!session) return;
   loadLog(null);
+  evm.stop();
   if (session.master) session.master.fill(0);
   if (session.macRaw) session.macRaw.fill(0);
   session.master = null;
@@ -1210,6 +1212,7 @@ async function init() {
   if (NET.jupiter) { $("j-box").classList.remove("hidden"); $("x-box").classList.add("hidden"); fillSwap(); }
   else if (!NET.swap) { $("tab-swap").remove(); $("pane-swap").classList.add("hidden"); }
   watchLock();
+  evm.init({ ask, guard, log, copyTo, session: () => session, busy: () => busy, compute: engine.compute });
   initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
   const kept = await keep.load(IDLE_MS);
   if (kept) {

@@ -35,12 +35,18 @@ await throws(Promise.resolve().then(() => parseUnits("1.1234567", 6)), /decimals
 
 console.log("identity");
 let t0 = Date.now();
-const cache = await A.loadIdentity(null);
+await A.loadIdentity(null);
 console.log("  identity tree", Date.now() - t0, "ms, account", A.account);
 const A2 = device(storeA);
-await A2.loadIdentity(cache);
-ok(A2.account === A.account, "cached identity gives the same account without rebuilding");
-await throws(device(storeA).loadIdentity({ pubSeed: "0x" + "00".repeat(16), root: cache.root }), /does not match/, "cached identity from other words rejected");
+t0 = Date.now();
+await A2.loadIdentity(null);
+ok(A2.account === A.account && Date.now() - t0 < 1000, "saved identity gives the same account without rebuilding");
+const idRec = await storeA.get("vaultA:evm:id");
+storeA.m.set("vaultA:evm:id", { ...idRec, root: "0x" + "ab".repeat(16) });
+await throws(device(storeA).loadIdentity(null), /modified outside opeq/, "identity record edited outside opeq is refused");
+storeA.m.set("vaultA:evm:id", idRec);
+const other = new EvmChain({ chain: CHAIN, store: storeA, macKey, vaultId: "vaultA", master: sha256(enc.encode("other words")), compute: localCompute });
+await throws(other.loadIdentity(null), /does not match/, "identity saved for other words is refused");
 
 console.log("setup");
 let s = await A.status();
@@ -58,6 +64,12 @@ const again2 = await localCompute.run("evmBoot", { master: master.slice(), chain
 ok(Buffer.from(again.calldata).equals(Buffer.from(again2.calldata)), "bootstrap signature is identical on every retry");
 
 console.log("send ETH");
+const poor = new EvmChain({ chain: CHAIN, store: storeA, macKey, vaultId: "vaultA", master: master.slice(), compute: localCompute });
+await poor.loadIdentity(null);
+poor.feeAddress = "0x00000000000000000000000000000000000dead1";
+const leafBefore = (await poor.status()).r.next_leaf;
+await throws(poor.execute([{ to: "0x000000000000000000000000000000000000b0b5", value: 1n, data: new Uint8Array(0) }]), /Nothing was signed/, "empty gas key stops the send before signing");
+ok((await poor.status()).r.next_leaf === leafBefore, "no key was used up by the refused send");
 const bob = "0x000000000000000000000000000000000000b0b5";
 let hashSeen = null;
 const r1 = await A.execute([{ to: bob, value: 10n ** 17n, data: new Uint8Array(0) }], (h) => (hashSeen = h));
@@ -97,7 +109,7 @@ await throws(storeA.put({ ...raw, next_leaf: 0 }), /backwards/, "store refuses t
 
 console.log("second device");
 const B = device(storeB);
-await B.loadIdentity(cache);
+await B.loadIdentity(null);
 s = await B.status();
 ok(s.state === "other", "a recovered copy does not sign until Use on this device");
 await throws(B.execute([{ to: bob, value: 1n, data: new Uint8Array(0) }]), /Use on this device/, "send from the second device is refused");
@@ -120,7 +132,7 @@ ok((await B.status()).st.next === 1, "send after rekey");
 
 console.log("wrong network");
 const W = new EvmChain({ chain: { ...CHAIN, chainId: 84532, name: "Base Sepolia" }, store: storeA, macKey, vaultId: "vaultA", master: master.slice(), compute: localCompute, rpcUrl: RPC });
-await W.loadIdentity(cache);
+await W.loadIdentity(null);
 await throws(W.execute([]), /not Base Sepolia/, "RPC on another chain is refused before signing");
 
 console.log(`\n${pass} passed, ${fail} failed`);

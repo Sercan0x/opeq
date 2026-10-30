@@ -13,9 +13,11 @@ import program
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "extension")
 WEB = os.path.join(ROOT, "web")
-LIB = ["amms.js", "jupiter.js", "compute.js", "engine.js", "mnemonic.js", "protocol.js", "sha256.js", "solana.js", "tokens.js", "vaultstore.js", "wordlist.js", "worker.js", "wots.js"]
+LIB = ["amms.js", "jupiter.js", "compute.js", "engine.js", "mnemonic.js", "protocol.js", "sha256.js", "solana.js", "tokens.js", "vaultstore.js", "wordlist.js", "worker.js", "wots.js",
+       "evmcode.js", "evmtx.js", "evmwallet.js", "evmwots.js", "keccak.js", "secp256k1.js"]
 ASSETS = ["logo.svg", "mark.svg"]
-FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "feekey.js", "keep.js", "net.js", "bg.js"]
+FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "evm.js", "feekey.js", "keep.js", "net.js", "bg.js"]
+EVM_TESTNETS = [{"chainId": 84532, "name": "Base Sepolia", "symbol": "ETH", "rpc": "https://sepolia.base.org", "explorer": "https://sepolia.basescan.org"}]
 ICONS = ["16.png", "32.png", "48.png", "128.png"]
 LEGACY_PROGRAM = "424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN"
 DEVNET_RPC = "https://api.devnet.solana.com"
@@ -33,7 +35,7 @@ DENY = ["api.devnet.solana.com", "cluster=devnet", "faucet.solana.com", "Free de
 def config(args):
     if args.net == "devnet":
         return {"name": "devnet", "mainnet": False, "program": args.program or LEGACY_PROGRAM, "rpc": args.rpc or DEVNET_RPC, "genesis": DEVNET_GENESIS,
-                "explorerQuery": "?cluster=devnet", "sol": "devnet SOL", "swap": True, "jupiter": False}
+                "explorerQuery": "?cluster=devnet", "sol": "devnet SOL", "swap": True, "jupiter": False, "evm": EVM_TESTNETS}
     if not args.program or not B58.match(args.program):
         raise SystemExit("a mainnet build needs --program <mainnet program id>")
     if any(args.program == p or args.program.startswith(p) for p in DEVNET_PROGRAMS):
@@ -53,7 +55,7 @@ def config(args):
     if not args.version or not re.match(r"^\d+\.\d+\.\d+$", args.version):
         raise SystemExit("a mainnet build needs an explicit --version like 1.0.0")
     return {"name": "mainnet", "mainnet": True, "program": args.program, "rpc": args.rpc, "genesis": MAINNET_GENESIS,
-            "explorerQuery": "", "sol": "SOL", "swap": False, "jupiter": True}
+            "explorerQuery": "", "sol": "SOL", "swap": False, "jupiter": True, "evm": []}
 
 
 def strip_other(html, net):
