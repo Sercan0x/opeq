@@ -121,6 +121,7 @@ export class EvmChain {
   }
 
   async run(op, args, progress) {
+    if (!this.master || this.master.every((b) => b === 0)) throw new Error("the wallet locked, nothing was signed");
     const m = this.master.slice();
     try { return await this.compute.run(op, { ...args, master: m }, progress); }
     finally { m.fill(0); }
@@ -448,6 +449,10 @@ export class EvmChain {
     }
     if (!(decimals >= 0 && decimals <= 36)) throw new Error("that contract does not look like an ERC-20 token");
     return { address: a, decimals, symbol: decodeSymbol(sym), balance: word(bal) };
+  }
+
+  async tokenBalance(a) {
+    return word(await this.rpc.ethCall(a, SEL.balanceOf + "000000000000000000000000" + this.account.slice(2)));
   }
 }
 

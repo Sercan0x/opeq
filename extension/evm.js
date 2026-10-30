@@ -145,11 +145,22 @@ async function refresh() {
   await refreshTokens();
 }
 
+const tokMeta = new Map();
+
 async function refreshTokens() {
   const c = chain;
   const list = await loadTokens();
   const found = [];
-  for (const a of list) { try { found.push(await c.token(a)); } catch {} }
+  for (const a of list) {
+    const key = `${c.id}:${a}`;
+    try {
+      if (!tokMeta.has(key)) { const t = await c.token(a); tokMeta.set(key, { address: t.address, decimals: t.decimals, symbol: t.symbol }); found.push(t); }
+      else found.push({ ...tokMeta.get(key), balance: await c.tokenBalance(a) });
+    } catch {
+      const prev = tokens.find((t) => t.address === a) || (tokMeta.has(key) && { ...tokMeta.get(key), balance: null });
+      if (prev) found.push({ ...prev, stale: true });
+    }
+  }
   if (c !== chain) return;
   tokens = found;
   const box = $("e-toks"), sel = $("e-asset"), keep = sel.value;
@@ -157,14 +168,15 @@ async function refreshTokens() {
   const opt = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); };
   opt("native", `${c.chain.symbol} (${formatUnits(status.bal, 18)})`);
   for (const t of tokens) {
+    const amt = t.balance === null ? "?" : formatUnits(t.balance, t.decimals, t.decimals);
     const row = document.createElement("div"); row.className = "tok";
     const left = document.createElement("div");
     const nm = document.createElement("b"); nm.textContent = `${t.symbol} (unverified)`;
-    const m = document.createElement("span"); m.className = "mint mono"; m.textContent = t.address;
+    const m = document.createElement("span"); m.className = "mint mono"; m.textContent = t.stale ? `${t.address} (balance not refreshed, try again in a minute)` : t.address;
     left.append(nm, m);
-    const right = document.createElement("div"); right.className = "mono amt"; right.textContent = formatUnits(t.balance, t.decimals, t.decimals);
+    const right = document.createElement("div"); right.className = "mono amt"; right.textContent = amt;
     row.append(left, right); box.append(row);
-    opt(t.address, `${t.symbol} ${t.address.slice(0, 6)}…${t.address.slice(-4)} (${formatUnits(t.balance, t.decimals, t.decimals)})`);
+    opt(t.address, `${t.symbol} ${t.address.slice(0, 6)}…${t.address.slice(-4)} (${amt})`);
   }
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
 }
@@ -261,6 +273,7 @@ function bind() {
   document.addEventListener("opeq:view", (e) => { showBar(); if (e.detail !== "v-wallet") close(false); else setTimeout(tryOpen, 0); });
   btn.title = "Switch network";
   $("e-refresh").addEventListener("click", () => ui.guard("e-err", null, refresh));
+  $("e-lock").addEventListener("click", () => { if (!ui.busy()) ui.lock(); });
   $("e-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.account, "EVM address copied"));
   $("e-gas-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.feeAddress, "gas key address copied"));
 

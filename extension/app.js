@@ -78,6 +78,11 @@ class WorkerCompute {
       this.pending.delete(m.id);
       if (m.error) h.rej(new Error(m.error)); else h.res(m.result);
     };
+    this.w.onerror = (e) => {
+      const err = new Error(`the signing worker failed to start (${e.message || "unknown error"}); reload the wallet`);
+      for (const h of this.pending.values()) h.rej(err);
+      this.pending.clear();
+    };
   }
 
   run(op, args, progress) {
@@ -667,8 +672,8 @@ function lockVault(reason) {
   wipeInputs();
   if (!session) return;
   loadLog(null);
-  evm.stop();
   if (session.master) session.master.fill(0);
+  try { evm.stop(); } catch {}
   if (session.macRaw) session.macRaw.fill(0);
   session.master = null;
   session = null;
@@ -1213,7 +1218,7 @@ async function init() {
   if (NET.jupiter) { $("j-box").classList.remove("hidden"); $("x-box").classList.add("hidden"); fillSwap(); }
   else if (!NET.swap) { $("tab-swap").remove(); $("pane-swap").classList.add("hidden"); }
   watchLock();
-  evm.init({ ask, guard, log, copyTo, session: () => session, busy: () => busy, compute: engine.compute });
+  evm.init({ ask, guard, log, copyTo, session: () => session, busy: () => busy, lock: () => lockVault(""), compute: engine.compute });
   initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
   const kept = await keep.load(IDLE_MS);
   if (kept) {

@@ -21,10 +21,10 @@
 
 <main class="doc">
   <h1>Privacy policy</h1>
-  <p class="meta">Last updated 27 October 2026. Applies to the OPEQ Wallet browser extension, both the mainnet build ("OPEQ Wallet") and the test build ("OPEQ Wallet (Devnet)"), and to the website opeq.io.</p>
+  <p class="meta">Last updated 30 October 2026. Applies to the OPEQ Wallet browser extension, both the mainnet build ("OPEQ Wallet") and the test build ("OPEQ Wallet (Devnet)"), and to the website opeq.io.</p>
 
   <h2>1. Summary</h2>
-  <p>OPEQ has no user accounts, no analytics, no advertising and no tracking. Your recovery words, password and keys are created and kept on your device and are never sent to OPEQ or anyone else. The only server OPEQ runs for the wallet is a pass-through connection to the Solana network, and OPEQ keeps no logs of it. The only personal data OPEQ stores is the waitlist data described in section 5.</p>
+  <p>OPEQ has no user accounts, no analytics, no advertising and no tracking. Your recovery words, password and keys are created and kept on your device and are never sent to OPEQ or anyone else. The only server OPEQ runs for the wallet is a pass-through connection to the Solana network and, from version 1.1, to the EVM networks the wallet supports. OPEQ keeps no logs of it. The only personal data OPEQ stores is the waitlist data described in section 5.</p>
 
   <h2>2. Who is responsible</h2>
   <p>OPEQ is an independent project run by an individual developer. For any privacy question or request, write to <a href="mailto:hello@opeq.io">hello@opeq.io</a>.</p>
@@ -37,7 +37,8 @@
     <li><b>Activity history.</b> The last 40 wallet events (time, a short description such as "sent 0.1 SOL to Gud4…8rk", and the transaction signature) are kept in the browser's local storage so you can see them next time. They are public blockchain data and are deleted when you remove the extension.</li>
     <li><b>Preferences.</b> The address of the wallet you used last, and the RPC address if you enter your own, are kept in local storage.</li>
     <li><b>Password.</b> Your password is never stored. It is used only to derive the encryption key.</li>
-  </ul>
+    <li><b>EVM accounts (version 1.1 and later).</b> For each EVM network you use, the extension keeps public data: your EVM account address, the public key trees of that network, a counter and list of one-time keys already used, the token contracts you added and the network you picked last. This data is protected against tampering with a key derived from your recovery words and deleted when you choose "Remove from this browser".</li>
+</ul>
   <p>Removing the extension, or choosing "Remove from this browser", deletes the wallet and its activity history from the browser. Funds stay on the Solana blockchain and can be recovered with the 24 words.</p>
 
   <h2>4. Data sent over the network</h2>
@@ -45,7 +46,9 @@
     <li><b>Solana RPC, mainnet build.</b> To show balances and send transactions, the extension calls rpc.opeq.io. This is a small service run by OPEQ on Cloudflare Workers that forwards each request to Helius (helius.dev), a Solana RPC provider. It only passes the requests the wallet needs, and OPEQ keeps no logs and stores nothing from them. Requests contain public blockchain data: your wallet address, your fee key address, the accounts being looked up and the transactions you sign. Cloudflare and Helius can see your IP address and the request, under their own privacy policies.</li>
     <li><b>Solana RPC, test build and website wallet.</b> These call the public devnet node https://api.devnet.solana.com, operated by the Solana Foundation, with the same kind of data.</li>
     <li><b>Swap prices.</b> When you use the Swap tab, the extension asks Jupiter (jup.ag) for a price and a route. The request contains the two tokens, the amount and your wallet address. Jupiter can see your IP address and the request, under its own privacy policy. The wallet checks every instruction Jupiter returns before it signs, and it only signs swaps that go through Jupiter's program and a fixed list of known pools.</li>
-    <li><b>Your own RPC.</b> If you enter your own RPC address in the Keys tab, the extension sends these requests there instead, and that provider's privacy policy applies.</li>
+    <li><b>EVM networks (version 1.1 and later).</b> To show balances and send on Ethereum, Base, Arbitrum and Robinhood Chain, the extension calls rpc.opeq.io, which forwards each request to Alchemy (alchemy.com), an EVM RPC provider. The requests contain public blockchain data: your EVM account address, your gas key address, the token contracts you added and the transactions you sign. OPEQ keeps no logs of them.</li>
+    <li><b>Second source for EVM checks (version 1.1 and later).</b> Before it signs anything that depends on the state of your EVM account (setting it up, moving it to this device, finishing a key change, reading a token's decimals or how much to move to your gas key), the extension asks the network's own public RPC as a second, independent source, and refuses to sign if the two disagree. These are mainnet.base.org (Coinbase), arb1.arbitrum.io (Offchain Labs), rpc.mainnet.chain.robinhood.com (Robinhood) and ethereum-rpc.publicnode.com (Allnodes). Your browser contacts them directly, so they can see your IP address together with your EVM account address and the token contracts it checks, under their own privacy policies.</li>
+    <li><b>Your own RPC.</b> If you enter your own Solana RPC address in the Keys tab, the extension sends Solana requests there instead, and that provider's privacy policy applies. It still asks rpc.opeq.io once about a token it does not know, to check that both sources agree. EVM requests always go to rpc.opeq.io and the second sources above.</li>
     <li><b>The blockchain.</b> Transactions you confirm are published on the Solana blockchain. Blockchain data is public and permanent and cannot be deleted by anyone, including OPEQ. Your fee key signs every transaction as the fee payer, so transactions of one wallet can be linked to each other.</li>
     <li><b>Links you open.</b> Explorer and website links (and, in the test build, the faucet link) open third-party sites only when you click them.</li>
     <li>The extension sends nothing else. It contains no analytics, crash reporting or remote code.</li>
@@ -69,11 +72,13 @@
     <li><b>Fee key sweep.</b> When you press Move to wallet, SOL above 0.005 on the fee key is moved into your own opeq wallet.</li>
     <li><b>Separate fee top-up.</b> When the confirmation window says a top-up goes as a separate transaction, it is signed just before your payment.</li>
     <li><b>Burn after a failed send.</b> If a payment fails after it was signed, the wallet uses up that one-time key with an empty transaction, so the failed signature can never be replayed. It costs only the network fee.</li>
-  </ul>
+    <li><b>EVM setup (version 1.1 and later).</b> After you confirm Set up, the wallet sends up to four transactions from your gas key: it installs the OPEQ factory if the network does not have it yet, creates your account, moves it off its identity key and then to a key tree only this device knows. The fees are shown in the confirmation window. When your gas key runs low, a payment also moves a little ETH from your account to your gas key, and the confirmation window says how much.</li>
+</ul>
 
   <h2>8. Security and how the program is governed</h2>
   <p>Keys are generated and used only inside your browser, and the extension's content security policy blocks remote code. OPEQ on mainnet is a beta: start with small amounts. If you lose both your password and your 24 words, nobody can recover the wallet.</p>
   <p>The OPEQ program on mainnet can be upgraded. The upgrade key is itself an OPEQ wallet, protected by hash-based signatures, held by the developer. An upgrade can change how the program behaves, including how it handles funds in OPEQ wallets. There is no timelock: an upgrade takes effect as soon as it is made. Upgrades will be announced on <a href="https://x.com/opeqio" rel="noopener noreferrer" target="_blank">@opeqio</a>. The program that holds this key cannot be changed by anyone.</p>
+  <p>The OPEQ contracts on EVM networks (the factory and every account) cannot be upgraded or paused by anyone, including the developer. Only the one-time keys from your recovery words can move funds in your EVM account. If a newer version is released, it lives at new addresses and you move your funds yourself.</p>
 
   <h2>9. What OPEQ never does</h2>
   <ul>

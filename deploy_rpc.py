@@ -48,7 +48,12 @@ def deploy():
     elif "--public" not in sys.argv:
         raise SystemExit(f"{UPSTREAM_FILE} is missing; deploying now would drop the private upstream. Pass --public only if that is what you want")
     evm = evm_upstream()
+    if not evm and "--public-evm" not in sys.argv:
+        raise SystemExit(f"{EVM_FILE} is missing; the EVM routes would fall back to the same public RPCs the wallet uses as its second source. Pass --public-evm only if that is what you want")
     if evm:
+        missing = sorted({"1", "8453", "42161", "4663"} - set(json.loads(evm)))
+        if missing and "--public-evm" not in sys.argv:
+            raise SystemExit(f"{EVM_FILE} has no private endpoint for chains {missing}; add them or pass --public-evm")
         bindings.append({"type": "secret_text", "name": "EVM_UPSTREAM", "text": evm})
     meta = {"main_module": "worker.js", "compatibility_date": "2026-09-01", "bindings": bindings, "observability": {"enabled": False}}
     with open(WORKER, "rb") as f:
