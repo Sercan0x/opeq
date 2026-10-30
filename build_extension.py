@@ -15,7 +15,7 @@ SRC = os.path.join(ROOT, "extension")
 WEB = os.path.join(ROOT, "web")
 LIB = ["amms.js", "jupiter.js", "compute.js", "engine.js", "mnemonic.js", "protocol.js", "sha256.js", "solana.js", "tokens.js", "vaultstore.js", "wordlist.js", "worker.js", "wots.js",
        "evmcode.js", "evmtx.js", "evmwallet.js", "evmwots.js", "keccak.js", "secp256k1.js"]
-ASSETS = ["logo.svg", "mark.svg"]
+ASSETS = ["logo.svg", "mark.svg", "chain-sol.svg", "chain-eth.svg", "chain-base.svg"]
 FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "evm.js", "feekey.js", "keep.js", "net.js", "bg.js"]
 EVM_MAINNETS = [
     {"chainId": 8453, "name": "Base", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/8453", "check": "https://mainnet.base.org", "explorer": "https://basescan.org"},

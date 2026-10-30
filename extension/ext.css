@@ -140,3 +140,7 @@
 .ev-last a { color: var(--ice); }
 @media (prefers-reduced-motion: reduce) { .chain-chev { transition: none; } }
 #evm-view .ev-note { margin: 10px 0 0; font-size: 12px; }
+.chain-ico.logo { box-shadow: none; border-radius: 0; background-color: transparent; background-position: center; background-repeat: no-repeat; background-size: contain; }
+.chain-ico.l-sol { background-image: url("assets/chain-sol.svg"); background-size: 88% auto; }
+.chain-ico.l-eth { background-image: url("assets/chain-eth.svg"); background-size: 120% auto; }
+.chain-ico.l-base { background-image: url("assets/chain-base.svg"); border-radius: 3px; }
