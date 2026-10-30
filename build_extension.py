@@ -161,7 +161,7 @@ def build(args):
             if cfg["mainnet"]:
                 m["name"] = "OPEQ Wallet"
                 m["action"]["default_title"] = "OPEQ Wallet"
-                m["description"] = "A quantum-resistant wallet for Solana, Ethereum, Base, Arbitrum and Robinhood Chain. Hash-based one-time signatures, verified on chain. Beta."
+                m["description"] = "Quantum-resistant wallet for Solana, Ethereum, Base, Arbitrum and Robinhood Chain. Hash-based one-time signatures. Beta."
                 if args.version:
                     m["version"] = args.version
             text = json.dumps(m, indent=2) + "\n"
