@@ -154,8 +154,8 @@ export class EvmChain {
     return { a, b };
   }
 
-  pendingText(p) {
-    return `a transfer you signed earlier may still go through until ${new Date(p.deadline * 1000).toLocaleTimeString()}. Wait until it confirms or that time passes, or cancel it first. Nothing new was signed`;
+  pendingText(p, signed = false) {
+    return `a transfer you signed ${signed ? "" : "earlier "}may still go through until ${new Date(p.deadline * 1000).toLocaleTimeString()}. Wait until it confirms or that time passes, or cancel it${signed ? "" : " first. Nothing new was signed"}`;
   }
 
   async resolvePending(r) {
@@ -164,7 +164,7 @@ export class EvmChain {
     const { a, b } = await this.seenBoth();
     const gone = (x) => x && (x.epoch !== r.epoch || x.next > p.leaf);
     let done = gone(a) && gone(b);
-    if (!done) done = (await this.clock()) > p.deadline;
+    if (!done) done = (await this.clock()) > p.deadline && Date.now() / 1000 > p.deadline;
     if (!done) { const e = new Error(this.pendingText(p)); e.pendingBlock = true; throw e; }
     delete r.pending;
     await this.put(r);
@@ -314,11 +314,32 @@ export class EvmChain {
     return Math.max(Number(await this.rpc.call("eth_getTransactionCount", [this.feeAddress, "pending"])), this.nextNonce || 0);
   }
 
-  async idle() {
-    for (const rpc of this.check ? [this.rpc, this.check] : [this.rpc]) {
-      const [p, l] = await Promise.all(["pending", "latest"].map((t) => rpc.call("eth_getTransactionCount", [this.feeAddress, t])));
-      if (Number(p) > Number(l)) throw new Error("a transaction from your gas key is still waiting in the network. Wait until it confirms, or cancel it. Nothing new was signed");
+  async waiting() {
+    for (let i = 0; i < 3; i++) {
+      let stuck = false;
+      for (const rpc of this.check ? [this.rpc, this.check] : [this.rpc]) {
+        const [p, l] = await Promise.all(["pending", "latest"].map((t) => rpc.call("eth_getTransactionCount", [this.feeAddress, t])));
+        if (Number(p) > Number(l)) stuck = true;
+      }
+      if (!stuck) return false;
+      await new Promise((r) => setTimeout(r, 1500));
     }
+    return true;
+  }
+
+  async idle() {
+    if (await this.waiting()) { const e = new Error("a transaction from your gas key is still waiting in the network. Wait until it confirms, or use Unstick on the gas key line. Nothing new was signed"); e.gasStuck = true; throw e; }
+  }
+
+  async unstick(onHash) {
+    await this.checkNetwork();
+    return this.lock(async () => {
+      if (!(await this.waiting())) return { hash: null, nothing: true };
+      const latest = Number(await this.rpc.call("eth_getTransactionCount", [this.feeAddress, "latest"]));
+      const f = await this.fees();
+      this.cap = null;
+      return this.sendTx(this.feeAddress, new Uint8Array(0), 0n, 21000n, onHash, { nonce: latest, minFee: f.maxFeePerGas * 3n, minPrio: f.maxPriorityFeePerGas * 3n });
+    });
   }
 
   async wait(hash, ms = 120000) {
@@ -396,6 +417,7 @@ export class EvmChain {
   async gasSurplus() {
     const [f, fee] = await Promise.all([this.fees(), this.rpc.balance(this.feeAddress)]);
     const per = (EXEC_GAS * f.maxFeePerGas * 3n) / 2n;
+    this.surplusFee = f.maxFeePerGas;
     const amount = fee - per * TOPUP_TARGET - SWEEP_GAS * f.maxFeePerGas;
     return amount > per * TOPUP_TARGET ? amount : 0n;
   }
@@ -406,6 +428,7 @@ export class EvmChain {
       await this.idle();
       const amount = await this.gasSurplus();
       if (!amount) throw new Error("the gas key holds no more than it needs for future fees");
+      if (!this.cap) this.cap = this.surplusFee * 2n;
       return this.sendTx(this.account, new Uint8Array(0), amount, SWEEP_GAS, onHash);
     });
   }
@@ -449,6 +472,11 @@ export class EvmChain {
   async execute(calls, onHash, cancel = false) {
     return this.sign(async ({ r, st }) => {
       if (cancel && !r.pending) return { hash: null, gasUsed: 0n, nothing: true };
+      if (cancel) {
+        const { a, b } = await this.seenBoth();
+        const gone = (x) => x && (x.epoch !== r.epoch || x.next > r.pending.leaf);
+        if (gone(a) && gone(b)) { delete r.pending; await this.put(r); return { hash: null, gasUsed: 0n, nothing: true, landed: true }; }
+      }
       if (!cancel) { await this.resolvePending(r); await this.idle(); }
       await this.gasCheck(EXEC_GAS + 40000n * BigInt(calls.length));
       const inner = await this.callsGas(calls);
@@ -456,7 +484,11 @@ export class EvmChain {
       const leaf = Math.max(r.next_leaf, st.next);
       const prev = cancel ? r.pending : null;
       const opts = {};
+      let mined = false;
       if (prev && prev.nonce !== undefined) {
+        for (const rpc of this.check ? [this.rpc, this.check] : [this.rpc]) if (Number(await rpc.call("eth_getTransactionCount", [this.feeAddress, "latest"])) > prev.nonce) mined = true;
+      }
+      if (prev && prev.nonce !== undefined && !mined) {
         opts.nonce = prev.nonce;
         opts.minFee = (BigInt(prev.maxFee || "0") * 5n) / 4n + 1n;
         opts.minPrio = (BigInt(prev.prio || "0") * 5n) / 4n + 1n;
@@ -478,7 +510,8 @@ export class EvmChain {
         if (!this.sent && !e.broadcast) { await unsent(); throw e; }
         const { a, b } = await this.seenBoth().catch(() => ({}));
         if (a && b && a.epoch === r.epoch && b.epoch === r.epoch && a.next > leaf && b.next > leaf) { await done(); return { hash: e.hash, gasUsed: 0n, byOther: true }; }
-        e.message = `${e.message}. ${this.pendingText({ deadline })[0].toUpperCase()}${this.pendingText({ deadline }).slice(1)}`;
+        const t = this.pendingText({ deadline }, true);
+        e.message = `${e.message}. ${t[0].toUpperCase()}${t.slice(1)}`;
         throw e;
       }
       await done();

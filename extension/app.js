@@ -131,9 +131,19 @@ async function rememberTo(to) {
   try { await chrome.storage.local.set({ [recentKey()]: list }); } catch {}
 }
 
+function similar(a, b) {
+  let p = 0, q = 0;
+  while (p < a.length && a[p] === b[p]) p++;
+  while (q < a.length && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+  return p >= 2 && q >= 2 && p + q >= 6;
+}
+
 async function lookalike(to) {
-  const twin = (await recentList()).find((a) => a !== to && a.slice(0, 4) === to.slice(0, 4) && a.slice(-4) === to.slice(-4));
-  if (twin) throw new Error(`this address starts and ends like one you sent to before (${twin.slice(0, 6)}…${twin.slice(-6)}) but is a different address. Scammers create look-alike addresses. Copy the address from the receiver again, not from your history`);
+  const twin = (await recentList()).find((a) => a !== to && similar(a, to));
+  if (!twin) return;
+  const go = await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: "This address looks like one you used before", rows: [["New address", to, true], ["You sent to", twin, true]],
+    notes: [{ text: "Scammers create addresses that start and end like ones you use, then wait for you to copy theirs from your history. Compare every character.", warn: true }, { text: "Continue only if you just copied this address from the receiver yourself." }] }, "It is the right address");
+  if (!go) throw new Error("cancelled: check the address with the receiver");
 }
 
 function setProgress(id, frac) {
