@@ -34,7 +34,7 @@ const evmOn = () => picked !== "sol";
 const CHOICES = () => [{ v: "sol", name: "Solana", tag: NET.mainnet ? "" : "devnet", sol: true }, ...NETS.map((n) => ({ v: String(n.chainId), name: n.name.replace(/ Sepolia$/, ""), tag: /sepolia|test/i.test(n.name) ? "testnet" : "", color: COLORS[n.chainId] || "#8a96a8" }))];
 
 function icon(el, c) {
-  el.className = "chain-ico" + (c.sol ? " sol" : "");
+  el.className = "chain-ico" + (c.sol ? " sol" : "") + (c.tag ? " test" : "");
   el.style.background = c.sol ? "" : c.color;
 }
 
@@ -188,7 +188,8 @@ function bind() {
   let saved = null;
   try { saved = localStorage.getItem(CHAIN_KEY); } catch {}
   if (choices.some((c) => c.v === saved)) picked = saved;
-  hide("chainbar", false);
+  const showBar = () => hide("chainbar", $("v-wallet").classList.contains("hidden"));
+  showBar();
   paint();
   mode();
   const tryOpen = () => {
@@ -225,7 +226,8 @@ function bind() {
     else if ((e.key === "Enter" || e.key === " ") && i >= 0) { e.preventDefault(); choose(items[i].dataset.v, true); }
     else if (e.key === "Tab") close(false);
   });
-  document.addEventListener("opeq:view", (e) => { if (e.detail === "v-wallet") setTimeout(tryOpen, 0); });
+  document.addEventListener("opeq:view", (e) => { showBar(); if (e.detail !== "v-wallet") close(false); else setTimeout(tryOpen, 0); });
+  btn.title = "Switch network";
   $("e-refresh").addEventListener("click", () => ui.guard("e-err", null, refresh));
   $("e-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.account, "EVM address copied"));
   $("e-gas-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.feeAddress, "gas key address copied"));

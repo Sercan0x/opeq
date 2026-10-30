@@ -36,6 +36,10 @@
   <a class="brand" href="https://opeq.io" target="_blank" rel="noopener noreferrer"><img src="assets/logo.svg" alt="opeq" width="88" height="28"></a>
   <span class="drive mono" id="drive"><i></i><span id="drive-text">drive mounted</span></span>
   <span class="devnet mono" data-only="devnet">devnet only, never send real SOL here</span><span class="devnet mono" data-only="mainnet">beta, start with small amounts</span>
+  <div class="chainbar hidden" id="chainbar">
+    <button class="chain-btn" id="chain-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="chain-menu"><i class="chain-ico" id="chain-ico" aria-hidden="true"></i><span class="chain-name" id="chain-name"></span><em class="chain-tag" id="chain-tag"></em><svg class="chain-chev" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg></button>
+    <ul class="chain-menu hidden" id="chain-menu" role="listbox" aria-label="Network" tabindex="-1"></ul>
+  </div>
   <a class="back" href="https://opeq.io" target="_blank" rel="noopener noreferrer">opeq.io</a>
 </header>
 
@@ -129,10 +133,6 @@
     </div>
 
     <div class="view hidden" id="v-wallet">
-    <div class="chainbar hidden" id="chainbar">
-      <button class="chain-btn" id="chain-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="chain-menu"><i class="chain-ico" id="chain-ico" aria-hidden="true"></i><span class="chain-name" id="chain-name"></span><em class="chain-tag" id="chain-tag"></em><svg class="chain-chev" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg></button>
-      <ul class="chain-menu hidden" id="chain-menu" role="listbox" aria-label="Network" tabindex="-1"></ul>
-    </div>
     <section class="evm-view hidden" id="evm-view" aria-label="EVM account">
       <div class="cpu" id="e-cpu">
         <div class="cpu-pins" aria-hidden="true"></div>
