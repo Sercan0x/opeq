@@ -151,7 +151,7 @@ async function feeText(gas) {
   return `about ${formatUnits(await chain.costOf(gas), 18, 8)} ${chain.chain.symbol}, paid by the gas key`;
 }
 
-function tag() { return { tag: `${chain.chain.name}, test funds` }; }
+function tag() { return { tag: NET.mainnet ? `${chain.chain.name} mainnet, real funds` : `${chain.chain.name}, test funds` }; }
 
 async function recipient(text) {
   const to = checkAddress(text);
@@ -303,6 +303,11 @@ function bind() {
     }
     rows.push(["Network fee", await feeText(EXEC_GAS)]);
     const notes = [{ text: "Signed with one quantum-resistant one-time key." }];
+    const top = await chain.topupPlan(asset === "native" ? calls[0].value : 0n);
+    if (top) {
+      calls.push({ to: chain.feeAddress, value: top, data: new Uint8Array(0) });
+      notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18, 8)} ${chain.chain.symbol} from your account to it for future network fees.` });
+    }
     if (asset !== "native") notes.push({ text: "Anyone can create a token with any name. Check the token contract above against the project's official site.", warn: true });
     if (warn) notes.push({ text: warn, warn: true });
     if (!(await ui.ask({ ...tag(), title, rows, notes }, "Send"))) return;

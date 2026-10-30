@@ -6,7 +6,7 @@ import shutil
 import zipfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 CHECKS = os.path.join(ROOT, "web", "usb")
 USB = os.path.join(ROOT, "usb")
 SRC = os.path.join(ROOT, "build", "extension-mainnet")
@@ -52,6 +52,11 @@ REWORD = {
     return { state: "expired",""", 1),
     ],
     "lib/vaultstore.js": [("const PBKDF2_ITER = 600000;", "const PBKDF2_ITER = 2000000;", 1)],
+    "evm.js": [
+        ('const store = new IdbStore("opeq-evm");', "const store = globalThis.OPEQ_USB.store;", 1),
+        ("chrome.storage.local.", "OPEQ_USB.local.", None),
+        ("localStorage.", "OPEQ_USB.ls.", None),
+    ],
 }
 
 
@@ -82,9 +87,11 @@ def build(src, out):
             f.write(text)
     with open(os.path.join(app, "app.js"), encoding="utf-8") as f:
         code = f.read()
+    with open(os.path.join(app, "evm.js"), encoding="utf-8") as f:
+        evm = f.read()
     for left in ("chrome.storage.local", "localStorage", "new IdbStore("):
-        if left in code:
-            raise SystemExit(f"app.js still uses {left}")
+        if left in code or left in evm:
+            raise SystemExit(f"app.js or evm.js still uses {left}")
     with open(os.path.join(app, "opeq.ps1"), encoding="utf-8") as f:
         ps = f.read()
     with open(os.path.join(app, "opeq.ps1"), "w", encoding="utf-8-sig", newline="\r\n") as f:

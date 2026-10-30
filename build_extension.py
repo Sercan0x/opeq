@@ -17,6 +17,12 @@ LIB = ["amms.js", "jupiter.js", "compute.js", "engine.js", "mnemonic.js", "proto
        "evmcode.js", "evmtx.js", "evmwallet.js", "evmwots.js", "keccak.js", "secp256k1.js"]
 ASSETS = ["logo.svg", "mark.svg"]
 FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "evm.js", "feekey.js", "keep.js", "net.js", "bg.js"]
+EVM_MAINNETS = [
+    {"chainId": 8453, "name": "Base", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/8453", "explorer": "https://basescan.org"},
+    {"chainId": 42161, "name": "Arbitrum", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/42161", "explorer": "https://arbiscan.io"},
+    {"chainId": 4663, "name": "Robinhood Chain", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/4663", "explorer": "https://robinhoodchain.blockscout.com"},
+    {"chainId": 1, "name": "Ethereum", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/1", "explorer": "https://etherscan.io"},
+]
 EVM_TESTNETS = [{"chainId": 84532, "name": "Base Sepolia", "symbol": "ETH", "rpc": "https://sepolia.base.org", "explorer": "https://sepolia.basescan.org"}]
 ICONS = ["16.png", "32.png", "48.png", "128.png"]
 LEGACY_PROGRAM = "424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN"
@@ -55,7 +61,7 @@ def config(args):
     if not args.version or not re.match(r"^\d+\.\d+\.\d+$", args.version):
         raise SystemExit("a mainnet build needs an explicit --version like 1.0.0")
     return {"name": "mainnet", "mainnet": True, "program": args.program, "rpc": args.rpc, "genesis": MAINNET_GENESIS,
-            "explorerQuery": "", "sol": "SOL", "swap": False, "jupiter": True, "evm": []}
+            "explorerQuery": "", "sol": "SOL", "swap": False, "jupiter": True, "evm": EVM_MAINNETS}
 
 
 def strip_other(html, net):

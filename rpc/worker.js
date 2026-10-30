@@ -3,6 +3,17 @@ const METHODS = new Set([
   "getRecentPrioritizationFees", "getSignatureStatuses", "getSlot", "getTokenAccountBalance", "getTokenAccountsByOwner",
   "sendTransaction", "simulateTransaction", "getSignaturesForAddress", "getTransaction",
 ]);
+const EVM_METHODS = new Set([
+  "eth_chainId", "eth_blockNumber", "eth_getBalance", "eth_getCode", "eth_call", "eth_estimateGas", "eth_getTransactionCount",
+  "eth_sendRawTransaction", "eth_getTransactionReceipt", "eth_getBlockByNumber", "eth_maxPriorityFeePerGas", "eth_gasPrice",
+]);
+const EVM_SEND = new Set(["eth_sendRawTransaction", "eth_estimateGas"]);
+const EVM_DEFAULT = {
+  1: ["https://ethereum-rpc.publicnode.com"],
+  8453: ["https://mainnet.base.org"],
+  42161: ["https://arb1.arbitrum.io/rpc"],
+  4663: ["https://rpc.mainnet.chain.robinhood.com"],
+};
 const MAX_BODY = 16384;
 const FALLBACK = "https://api.mainnet-beta.solana.com";
 
@@ -31,6 +42,21 @@ function fail(origin, status, code, message, id = null) {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }), {
     status, headers: { ...cors(origin), "content-type": "application/json" },
   });
+}
+
+function evmUpstreams(env, chain) {
+  let custom = {};
+  try { custom = JSON.parse(env.EVM_UPSTREAM || "{}"); } catch {}
+  const list = (Array.isArray(custom[chain]) ? custom[chain] : []).filter((s) => typeof s === "string" && s.startsWith("https://"));
+  return list.length ? list : EVM_DEFAULT[chain] || [];
+}
+
+function evmParamsOk(method, p) {
+  if (method === "eth_getBlockByNumber") return p.length === 2 && typeof p[0] === "string" && p[1] === false;
+  if (method === "eth_call" || method === "eth_estimateGas") return p.length >= 1 && p.length <= 2 && p[0] && typeof p[0] === "object" && !Array.isArray(p[0]) && (p.length === 1 || typeof p[1] === "string");
+  if (method === "eth_sendRawTransaction" || method === "eth_getTransactionReceipt") return p.length === 1 && typeof p[0] === "string";
+  if (method === "eth_getBalance" || method === "eth_getCode" || method === "eth_getTransactionCount") return p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string";
+  return p.length === 0;
 }
 
 function upstreams(env) {
@@ -77,7 +103,7 @@ function ip6(ip) {
 
 async function limited(env, ip, method) {
   const bucket = ip.includes(":") ? ip6(ip.toLowerCase()) : ip;
-  const send = method === "sendTransaction" || method === "simulateTransaction";
+  const send = method === "sendTransaction" || method === "simulateTransaction" || EVM_SEND.has(method);
   const key = send ? `send:${bucket}` : `read:${bucket}`;
   if (localLimited(key, send ? 30 : 300)) return true;
   if (env.GLOBAL && !(await env.GLOBAL.limit({ key: "all" })).success) return true;
@@ -91,7 +117,9 @@ export default {
   async fetch(request, env) {
     const origin = request.headers.get("origin");
     const url = new URL(request.url);
-    if (url.pathname !== "/") return fail(origin, 404, -32601, "not found");
+    const evm = /^\/evm\/(\d{1,10})$/.exec(url.pathname);
+    if (url.pathname !== "/" && !evm) return fail(origin, 404, -32601, "not found");
+    if (evm && !evmUpstreams(env, evm[1]).length) return fail(origin, 404, -32601, "network not served");
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin) });
     if (request.method !== "POST") return fail(origin, 405, -32600, "use POST");
     if (origin && !allowedOrigin(origin)) return fail(null, 403, -32600, "origin not allowed");
@@ -104,14 +132,15 @@ export default {
     try { body = JSON.parse(text); } catch { return fail(origin, 400, -32700, "invalid json"); }
     if (!body || Array.isArray(body) || typeof body !== "object") return fail(origin, 400, -32600, "batch requests are not supported");
     const id = typeof body.id === "number" || typeof body.id === "string" ? body.id : null;
-    if (body.jsonrpc !== "2.0" || typeof body.method !== "string" || !METHODS.has(body.method)) return fail(origin, 403, -32601, "method not allowed", id);
+    if (body.jsonrpc !== "2.0" || typeof body.method !== "string" || !(evm ? EVM_METHODS : METHODS).has(body.method)) return fail(origin, 403, -32601, "method not allowed", id);
     if (body.params !== undefined && !Array.isArray(body.params)) return fail(origin, 400, -32602, "params must be an array", id);
+    if (evm && !evmParamsOk(body.method, body.params || [])) return fail(origin, 400, -32602, "params not allowed", id);
     if (body.method === "getMultipleAccounts" && !(Array.isArray(body.params?.[0]) && body.params[0].length <= 100)) return fail(origin, 400, -32602, "at most 100 accounts", id);
     const ip = request.headers.get("cf-connecting-ip") || "unknown";
     if (await limited(env, ip, body.method)) return fail(origin, 429, -32005, "too many requests, slow down", id);
     const out = JSON.stringify({ jsonrpc: "2.0", id, method: body.method, params: body.params || [] });
     let last = null;
-    for (const up of upstreams(env)) {
+    for (const up of evm ? evmUpstreams(env, evm[1]) : upstreams(env)) {
       try {
         const res = await fetch(up, { method: "POST", headers: { "content-type": "application/json" }, body: out });
         if (res.status === 429 || res.status >= 500) { last = res.status; continue; }

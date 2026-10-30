@@ -16,6 +16,8 @@ export const REKEY_SOON = 100;
 const GAS_HEADROOM = 13n;
 export const EXEC_GAS = 320000n;
 export const REKEY_GAS = 300000n;
+export const TOPUP_LOW = 3n;
+export const TOPUP_TARGET = 10n;
 export const SETUP_GAS = { factory: 1700000n, account: 1300000n };
 const b64 = (b) => btoa(String.fromCharCode(...b));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -258,9 +260,19 @@ export class EvmChain {
     });
   }
 
+  async topupPlan(spend) {
+    const [f, [fee, bal]] = await Promise.all([this.fees(), this.at((b) => Promise.all([this.rpc.balance(this.feeAddress, b), this.rpc.balance(this.account, b)]))]);
+    const per = (EXEC_GAS * f.maxFeePerGas * 3n) / 2n;
+    if (fee >= per * TOPUP_LOW) return 0n;
+    const free = bal - spend;
+    let amount = per * TOPUP_TARGET - fee;
+    if (amount > free / 4n) amount = free / 4n;
+    return amount >= per ? amount : 0n;
+  }
+
   async gasCheck(gas) {
     const [f, have] = await Promise.all([this.fees(), this.rpc.balance(this.feeAddress)]);
-    const need = gas * f.maxFeePerGas;
+    const need = (gas * f.maxFeePerGas * 3n) / 2n;
     if (have < need) throw new Error(`the gas key needs about ${formatUnits(need, 18)} ${this.chain.symbol} and holds ${formatUnits(have, 18)}. Send a little ${this.chain.symbol} on ${this.chain.name} to ${this.feeAddress}. Nothing was signed`);
   }
 

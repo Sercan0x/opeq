@@ -100,6 +100,19 @@ await A.execute([{ to: token, value: 0n, data: encodeErc20Transfer(bob, 250n) }]
 ok((await A.token(token)).balance === 750n, "token transfer signed and landed");
 await throws(A.token(bob), /no contract/, "token lookup on an address with no contract is refused");
 
+console.log("gas key top-up");
+ok((await A.topupPlan(0n)) === 0n, "no top-up while the gas key holds enough");
+cast("rpc", "anvil_setBalance", A.feeAddress, "0x" + (2n * 10n ** 15n).toString(16));
+const top = await A.topupPlan(10n ** 16n);
+const accBefore = (await A.status()).bal;
+ok(top > 0n && top <= (accBefore - 10n ** 16n) / 4n, `top-up planned: ${formatUnits(top, 18, 8)} ETH, at most a quarter of what is left`);
+const feeBefore = BigInt(cast("balance", A.feeAddress));
+const rt = await A.execute([{ to: bob, value: 10n ** 16n, data: new Uint8Array(0) }, { to: A.feeAddress, value: top, data: new Uint8Array(0) }]);
+const feeAfter = BigInt(cast("balance", A.feeAddress));
+ok(feeAfter > feeBefore && feeAfter - feeBefore < top, `gas key refilled inside the same transaction (gas ${rt.gasUsed})`);
+ok((await A.topupPlan(0n)) === 0n, "no further top-up needed");
+cast("rpc", "anvil_setBalance", A.feeAddress, "0x" + (2n * 10n ** 18n).toString(16));
+
 console.log("tampered local record");
 const raw = await storeA.get(A.key);
 storeA.m.set(A.key, { ...raw, next_leaf: 0 });
