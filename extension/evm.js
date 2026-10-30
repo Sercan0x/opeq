@@ -2,6 +2,7 @@ import { EvmChain, checkAddress, parseUnits, formatUnits, REKEY_SOON, EXEC_GAS, 
 import { encodeErc20Transfer, factoryAddress } from "./lib/evmwots.js";
 import { IdbStore } from "./lib/vaultstore.js";
 import { NET } from "./net.js";
+import { sha256 } from "./lib/sha256.js";
 
 const $ = (id) => document.getElementById(id);
 const store = new IdbStore("opeq-evm");
@@ -63,13 +64,35 @@ async function saveTokens(list) {
   try { await chrome.storage.local.set({ [tokKey()]: list.slice(0, TOK_MAX) }); } catch {}
 }
 
-export function stop() {
-  if (chain && chain.master) chain.master.fill(0);
-  chain = null; status = null; tokens = []; loading = null;
-  if (!available()) return;
+function clearCard() {
   for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw"]) hide(id, true);
   $("e-bal").textContent = $("e-state").textContent = "…";
   $("e-ok").textContent = $("e-err").textContent = "";
+  for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset"]) $(id).textContent = "";
+  for (const id of ["e-to", "e-amt", "e-tok"]) $(id).value = "";
+}
+
+export function stop() {
+  if (chain) { if (chain.master) chain.master.fill(0); chain.fee = 0n; }
+  chain = null; status = null; tokens = []; loading = null;
+  if (!available()) return;
+  clearCard();
+}
+
+export async function forget(id) {
+  if (!available()) return;
+  const prefix = `${id}:evm:`;
+  for (const r of await store.all()) if (typeof r.id === "string" && r.id.startsWith(prefix)) await store.del(r.id);
+  try {
+    const keys = Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith(`opeq:evm-tokens:${id}:`));
+    if (keys.length) await chrome.storage.local.remove(keys);
+  } catch {}
+}
+
+async function macFor(master) {
+  const raw = sha256(new TextEncoder().encode("opeq/evm/records/v1"), master);
+  try { return await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]); }
+  finally { raw.fill(0); }
 }
 
 async function open() {
@@ -80,7 +103,7 @@ async function open() {
   if (loading) return loading;
   loading = (async () => {
     if (chain && chain.master) chain.master.fill(0);
-    chain = new EvmChain({ chain: n, store, macKey: s.macKey, vaultId: s.id, master: s.master.slice(), compute: ui.compute });
+    chain = new EvmChain({ chain: n, store, macKey: await macFor(s.master), legacyMac: s.macKey, vaultId: s.id, master: s.master.slice(), compute: ui.compute });
     hide("e-load", false);
     try {
       await chain.loadIdentity((p) => { $("e-load-bar").style.width = `${Math.round(p * 100)}%`; });
@@ -148,7 +171,9 @@ function progressTo(id) {
 }
 
 async function feeText(gas) {
-  return `about ${formatUnits(await chain.costOf(gas), 18, 8)} ${chain.chain.symbol}, paid by the gas key`;
+  const f = await chain.fees();
+  chain.cap = f.maxFeePerGas * 2n;
+  return `about ${formatUnits(gas * f.maxFeePerGas, 18, 8)} ${chain.chain.symbol}, paid by the gas key`;
 }
 
 function tag() { return { tag: NET.mainnet ? `${chain.chain.name} mainnet, real funds` : `${chain.chain.name}, test funds` }; }
@@ -201,17 +226,20 @@ function bind() {
   const outside = (e) => { if (!$("chainbar").contains(e.target)) close(false); };
   const choose = (v, keyboard) => {
     close(keyboard);
-    if (v === picked) return;
+    if (v === picked || ui.busy()) return;
     picked = v;
     try { localStorage.setItem(CHAIN_KEY, v); } catch {}
     $("e-ok").textContent = $("e-err").textContent = "";
-    hide("e-last", true);
+    if (chain && chain.master) chain.master.fill(0);
+    chain = null; status = null; tokens = [];
+    clearCard();
     paint();
     mode();
     tryOpen();
   };
   btn.addEventListener("click", () => {
     if (!menu.classList.contains("hidden")) { close(true); return; }
+    if (ui.busy()) return;
     hide("chain-menu", false);
     btn.setAttribute("aria-expanded", "true");
     document.addEventListener("pointerdown", outside, true);
@@ -283,8 +311,8 @@ function bind() {
 
   $("e-send-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
     const asset = $("e-asset").value;
-    const warn = await recipient($("e-to").value);
     const to = checkAddress($("e-to").value);
+    const warn = await recipient(to);
     const s = await chain.status();
     let calls, title, rows;
     if (asset === "native") {
@@ -295,6 +323,7 @@ function bind() {
       rows = [["To", to, true]];
     } else {
       const t = await chain.token(asset);
+      if (to === t.address) throw new Error(`that is the ${t.symbol} token contract itself. Tokens sent there are usually lost for good. Use the receiver's wallet address`);
       const v = parseUnits($("e-amt").value, t.decimals);
       if (v > t.balance) throw new Error(`not enough ${t.symbol}: the account holds ${formatUnits(t.balance, t.decimals, t.decimals)}`);
       calls = [{ to: t.address, value: 0n, data: encodeErc20Transfer(to, v) }];

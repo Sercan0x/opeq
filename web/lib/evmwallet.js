@@ -79,7 +79,8 @@ export class EvmRpc {
 }
 
 export class EvmChain {
-  constructor({ chain, store, macKey, vaultId, master, compute, rpcUrl }) {
+  constructor({ chain, store, macKey, legacyMac, vaultId, master, compute, rpcUrl }) {
+    this.legacyMac = legacyMac || null;
     this.chain = chain;
     this.id = chain.chainId;
     this.rpc = new EvmRpc(rpcUrl || chain.rpc);
@@ -118,7 +119,7 @@ export class EvmChain {
     const pubSeed = E.identitySeeds(this.master).pubSeed;
     let c = await this.store.get(key);
     if (c) {
-      await V.checkRecord(this.macKey, c);
+      await this.verify(c);
       if (c.pub_seed !== bytesToHex(pubSeed)) throw new Error("the saved EVM identity does not match these words");
     } else {
       const t = await this.compute.run("evmIdentity", { master: this.master.slice() }, progress);
@@ -129,10 +130,19 @@ export class EvmChain {
     return this.account;
   }
 
+  async verify(r) {
+    try { await V.checkRecord(this.macKey, r); }
+    catch (e) {
+      if (!this.legacyMac) throw e;
+      await V.checkRecord(this.legacyMac, r);
+      await this.put(r);
+    }
+  }
+
   async record() {
     const r = await this.store.get(this.key);
     if (!r) return null;
-    await V.checkRecord(this.macKey, r);
+    await this.verify(r);
     return r;
   }
 
@@ -189,6 +199,7 @@ export class EvmChain {
 
   async sendTx(to, data, value = 0n, gas = null, onHash) {
     const f = await this.fees();
+    this.feeCheck(f);
     const g = gas || (await this.estimate(to, data, value));
     const nonce = Math.max(Number(await this.rpc.call("eth_getTransactionCount", [this.feeAddress, "pending"])), this.nextNonce || 0);
     const need = g * f.maxFeePerGas + value;
@@ -270,8 +281,13 @@ export class EvmChain {
     return amount >= per ? amount : 0n;
   }
 
+  feeCheck(f) {
+    if (this.cap && f.maxFeePerGas > this.cap) throw new Error("the network fee more than doubled since you confirmed. Nothing was signed; try again to see the new fee");
+  }
+
   async gasCheck(gas) {
     const [f, have] = await Promise.all([this.fees(), this.rpc.balance(this.feeAddress)]);
+    this.feeCheck(f);
     const need = (gas * f.maxFeePerGas * 3n) / 2n;
     if (have < need) throw new Error(`the gas key needs about ${formatUnits(need, 18)} ${this.chain.symbol} and holds ${formatUnits(have, 18)}. Send a little ${this.chain.symbol} on ${this.chain.name} to ${this.feeAddress}. Nothing was signed`);
   }
