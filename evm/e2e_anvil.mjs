@@ -10,7 +10,8 @@ const RPC = process.argv[2] || "http://127.0.0.1:8546";
 const DEPLOYER = "0x4e59b44847b379578588920ca78fbf26c0b4956c";
 const FACTORY_SALT = new Uint8Array(32);
 const enc = new TextEncoder();
-const BOB = "0x000000000000000000000000000000000000b0b5";
+const FUND = BigInt(process.env.OPEQ_EVM_FUND_WEI || 10n ** 18n);
+const AMOUNT = BigInt(process.env.OPEQ_EVM_SEND_WEI || 10n ** 17n);
 
 let id = 0;
 async function rpc(method, params = []) {
@@ -39,7 +40,7 @@ async function send(to, data, value = 0n, label) {
   let rc = null;
   while (!(rc = await rpc("eth_getTransactionReceipt", [hash]))) await new Promise((r) => setTimeout(r, 100));
   if (rc.status !== "0x1") throw new Error(label + " reverted");
-  console.log(label.padEnd(34), "gas", Number(rc.gasUsed).toString().padStart(8), " calldata", data.length);
+  console.log(label.padEnd(34), "gas", Number(rc.gasUsed).toString().padStart(8), " calldata", data.length, " tx", hash);
   return rc;
 }
 
@@ -65,7 +66,7 @@ await send(factory, E.encodeCreate(identity.pubSeed, identity.root), 0n, "create
 const predicted = await rpc("eth_call", [{ to: factory, data: bytesToHex(Uint8Array.of(...keccak256(enc.encode("predict(bytes16,bytes16)")).slice(0, 4), ...E.encodeCreate(identity.pubSeed, identity.root).slice(4))) }, "latest"]);
 const account = "0x" + predicted.slice(26);
 console.log("account", account);
-await send(account, new Uint8Array(0), 10n ** 18n, "fund account 1 ETH");
+await send(account, new Uint8Array(0), FUND, "fund account");
 
 const pubSeed1 = crypto.getRandomValues(new Uint8Array(16));
 t0 = Date.now();
@@ -77,15 +78,16 @@ const dl0 = (await now()) + 600;
 const g0 = E.grind(E.rekeyHasher(rnd0, chainId, account, 0, slot, dl0, tree.pubSeed, tree.root));
 await send(account, E.encodeRekey(tree.pubSeed, tree.root, slot, dl0, g0.salt, rnd0, identity.sign(slot, g0.digest)), 0n, `bootstrap rekey (slot ${slot}, ${g0.cost} steps)`);
 
-const calls = [{ to: BOB, value: 10n ** 17n, data: new Uint8Array(0) }];
+const BOB = process.env.OPEQ_EVM_TO || fee;
+const calls = [{ to: BOB, value: AMOUNT, data: new Uint8Array(0) }];
 const rnd1 = crypto.getRandomValues(new Uint8Array(16));
 const dl1 = (await now()) + 600;
 t0 = Date.now();
 const g1 = E.grind(E.execHasher(rnd1, chainId, account, 1, 0, dl1, calls));
 const grindMs = Date.now() - t0;
 const cd = E.encodeExecute(calls, 0, dl1, g1.salt, rnd1, tree.sign(0, g1.digest));
-await send(account, cd, 0n, `send 0.1 ETH (${g1.cost} steps, grind ${grindMs}ms)`);
-console.log("bob balance", (await balance(BOB)).toString());
+await send(account, cd, 0n, `send (${g1.cost} steps, grind ${grindMs}ms)`);
+console.log("account balance", (await balance(account)).toString());
 
 let replayed = false;
 try { await send(account, cd, 0n, "replay"); replayed = true; } catch {}
