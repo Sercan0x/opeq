@@ -40,11 +40,11 @@ class RefBackend:
         try:
             R.process(w.program, w.opeq, accounts, data, now, system_handler)
             return 0
-        except (R.Reject, RuntimeError) as e:
+        except (R.Reject, RuntimeError, R.Escalation) as e:
             for a, s in zip(accounts, snap):
                 a.clear()
                 a.update(s)
-            return e.code if isinstance(e, R.Reject) else f"cpi: {e}"
+            return e.code if isinstance(e, R.Reject) else f"fault: {e}" if isinstance(e, R.Escalation) else f"cpi: {e}"
 
 
 class EmuBackend:
@@ -237,7 +237,21 @@ def scenario(backend):
     ok(w2.create(0, [0, 1], 0) == 7, "zero threshold")
     w2.people[1]["wbump"] = (w2.people[1]["wbump"] + 1) % 256
     rc = w2.create(0, [0, 1], 1)
-    ok(rc in (8,), f"owner that is not an OPEQ wallet refused ({rc})")
+    ok(rc in (8,), f"owner with a non-canonical wallet bump refused ({rc})")
+    w2.people[1]["wbump"] = (w2.people[1]["wbump"] - 1) % 256
+
+    w3 = World(backend)
+    ok(w3.create(0, [0, 1], 1) == 0, "1 of 2 vault")
+    w3.vault["lamports"] = 10**9
+    owners2 = [(w3.people[i]["aid"], w3.people[i]["wbump"]) for i in (0, 2)]
+    rc, pid = w3.propose(0, [(w3.program, [], M.set_owners_data(1, owners2))] + w3.pay(w3.bob, 5))
+    ok(rc == 0 and w3.execute(0, pid, [w3.bob, w3.system]) == 0 and w3.bob["lamports"] == 5, "owner change followed by a vault payment in one proposal")
+    rc, pid = w3.propose(0, w3.pay(w3.bob, 6) + [(w3.program, [], M.set_threshold_data(2))])
+    ok(rc == 0 and w3.execute(0, pid, [w3.bob, w3.system]) == 0 and w3.msinfo()["threshold"] == 2, "payment followed by a threshold change in one proposal")
+    dead = [(w3.people[0]["aid"], w3.people[0]["wbump"]), (w3.people[2]["aid"], (w3.people[2]["wbump"] - 1) % 256)]
+    rc, pid = w3.propose(0, [(w3.program, [], M.set_owners_data(1, dead))])
+    w3.vote(2, pid)
+    ok(rc == 0 and w3.execute(0, pid, []) == 8, "owner change to a non-canonical wallet bump refused")
 
 
 class DiffBackend:
@@ -333,6 +347,12 @@ def fuzz(elf, trials):
                     ixs = [(w.program, [], M.set_owners_data(rng.randint(0, len(sub) + 1), [(w.people[i]["aid"], w.people[i]["wbump"]) for i in sub]))]
                 elif rng.random() < 0.1:
                     ixs = [(w.program, [], M.set_threshold_data(rng.randint(0, 6)))]
+                elif rng.random() < 0.25:
+                    sub = rng.sample(range(5), rng.randint(1, 4))
+                    own = [(w.program, [], M.set_owners_data(rng.randint(1, len(sub)), [(w.people[i]["aid"], w.people[i]["wbump"]) for i in sub]))]
+                    thr = [(w.program, [], M.set_threshold_data(rng.randint(1, 3)))]
+                    pay = w.pay(w.bob, rng.randint(1, 10**8))
+                    ixs = rng.choice([own + pay, pay + own, thr + pay, pay + thr, own + pay + thr, pay + pay])
                 else:
                     ixs = w.pay(w.bob, rng.randint(1, 2 * 10**9))
                 exp = w.now + rng.choice([3600, -5, 0, M.MAX_LIFETIME, M.MAX_LIFETIME + 1, 100])

@@ -83,5 +83,11 @@ const own = V.describe([prog, [], V.setOwnersData(1, people.slice(0, 2))], { pro
 ok(own.kind === "owners" && own.wallets.map(hex).join() === people.slice(0, 2).map((p) => hex(p.wallet)).join(), "owner change described with wallet addresses");
 const smuggle = V.describe([prog, [], new Uint8Array([...V.setOwnersData(1, people.slice(0, 2)), 0])], { program: prog, opeqProgram: opeq, vault: vault.key });
 ok(smuggle.kind === "contract", "non-canonical owner change is not described as an owner list");
+const dead = V.describe([prog, [], V.setOwnersData(1, [people[0], { ...people[1], wbump: (people[1].wbump + 255) % 256 }])], { program: prog, opeqProgram: opeq, vault: vault.key });
+ok(dead.kind === "contract", "owner change with a non-canonical wallet bump is not shown as an owner list");
+const payMe = V.executeIx(prog, people[0].wallet, ms.key, p7.key, vault.key, 7, [[SYSTEM, [[vault.key, 3], [people[0].wallet, 2]], new Uint8Array(12)]]);
+ok(payMe[1][0][2] === true, "the executor's wallet is writable when the proposal pays it");
+const payBob = V.executeIx(prog, people[0].wallet, ms.key, p7.key, vault.key, 7, V.decodeStored(stored, vault.key));
+ok(payBob[1][0][2] === false && payBob[1].some((m) => hex(m[0]) === hex(bob) && m[2]), "otherwise the executor's wallet stays read-only and the receiver is writable");
 console.log(fail ? `${fail} FAILED` : `ALL ${pass} PASSED`);
 process.exit(fail ? 1 : 0);

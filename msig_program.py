@@ -23,6 +23,8 @@ KEYS = 0x390
 METAS = 0x4D0
 SLICE = 0x5D0
 INFOS = 0x600
+VSEEDS = 0x1600
+WBUMP = 0x1640
 MAX_ACCOUNTS = 64
 
 ACC_SIGNER = 1
@@ -224,17 +226,21 @@ def emit_build_infos(a):
 
 def emit_derive_owner(a):
     a.label("derive_owner")
+    a.mov(r6, r1)
     a.lddw(r2, "seed_w")
     set_seed(a, 0, r2, 1)
     set_seed(a, 1, r1, 32)
-    a.add(r1, 32)
-    set_seed(a, 2, r1, 1)
     heap_ptr(a, r1, SEEDS)
-    a.mov(r2, 3)
+    a.mov(r2, 2)
     a.lddw(r3, "opeq_id")
     heap_ptr(a, r4, OUT)
-    a.syscall("sol_create_program_address")
+    heap_ptr(a, r5, WBUMP)
+    a.syscall("sol_try_find_program_address")
     a.jne(r0, 0, "do_ret8")
+    a.ldx(1, r0, r9, WBUMP)
+    a.ldx(1, r1, r6, 32)
+    a.jne(r0, r1, "do_ret8")
+    a.mov(r0, 0)
     a.exit()
     a.label("do_ret8")
     a.mov(r0, 8)
@@ -903,14 +909,17 @@ def emit_execute(a):
     a.call("check_stored")
     a.jne(r0, 0, "fail")
     a.lddw(r1, "seed_v")
-    set_seed(a, 0, r1, 1)
+    a.stx(8, r9, VSEEDS, r1)
+    a.st(8, r9, VSEEDS + 8, 1)
     acc(a, r1, 1)
     a.mov(r2, r1)
     a.add(r2, ACC_KEY)
-    set_seed(a, 1, r2, 32)
+    a.stx(8, r9, VSEEDS + 16, r2)
+    a.st(8, r9, VSEEDS + 24, 32)
     a.add(r1, ACC_DATA + M.MS_OFF_VBUMP)
-    set_seed(a, 2, r1, 1)
-    heap_ptr(a, r1, SEEDS)
+    a.stx(8, r9, VSEEDS + 32, r1)
+    a.st(8, r9, VSEEDS + 40, 1)
+    heap_ptr(a, r1, VSEEDS)
     a.stx(8, r9, SIGNERS, r1)
     a.st(8, r9, SIGNERS + 8, 3)
     a.call("build_infos")

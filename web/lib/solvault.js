@@ -126,7 +126,8 @@ export function executeIx(prog, wallet, ms, prop, vault, id, storedIxs) {
     add(p, false);
     for (const [key, fl] of metas) add(key, !!(fl & M_WRITABLE));
   }
-  return [prog, [[wallet, true, false], [ms, false, true], [prop, false, true], [vault, false, true], ...extra], concat(u8(IX_EXECUTE), u64(id))];
+  const walletWritten = storedIxs.some(([p, metas]) => !eq(p, prog) && metas.some(([key, fl]) => eq(key, wallet) && fl & M_WRITABLE));
+  return [prog, [[wallet, true, walletWritten], [ms, false, true], [prop, false, true], [vault, false, true], ...extra], concat(u8(IX_EXECUTE), u64(id))];
 }
 
 export function closeIx(prog, wallet, ms, prop, id) {
@@ -167,10 +168,9 @@ export function describe(ix, ctx) {
     if (metas.length === 0 && data.length === 2 && data[0] === INNER_SET_THRESHOLD) return { kind: "threshold", threshold: data[1] };
     if (metas.length === 0 && data.length >= 3 && data[0] === INNER_SET_OWNERS && data.length === 3 + 33 * data[2]) {
       const owners = Array.from({ length: data[2] }, (_, i) => ({ aid: data.slice(3 + 33 * i, 35 + 33 * i), wbump: data[35 + 33 * i] }));
-      try {
-        const wallets = owners.map((o) => createProgramAddress([enc.encode("w"), o.aid, u8(o.wbump)], ctx.opeqProgram));
-        return { kind: "owners", threshold: data[1], owners, wallets };
-      } catch { return { kind: "contract", program: prog, metas: flat, data }; }
+      const canon = owners.map((o) => findPda([enc.encode("w"), o.aid], ctx.opeqProgram));
+      if (canon.some((c, i) => c.bump !== owners[i].wbump)) return { kind: "contract", program: prog, metas: flat, data };
+      return { kind: "owners", threshold: data[1], owners, wallets: canon.map((c) => c.key) };
     }
     return { kind: "contract", program: prog, metas: flat, data };
   }
@@ -180,7 +180,7 @@ export function describe(ix, ctx) {
   }
   if ((eq(prog, TOKEN) || eq(prog, TOKEN22)) && data.length === 10 && data[0] === 12 && flat.length === 4
     && eq(flat[3].key, ctx.vault) && flat[3].signer && !flat[0].signer && flat[0].writable && !flat[1].writable && !flat[1].signer && flat[2].writable && !flat[2].signer) {
-    return { kind: "token", program: prog, source: flat[0].key, mint: flat[1].key, dest: flat[2].key, amount: dv(data).getBigUint64(1, true), decimals: data[9] };
+    return { kind: "token", program: prog, source: flat[0].key, mint: flat[1].key, dest: flat[2].key, amount: dv(data).getBigUint64(1, true), decimals: data[9], mayHaveFee: eq(prog, TOKEN22) };
   }
   return { kind: "contract", program: prog, metas: flat, data };
 }

@@ -6,6 +6,10 @@ import msig_protocol as M
 SYSTEM = bytes(32)
 
 
+class Escalation(Exception):
+    pass
+
+
 class Reject(Exception):
     def __init__(self, code):
         super().__init__(M.ERRORS.get(code, str(code)))
@@ -32,6 +36,8 @@ class Run:
                 raise Reject(28)
             if s and not a.get("signer") and key not in signer_keys:
                 raise AssertionError("signer escalation in reference model")
+            if w and not a.get("writable"):
+                raise Escalation("privilege escalation: writable")
         self.handler(prog, metas, data, self.accounts)
 
     def find(self, key):
@@ -55,8 +61,8 @@ class Run:
         keys = []
         for i in range(n):
             aid, wb = bytes(buf[pos + 33 * i:pos + 33 * i + 32]), buf[pos + 33 * i + 32]
-            k = pda([b"w", aid, bytes([wb])], self.opeq)
-            if k is None:
+            k, canonical = M.find_pda_bump([b"w", aid], self.opeq)
+            if canonical != wb:
                 raise Reject(8)
             if k in keys:
                 raise Reject(9)
