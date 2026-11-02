@@ -67,7 +67,8 @@ def deserialize(buf, accounts, spots):
 
 
 class Vm:
-    def __init__(self, elf, accounts, data, program, slot=1000, cu_limit=1_400_000, cpi_handler=None):
+    def __init__(self, elf, accounts, data, program, slot=1000, cu_limit=1_400_000, cpi_handler=None, now=0):
+        self.now = now
         self.load_elf(elf)
         self.accounts = accounts
         self.program = program
@@ -179,7 +180,7 @@ class Vm:
         if out >= MM_INPUT:
             raise Fault("sysvar into input region")
         self.charge(140)
-        self.write(out, struct.pack("<QqQQq", self.slot, 0, 0, 0, 0))
+        self.write(out, struct.pack("<QqQQq", self.slot, 0, 0, 0, self.now))
 
     def sys_sol_memcpy(self, d, s, n, *_):
         self.charge(max(10, n // 250))
