@@ -40,11 +40,11 @@ class RefBackend:
         try:
             R.process(w.program, w.opeq, accounts, data, now, system_handler)
             return 0
-        except R.Reject as e:
+        except (R.Reject, RuntimeError) as e:
             for a, s in zip(accounts, snap):
                 a.clear()
                 a.update(s)
-            return e.code
+            return e.code if isinstance(e, R.Reject) else f"cpi: {e}"
 
 
 class EmuBackend:
@@ -250,7 +250,44 @@ class DiffBackend:
         self.runs = 0
         self.codes = {}
 
+    def mutate(self, w, accounts, data):
+        rng = self.rng
+        accounts = [dict(a, data=bytearray(a.get("data", b""))) for a in accounts]
+        data = bytearray(data)
+        for _ in range(rng.randint(1, 2)):
+            m = rng.randrange(9)
+            if m == 0 and accounts:
+                del accounts[rng.randrange(len(accounts))]
+            elif m == 1 and len(accounts) > 1:
+                i, j = rng.sample(range(len(accounts)), 2)
+                accounts[i], accounts[j] = accounts[j], accounts[i]
+            elif m == 2 and accounts:
+                a = accounts[rng.randrange(len(accounts))]
+                a[rng.choice(["signer", "writable"])] = not a.get(rng.choice(["signer", "writable"]))
+            elif m == 3 and accounts:
+                i = rng.randrange(len(accounts))
+                fake = dict(accounts[i], key=os.urandom(32), data=bytearray(accounts[i].get("data", b"")))
+                if fake["data"] and rng.random() < 0.5:
+                    fake["data"][rng.randrange(len(fake["data"]))] ^= 1 << rng.randrange(8)
+                if rng.random() < 0.3:
+                    fake["owner"] = rng.choice([w.program, SYSTEM, os.urandom(32)])
+                accounts[i] = fake
+            elif m == 4 and accounts:
+                i = rng.randrange(len(accounts))
+                accounts[i] = dict(accounts[i], data=bytearray(accounts[i].get("data", b""))[:rng.randrange(len(accounts[i].get("data", b"")) + 1)])
+            elif m == 5 and data:
+                data[rng.randrange(len(data))] = rng.randrange(256)
+            elif m == 6 and data:
+                data = data[:rng.randrange(len(data) + 1)]
+            elif m == 7:
+                data += bytes(rng.randrange(1, 40))
+            elif m == 8:
+                accounts += [acct(writable=rng.random() < 0.5) for _ in range(rng.choice([1, 3, 61]))]
+        return accounts, bytes(data)
+
     def run(self, w, accounts, data, now):
+        if getattr(self, "rng", None) and data[:1] != bytes([M.IX_CREATE]) and self.rng.random() < 0.3:
+            accounts, data = self.mutate(w, accounts, data)
         twin = copy.deepcopy(accounts)
         rc_e = self.emu.run(w, twin, data, now)
         rc_r = self.ref.run(w, accounts, data, now)
@@ -270,6 +307,7 @@ def fuzz(elf, trials):
     import random
     rng = random.Random(1234)
     b = DiffBackend(elf)
+    b.rng = rng
     for t in range(trials):
         w = World(b, n_people=5)
         k = rng.randint(1, 4)
@@ -304,9 +342,14 @@ def fuzz(elf, trials):
                 h = None if rng.random() < 0.85 else os.urandom(32)
                 if w.props[pid].get("data"):
                     w.vote(who, pid, M.IX_APPROVE if rng.random() < 0.75 else M.IX_REVOKE, h=h or w.phash(pid) if len(w.props[pid]["data"]) >= 128 else os.urandom(32))
-            elif op < 0.65:
+            elif op < 0.6:
                 pid = rng.choice(list(w.props))
                 w.cancel(who, pid)
+            elif op < 0.65:
+                pid = rng.choice(list(w.props))
+                p = w.people[who]["acc"]
+                p["writable"] = True
+                w.run([p, w.ms, w.props[pid]], M.build_close(pid))
             elif op < 0.9:
                 pid = rng.choice(list(w.props))
                 extra = rng.choice([[w.bob, w.system], [w.system], [w.bob], []])
