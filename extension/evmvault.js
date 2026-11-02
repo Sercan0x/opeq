@@ -92,18 +92,36 @@ async function tokenInfo(addr, vault) {
   return { ...t, vaultBalance: BigInt(raw) };
 }
 
-async function words(call, vault) {
+async function words(call, vault, info) {
+  const c = x.chain();
   const d = M.describe(call, vault);
-  const sym = x.chain().chain.symbol;
-  if (d.kind === "pay") return { title: `Send ${formatUnits(d.value, 18, 18)} ${sym}`, rows: [["To", d.to, true]], d };
-  if (d.kind === "token") {
-    const t = await x.chain().token(d.token).catch(() => null);
-    const amt = t ? `${formatUnits(d.amount, t.decimals, t.decimals)} ${t.symbol} (unverified)` : `${d.amount} units of an unknown token`;
-    return { title: `Send ${amt}`, rows: [["To", d.to, true], ["Token contract", d.token, true]], d };
+  const sym = c.chain.symbol;
+  const notes = [];
+  const hasCode = async (a) => (await c.rpc.code(a).catch(() => "0x")) !== "0x";
+  if (d.kind === "pay") {
+    if (await hasCode(d.to)) notes.push("The receiver is a contract, not a plain wallet. Make sure it can receive this payment.");
+    return { title: `Send ${formatUnits(d.value, 18, 18)} ${sym}`, rows: [["To", d.to, true]], d, notes, to: d.to };
   }
-  if (d.kind === "owners") return { title: `Change owners: ${d.threshold} of ${d.owners.length}`, rows: d.owners.map((o, i) => [`Owner ${i + 1}`, o, true]), d };
-  if (d.kind === "threshold") return { title: `Change approvals needed to ${d.threshold}`, rows: [], d };
-  return { title: "Contract call that cannot be shown in plain words", rows: [["Contract", d.to, true], ["Value", `${formatUnits(d.value, 18, 18)} ${sym}`]], d, risky: true };
+  if (d.kind === "token" || d.kind === "allowance") {
+    const t = await c.token(d.token).catch(() => null);
+    const fake = t && t.symbol.toUpperCase() === sym.toUpperCase();
+    const amt = t ? `${formatUnits(d.amount, t.decimals, t.decimals)} ${t.symbol}${fake ? " token" : ""} (unverified)` : `${d.amount} units of an unknown token`;
+    if (fake) notes.push(`This token contract calls itself ${t.symbol}. It is not ${sym}, the network's own coin.`);
+    notes.push("Anyone can create a token with any name. Check the token contract against the project's official site.");
+    if (d.kind === "allowance") return { title: `Allow ${d.spender} to take up to ${amt} from the vault`, rows: [["Spender", d.spender, true], ["Token contract", d.token, true]], d, notes: ["An allowance lets the spender move the vault's tokens later without any further approval.", ...notes], risky: true };
+    if (await hasCode(d.to)) notes.push("The receiver is a contract, not a plain wallet. Make sure it can receive this token.");
+    return { title: `Send ${amt}`, rows: [["To", d.to, true], ["Token contract", d.token, true]], d, notes, to: d.to };
+  }
+  if (d.kind === "owners") {
+    const cur = new Set(info.owners), me = c.account;
+    const rows = d.owners.map((o, i) => [`Owner ${i + 1}${o === me ? " (you)" : cur.has(o) ? "" : " (NEW)"}`, o, true]);
+    for (const o of info.owners) if (!d.owners.includes(o)) rows.push([`Removed${o === me ? " (you)" : ""}`, o, true]);
+    const added = d.owners.filter((o) => !cur.has(o));
+    if (added.length) notes.push(`${added.length} new owner${added.length > 1 ? "s" : ""} would get control over this vault. Confirm each new address with its owner directly.`);
+    return { title: `Change owners: ${d.threshold} of ${d.owners.length} approvals`, rows, d, notes, risky: added.length > 0 };
+  }
+  if (d.kind === "threshold") return { title: `Change approvals needed from ${info.threshold} to ${d.threshold}`, rows: [], d, notes, risky: d.threshold < info.threshold };
+  return { title: "Contract call that cannot be shown in plain words", rows: [["Contract", d.to, true], ["Value", `${formatUnits(d.value, 18, 18)} ${sym}`], ["Function", d.selector], ["Data", d.size > 300 ? `${d.data.slice(0, 600)}… (${d.size} bytes)` : d.data, true]], d, notes, risky: true };
 }
 
 async function showVault(addr) {
@@ -112,6 +130,7 @@ async function showVault(addr) {
   const info = await v.read();
   const me = c.account;
   if (!info.owners.includes(me)) throw new Error("your account on this network is not an owner of that vault");
+  if (open !== addr) shown = SHOW;
   open = addr; view = { v, info };
   x.hide("e-ms", true);
   x.hide("ms-v", false);
@@ -134,47 +153,64 @@ async function showVault(addr) {
   await showProposals(v, info);
 }
 
+let shown = SHOW;
+
 async function showProposals(v, info) {
   const box = x.$("ms-v-props");
   box.textContent = "";
   const me = x.chain().account;
-  const from = Math.max(0, info.proposals - SHOW);
   if (!info.proposals) { box.append(el("p", "hint", "No proposals yet.")); return; }
+  const from = Math.max(0, info.proposals - shown);
   for (let id = info.proposals - 1; id >= from; id--) {
-    let p;
-    try { p = await v.proposal(id); } catch (e) { box.append(el("p", "err", `Proposal ${id}: ${e.message}`)); continue; }
-    const mine = await v.approvedBy(id, me);
-    const w = await Promise.all(p.calls.map((call) => words(call, v.address)));
-    const card = el("div", "ms-prop" + (p.live ? "" : " done"));
-    const state = p.executed ? "executed" : p.cancelled ? "cancelled" : p.config !== info.config ? "void, owners changed" : p.expires * 1000 < Date.now() ? "expired" : `${p.approvals} of ${info.threshold} approvals`;
-    card.append(el("p", "ms-prop-head", `#${id}: ${state}`));
-    for (const t of w) card.append(el("p", "ms-prop-title" + (t.risky ? " warn" : ""), t.title), ...t.rows.map(([k, val]) => el("p", "mono ms-prop-row", `${k}: ${val}`)));
-    card.append(el("p", "hint", `Proposed by ${p.proposer === me ? "you" : short(p.proposer)}${p.live ? `, open until ${new Date(p.expires * 1000).toLocaleString()}` : ""}`));
-    if (p.live) {
-      const row = el("div", "row tight");
-      const btn = (label, cls, fn) => { const b = el("button", `btn btn-sm ${cls}`, label); b.type = "button"; b.addEventListener("click", () => x.guard(fn)); row.append(b); };
-      if (p.approvals >= info.threshold) btn("Execute", "btn-solid", () => act(v, p, w, "execute"));
-      else if (!mine) btn("Approve", "btn-solid", () => act(v, p, w, "approve"));
-      if (mine) btn("Revoke my approval", "btn-line", () => act(v, p, w, "revoke"));
-      if (p.proposer === me) btn("Cancel", "btn-line", () => act(v, p, w, "cancel"));
-      card.append(row);
-    }
-    box.append(card);
+    try { box.append(await proposalCard(v, info, id, me)); }
+    catch (e) { box.append(el("p", "err", `Proposal #${id} could not be shown: ${e.message}`)); }
+  }
+  if (from > 0) {
+    const more = el("button", "btn btn-line btn-sm", `Show ${Math.min(SHOW, from)} older proposals`);
+    more.type = "button";
+    more.addEventListener("click", () => x.guard(async () => { shown += SHOW; await showProposals(v, info); }));
+    box.append(more);
   }
 }
 
-async function act(v, p, w, kind) {
+async function proposalCard(v, info, id, me) {
+  const p = await v.proposal(id);
+  const mine = await v.approvedBy(id, me);
+  const w = await Promise.all(p.calls.map((call) => words(call, v.address, info)));
+  const card = el("div", "ms-prop" + (p.live ? "" : " done"));
+  const state = p.executed ? "executed" : p.cancelled ? "cancelled" : p.config !== info.config ? "void, owners changed" : p.expires * 1000 < Date.now() ? "expired" : `${p.approvals} of ${info.threshold} approvals`;
+  card.append(el("p", "ms-prop-head", `#${id}: ${state}`));
+  if (!w.length) card.append(el("p", "ms-prop-title", "Does nothing (no calls)"));
+  for (const t of w) card.append(el("p", "ms-prop-title" + (t.risky ? " warn" : ""), t.title), ...t.rows.map(([k, val]) => el("p", "mono ms-prop-row", `${k}: ${val}`)));
+  card.append(el("p", "hint", `Proposed by ${p.proposer === me ? "you" : short(p.proposer)}${p.live ? `, open until ${new Date(p.expires * 1000).toLocaleString()}` : ""}`));
+  if (p.live) {
+    const row = el("div", "row tight");
+    const btn = (label, cls, fn) => { const b = el("button", `btn btn-sm ${cls}`, label); b.type = "button"; b.addEventListener("click", () => x.guard(fn)); row.append(b); };
+    if (p.approvals >= info.threshold) btn("Execute", "btn-solid", () => act(v, p, info, "execute"));
+    else if (!mine) btn("Approve", "btn-solid", () => act(v, p, info, "approve"));
+    if (mine) btn("Revoke my approval", "btn-line", () => act(v, p, info, "revoke"));
+    if (p.proposer === me) btn("Cancel", "btn-line", () => act(v, p, info, "cancel"));
+    card.append(row);
+  }
+  return card;
+}
+
+async function act(v, p, info, kind) {
   const c = x.chain();
   const fresh = await v.proposal(p.id);
   if (fresh.callsHash !== p.callsHash) throw new Error("the proposal changed since it was shown. Refresh and check it again");
+  if (!fresh.live) throw new Error("this proposal is no longer open. Refresh to see its state");
+  const w = await Promise.all(fresh.calls.map((call) => words(call, v.address, info)));
+  if (kind === "approve" || kind === "execute") for (const t of w) if (t.to) await x.lookalike(t.to);
   const rows = w.flatMap((t) => [["Action", t.title], ...t.rows]);
   const label = { approve: "Approve", revoke: "Revoke", cancel: "Cancel proposal", execute: "Execute" }[kind];
   const notes = [{ text: "Signed with one quantum-resistant one-time key from your account." }];
   if (kind === "approve") notes.push({ text: "Check every line above. Your approval counts toward moving the vault's funds exactly like this.", warn: true });
   if (kind === "execute") notes.push({ text: "This sends the payment now. It needs no further approvals." });
-  if (w.some((t) => t.risky)) notes.push({ text: "This proposal calls a contract in a way OPEQ cannot describe. Approve only if you know exactly what it does.", warn: true });
+  if (kind === "approve" || kind === "execute") for (const t of w) for (const n of t.notes || []) notes.push({ text: n, warn: true });
+  if (w.some((t) => t.risky)) notes.push({ text: "This proposal does something OPEQ marks as risky. Approve only if you know exactly what it does.", warn: true });
   if (!(await x.ask({ ...x.tag(), title: `${label}: proposal #${p.id}`, rows: [["Vault", v.address, true], ...rows, ["Network fee", await x.feeText(M.APPROVE_GAS + (kind === "execute" ? 120000n : 0n))]], notes }, label))) return;
-  const call = kind === "execute" ? M.executeCall(v.address, p.id, fresh.calls) : M.idCall(v.address, kind, p.id);
+  const call = kind === "execute" ? M.executeCall(v.address, p.id, fresh.calls) : M.idCall(v.address, kind, p.id, fresh.callsHash);
   await run(() => c.execute([call], (h) => x.last(`${label} sent.`, h)));
   x.ok(kind === "execute" ? "executed" : kind === "approve" ? "approved" : kind === "revoke" ? "approval revoked" : "proposal cancelled");
   await x.refreshMain();
@@ -201,7 +237,7 @@ export function init(ctx) {
     const addr = M.vaultAddress(c.account, owners, threshold, nonce);
     if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} shared vault`, rows: [["Vault address", addr, true], ...owners.map((o, i) => [`Owner ${i + 1}${o === c.account ? " (you)" : ""}`, o, true]), ["Network fee", await x.feeText((fresh ? 2600000n : 0n) + 2200000n)]],
       notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each with their own OPEQ wallet.` }, ...(fresh ? [{ text: "The first transaction installs the OPEQ shared vault factory on this network, once for everyone." }] : []), { text: "Send the vault address to the other owners so they can add it in their wallet." }, { text: "Beta: the shared vault contract has had internal reviews only. Start with small amounts.", warn: true }] }, "Create"))) return;
-    if (fresh) await c.sendTx("0x4e59b44847b379578588920ca78fbf26c0b4956c", M.factoryDeployData(), 0n, 2600000n, (h) => x.last("Factory install sent.", h));
+    if (fresh) await c.install("0x4e59b44847b379578588920ca78fbf26c0b4956c", M.factoryDeployData(), M.factoryAddress(), (h) => x.last("Factory install sent.", h));
     await run(() => c.execute([M.createCall(owners, threshold, nonce)], (h) => x.last("Vault creation sent.", h)));
     if ((await c.rpc.code(addr)) === "0x") throw new Error("the vault was not created; check the explorer and try again");
     await saveList([addr, ...(await loadList()).filter((a) => a !== addr)]);
@@ -232,8 +268,9 @@ export function init(ctx) {
     const asset = x.$("ms-asset").value;
     const to = checkAddress(x.$("ms-to").value);
     if (to === v.address) throw new Error("that is the vault's own address");
+    if (to === M.factoryAddress()) throw new Error("that is the OPEQ shared vault factory, not a wallet");
     await x.lookalike(to);
-    const warn = await x.recipient(to);
+    const warn = to === c.account ? "" : await x.recipient(to);
     let calls, title, rows = [["To", to, true]];
     const notes = [];
     if (asset === "native") {

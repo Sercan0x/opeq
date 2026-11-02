@@ -81,6 +81,11 @@ contract OpeqMultisigTest is Asserts {
         _as(who, address(vault), abi.encodeCall(OpeqMultisig.propose, (c, uint64(block.timestamp + 1 days))), "propose");
     }
 
+    function _hash(uint256 id) internal view returns (bytes32 h) {
+        (OpeqMultisig.Proposal memory p, , , ) = vault.getProposal(id);
+        h = p.callsHash;
+    }
+
     function _innerError(bytes memory ret) internal pure returns (bytes4 sel) {
         if (ret.length < 4 + 32 * 3) return bytes4(0);
         bytes memory inner;
@@ -106,7 +111,7 @@ contract OpeqMultisigTest is Asserts {
         (, , uint256 n, bool live) = vault.getProposal(id);
         assertEq(n, 1, "proposer approval counts");
         assertTrue(live, "live after propose");
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)), "approve");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "approve");
         _as(1, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, _pay(bob, 1 ether))), "execute 1 ETH transfer");
         assertEq(bob.balance, 1 ether, "bob paid");
         assertEq(address(vault).balance, 4 ether, "vault debited");
@@ -123,7 +128,7 @@ contract OpeqMultisigTest is Asserts {
 
     function testExecuteTwiceFails() public {
         uint256 id = _propose(0, _pay(bob, 1 ether));
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)), "");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "");
         _as(1, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, _pay(bob, 1 ether))), "");
         (bool ok, bytes memory ret) = _try(2, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, _pay(bob, 1 ether))));
         assertTrue(!ok && _innerError(ret) == OpeqMultisig.NotLive.selector, "replay refused");
@@ -132,7 +137,7 @@ contract OpeqMultisigTest is Asserts {
 
     function testCallsMustMatchProposal() public {
         uint256 id = _propose(0, _pay(bob, 1 ether));
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)), "");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "");
         (bool ok, bytes memory ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, _pay(bob, 5 ether))));
         assertTrue(!ok && _innerError(ret) == OpeqMultisig.CallsMismatch.selector, "different calls refused");
     }
@@ -141,7 +146,7 @@ contract OpeqMultisigTest is Asserts {
         uint256 id = _propose(0, _pay(bob, 1 ether));
         vm.prank(bob);
         vm.expectRevert(OpeqMultisig.NotOwner.selector);
-        vault.approve(id);
+        vault.approve(id, bytes32(0));
         vm.prank(bob);
         vm.expectRevert(OpeqMultisig.NotOwner.selector);
         vault.propose(_pay(bob, 1 ether), uint64(block.timestamp + 1 days));
@@ -171,8 +176,8 @@ contract OpeqMultisigTest is Asserts {
 
     function testRevokeDropsApproval() public {
         uint256 id = _propose(0, _pay(bob, 1 ether));
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)), "");
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.revoke, (id)), "revoke");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.revoke, (id, _hash(id))), "revoke");
         assertEq(vault.approvalCount(id), 1, "back to one");
         (bool ok, bytes memory ret) = _try(0, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, _pay(bob, 1 ether))));
         assertTrue(!ok && _innerError(ret) == OpeqMultisig.NotEnoughApprovals.selector, "revoked approval does not count");
@@ -183,13 +188,13 @@ contract OpeqMultisigTest is Asserts {
         (bool ok, bytes memory ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.cancel, (id)));
         assertTrue(!ok && _innerError(ret) == OpeqMultisig.NotProposer.selector, "only the proposer cancels");
         _as(0, address(vault), abi.encodeCall(OpeqMultisig.cancel, (id)), "cancel");
-        (ok, ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)));
+        (ok, ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))));
         assertTrue(!ok && _innerError(ret) == OpeqMultisig.NotLive.selector, "cancelled proposal is dead");
     }
 
     function testExpiredProposalIsDead() public {
         uint256 id = _propose(0, _pay(bob, 1 ether));
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)), "");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "");
         vm.warp(block.timestamp + 1 days + 1);
         (bool ok, bytes memory ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, _pay(bob, 1 ether))));
         assertTrue(!ok && _innerError(ret) == OpeqMultisig.NotLive.selector, "expired");
@@ -199,14 +204,14 @@ contract OpeqMultisigTest is Asserts {
 
     function testOwnerChangeKillsPendingProposals() public {
         uint256 pay = _propose(0, _pay(bob, 1 ether));
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (pay)), "");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (pay, _hash(pay))), "");
         address[] memory two = new address[](2);
         two[0] = address(acc[0]);
         two[1] = address(acc[1]);
         OpeqMultisig.Call[] memory c = new OpeqMultisig.Call[](1);
         c[0] = OpeqMultisig.Call({to: address(vault), value: 0, data: abi.encodeCall(OpeqMultisig.setOwners, (two, 2))});
         uint256 change = _propose(0, c);
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (change)), "");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (change, _hash(change))), "");
         _as(1, address(vault), abi.encodeCall(OpeqMultisig.execute, (change, c)), "execute owner change");
         assertTrue(!vault.isOwner(address(acc[2])), "owner removed");
         assertEq(vault.getOwners().length, 2, "two owners left");
@@ -219,7 +224,7 @@ contract OpeqMultisigTest is Asserts {
     function testRevertedCallLeavesProposalExecutable() public {
         OpeqMultisig.Call[] memory c = _pay(bob, 50 ether);
         uint256 id = _propose(0, c);
-        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)), "");
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "");
         (bool ok, bytes memory ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, c)));
         assertTrue(!ok && _innerError(ret) == OpeqMultisig.CallFailed.selector, "call fails without funds");
         (OpeqMultisig.Proposal memory p, , , bool live) = vault.getProposal(id);
@@ -235,7 +240,7 @@ contract OpeqMultisigTest is Asserts {
         OpeqMultisig.Call[] memory c = new OpeqMultisig.Call[](1);
         c[0] = OpeqMultisig.Call({to: address(t), value: 0, data: abi.encodeCall(MockToken.transfer, (bob, 400))});
         uint256 id = _propose(2, c);
-        _as(0, address(vault), abi.encodeCall(OpeqMultisig.approve, (id)), "");
+        _as(0, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "");
         _as(0, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, c)), "execute token transfer");
         assertEq(t.balanceOf(bob), 400, "token sent");
     }
@@ -246,5 +251,32 @@ contract OpeqMultisigTest is Asserts {
         vm.prank(bob);
         address got = msFactory.create(owners, 2, bytes32(uint256(7)));
         assertTrue(got != want, "a different creator lands on a different address");
+    }
+
+    function testApprovalIsBoundToContent() public {
+        uint256 id = _propose(0, _pay(bob, 1 ether));
+        (bool ok, bytes memory ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, keccak256("other"))));
+        assertTrue(!ok && _innerError(ret) == OpeqMultisig.CallsMismatch.selector, "approval for different content refused");
+    }
+
+    function testFactoryRecordsItsVaults() public view {
+        assertTrue(msFactory.isVault(address(vault)), "factory vault recorded");
+        assertTrue(!msFactory.isVault(address(acc[0])), "other addresses are not vaults");
+    }
+
+    function testNonCanonicalSetOwnersRefused() public {
+        address[] memory honest = new address[](2);
+        honest[0] = address(acc[0]);
+        honest[1] = address(acc[1]);
+        address[] memory evil = new address[](1);
+        evil[0] = address(acc[2]);
+        bytes memory data = abi.encodePacked(OpeqMultisig.setOwners.selector, uint256(0xa0), uint256(1), uint256(2), uint256(uint160(honest[0])), uint256(uint160(honest[1])), uint256(1), uint256(uint160(evil[0])));
+        OpeqMultisig.Call[] memory c = new OpeqMultisig.Call[](1);
+        c[0] = OpeqMultisig.Call({to: address(vault), value: 0, data: data});
+        uint256 id = _propose(0, c);
+        _as(1, address(vault), abi.encodeCall(OpeqMultisig.approve, (id, _hash(id))), "");
+        (bool ok, bytes memory ret) = _try(1, address(vault), abi.encodeCall(OpeqMultisig.execute, (id, c)));
+        assertTrue(!ok && _innerError(ret) == OpeqMultisig.CallFailed.selector, "smuggled owner list refused");
+        assertTrue(vault.isOwner(address(acc[0])) && vault.isOwner(address(acc[1])) && vault.getOwners().length == 3, "owners unchanged");
     }
 }

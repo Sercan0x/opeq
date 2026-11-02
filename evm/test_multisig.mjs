@@ -61,7 +61,7 @@ ok(p.live && p.approvals === 1 && p.proposer === A.account, "bob sees a live pro
 const d = M.describe(p.calls[0], want);
 ok(d.kind === "pay" && d.to === dest && d.value === 5n * 10n ** 17n, "bob's wallet decodes it as a 0.5 ETH payment to the right address");
 await throws(B.execute([M.executeCall(want, 0, pay)]), /would fail on chain|Nothing was signed/, "executing with one approval is refused before signing");
-const r2 = await B.execute([M.idCall(want, "approve", 0)]);
+const r2 = await B.execute([M.idCall(want, "approve", 0, (await vB.proposal(0)).callsHash)]);
 ok(await vB.approvedBy(0, B.account), `bob approved (gas ${r2.gasUsed})`);
 const r3 = await B.execute([M.executeCall(want, 0, pay)]);
 ok(BigInt(cast("balance", dest)) === 5n * 10n ** 17n, `paid (gas ${r3.gasUsed})`);
@@ -78,7 +78,7 @@ await C.execute([M.proposeCall(want, tpay, now + 3600)]);
 p = await vA.proposal(1);
 const td = M.describe(p.calls[0], want);
 ok(td.kind === "token" && td.token === token.toLowerCase() && td.to === dest && td.amount === 250000n, "token transfer decoded for the approver");
-await A.execute([M.idCall(want, "approve", 1)]);
+await A.execute([M.idCall(want, "approve", 1, (await vA.proposal(1)).callsHash)]);
 await A.execute([M.executeCall(want, 1, tpay)]);
 ok(BigInt(cast("call", token, "balanceOf(address)(uint256)", dest).split(" ")[0]) === 250000n, "token paid");
 
@@ -89,7 +89,7 @@ await A.execute([M.proposeCall(want, change, now + 3600)]);
 p = await vB.proposal(2);
 const od = M.describe(p.calls[0], want);
 ok(od.kind === "owners" && od.owners.join() === two.join() && od.threshold === 2, "owner change decoded");
-await B.execute([M.idCall(want, "approve", 2)]);
+await B.execute([M.idCall(want, "approve", 2, (await vB.proposal(2)).callsHash)]);
 await B.execute([M.executeCall(want, 2, change)]);
 info = await vA.read();
 ok(info.owners.length === 2 && !info.owners.includes(C.account), "carol removed");
@@ -98,6 +98,11 @@ await throws(C.execute([M.proposeCall(want, pay, now + 3600)]), /would fail on c
 console.log("guards");
 await throws(new M.Vault(A, A.account).read(), /not the OPEQ shared vault/, "an OPEQ account address is not accepted as a vault");
 await throws(new M.Vault(A, dest).read(), /no shared vault/, "an empty address is not accepted as a vault");
+const rogue = cast("send", "--private-key", ANVIL0, "--create", JSON.parse(readFileSync(new URL("./out/OpeqMultisig.sol/OpeqMultisig.json", import.meta.url))).bytecode.object + execFileSync(process.env.HOME + "/.foundry/bin/cast", ["abi-encode", "f(address[],uint8)", `[${owners.join(",")}]`, "1"], { encoding: "utf8" }).trim().slice(2), "--json");
+await throws(new M.Vault(A, JSON.parse(rogue).contractAddress).read(), /not created by the OPEQ shared vault factory/, "a vault deployed outside the factory is refused even with identical code");
+const smuggle = { to: want, value: 0n, data: Uint8Array.from(Buffer.from(M.setOwnersCall(want, [A.account, B.account], 2).data.slice(0, 4).reduce((h, b) => h + b.toString(16).padStart(2, "0"), "") + "00000000000000000000000000000000000000000000000000000000000000a0" + "0000000000000000000000000000000000000000000000000000000000000001" + "0000000000000000000000000000000000000000000000000000000000000002" + A.account.slice(2).padStart(64, "0") + B.account.slice(2).padStart(64, "0") + "0000000000000000000000000000000000000000000000000000000000000001" + C.account.slice(2).padStart(64, "0"), "hex")) };
+ok(M.describe(smuggle, want).kind === "contract", "a non-standard owner change is shown as a risky contract call, not as an owner list");
+ok(M.describe({ to: dest, value: 0n, data: Uint8Array.of(0xa9, 0x05, 0x9c, 0xbb, 1, 2) }, want).kind === "contract", "malformed token data does not throw");
 await throws(Promise.resolve().then(() => M.checkOwners([A.account, A.account], 1)), /twice/, "duplicate owner refused");
 await throws(Promise.resolve().then(() => M.checkOwners([A.account], 2)), /between 1 and 1/, "threshold above owner count refused");
 

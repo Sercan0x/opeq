@@ -6,6 +6,8 @@ import {OpeqMultisig} from "./OpeqMultisig.sol";
 contract OpeqMultisigFactory {
     event Created(address indexed vault, address indexed creator, address[] owners, uint8 threshold);
 
+    mapping(address => bool) public isVault;
+
     function salt(address creator, address[] calldata owners, uint8 threshold, bytes32 nonce) public pure returns (bytes32) {
         return keccak256(abi.encode("opeq/evm/multisig/v1", creator, owners, threshold, nonce));
     }
@@ -23,6 +25,7 @@ contract OpeqMultisigFactory {
 
     function create(address[] calldata owners, uint8 threshold, bytes32 nonce) external returns (address vault) {
         vault = address(new OpeqMultisig{salt: salt(msg.sender, owners, threshold, nonce)}(owners, threshold));
+        isVault[vault] = true;
         emit Created(vault, msg.sender, owners, threshold);
     }
 }

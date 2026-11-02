@@ -8,8 +8,6 @@ const { word, leftWord, addressWord, concat, dynBytes, addressBytes, encodeCalls
 const sel = (sig) => keccak256(enc.encode(sig)).slice(0, 4);
 const SEL = {
   propose: sel("propose((address,uint256,bytes)[],uint64)"),
-  approve: sel("approve(uint256)"),
-  revoke: sel("revoke(uint256)"),
   cancel: sel("cancel(uint256)"),
   execute: sel("execute(uint256,(address,uint256,bytes)[])"),
   setOwners: sel("setOwners(address[],uint8)"),
@@ -20,8 +18,13 @@ const SEL = {
   config: sel("config()"),
   proposalCount: sel("proposalCount()"),
   getProposal: sel("getProposal(uint256)"),
+  approvedBy: sel("approved(uint256,address)"),
+  isVault: sel("isVault(address)"),
   transfer: sel("transfer(address,uint256)"),
+  tokenApprove: sel("approve(address,uint256)"),
 };
+SEL.approve = sel("approve(uint256,bytes32)");
+SEL.revoke = sel("revoke(uint256,bytes32)");
 export const MAX_OWNERS = 10;
 export const MAX_LIFETIME_S = 30 * 24 * 3600;
 export const DEFAULT_LIFETIME_S = 7 * 24 * 3600;
@@ -75,8 +78,11 @@ export function proposeCall(vault, calls, expires) {
   return { to: vault, value: 0n, data: concat(SEL.propose, word(64), word(expires), encodeCalls(calls)) };
 }
 
-export function idCall(vault, kind, id) {
-  return { to: vault, value: 0n, data: concat(SEL[kind], word(id)) };
+export function idCall(vault, kind, id, callsHash) {
+  if (kind === "cancel") return { to: vault, value: 0n, data: concat(SEL.cancel, word(id)) };
+  if (kind !== "approve" && kind !== "revoke") throw new Error("unknown vault action");
+  if (!/^0x[0-9a-f]{64}$/.test(callsHash || "")) throw new Error("missing proposal hash");
+  return { to: vault, value: 0n, data: concat(SEL[kind], word(id), hexToBytes(callsHash)) };
 }
 
 export function executeCall(vault, id, calls) {
@@ -120,22 +126,35 @@ export function decodeCalls(bytes) {
   return out;
 }
 
-export function describe(call, vault) {
+const same = (a, b) => bytesToHex(a) === bytesToHex(b);
+
+function strict(call, vault) {
   const d = call.data || new Uint8Array(0);
   if (!d.length) return { kind: "pay", to: call.to, value: call.value };
   const s = bytesToHex(d.slice(0, 4));
-  if (s === bytesToHex(SEL.transfer) && d.length === 68 && call.value === 0n) {
-    const w = words(bytesToHex(d.slice(4)));
-    return { kind: "token", token: call.to, to: readAddr(w.at(0)), amount: w.at(1) };
+  const w = (i) => BigInt(bytesToHex(d.slice(4 + 32 * i, 36 + 32 * i)));
+  if ((s === bytesToHex(SEL.transfer) || s === bytesToHex(SEL.tokenApprove)) && d.length === 68 && call.value === 0n) {
+    const who = readAddr(w(0)), amount = w(1);
+    if (!same(d, concat(d.slice(0, 4), addressWord(who), word(amount)))) return null;
+    return s === bytesToHex(SEL.transfer) ? { kind: "token", token: call.to, to: who, amount } : { kind: "allowance", token: call.to, spender: who, amount };
   }
-  if (lower(call.to) === lower(vault) && s === bytesToHex(SEL.setOwners)) {
-    const w = words(bytesToHex(d.slice(4)));
-    const n = Number(w.at(2));
-    if (n > MAX_OWNERS) throw new Error("malformed owner change");
-    return { kind: "owners", threshold: Number(w.at(1)), owners: Array.from({ length: n }, (_, i) => readAddr(w.at(3 + i))) };
+  if (lower(call.to) === lower(vault) && call.value === 0n && s === bytesToHex(SEL.setOwners) && d.length >= 100) {
+    const n = Number(w(2) > BigInt(MAX_OWNERS) ? 0n : w(2)), threshold = w(1);
+    if (!n || threshold > 255n) return null;
+    const owners = Array.from({ length: n }, (_, i) => readAddr(w(3 + i)));
+    if (!same(d, setOwnersCall(vault, owners, Number(threshold)).data)) return null;
+    return { kind: "owners", threshold: Number(threshold), owners };
   }
-  if (lower(call.to) === lower(vault) && s === bytesToHex(SEL.setThreshold)) return { kind: "threshold", threshold: Number(words(bytesToHex(d.slice(4))).at(0)) };
-  return { kind: "contract", to: call.to, value: call.value, selector: s };
+  if (lower(call.to) === lower(vault) && call.value === 0n && s === bytesToHex(SEL.setThreshold) && d.length === 36 && w(0) <= 255n) return { kind: "threshold", threshold: Number(w(0)) };
+  return null;
+}
+
+export function describe(call, vault) {
+  let r = null;
+  try { r = strict(call, vault); } catch { r = null; }
+  if (r) return r;
+  const d = call.data || new Uint8Array(0);
+  return { kind: "contract", to: call.to, value: call.value, selector: d.length >= 4 ? bytesToHex(d.slice(0, 4)) : bytesToHex(d), size: d.length, data: bytesToHex(d) };
 }
 
 export class Vault {
@@ -148,6 +167,9 @@ export class Vault {
     const code = await rpc.code(this.address, block);
     if (code === "0x") throw new Error("there is no shared vault at that address on this network");
     if (lower(code.slice(2)) !== lower(MS_RUNTIME)) throw new Error("the code at that address is not the OPEQ shared vault contract, refusing to use it");
+    const fac = factoryAddress();
+    const reg = await rpc.ethCall(fac, bytesToHex(concat(SEL.isVault, addressWord(this.address))), block);
+    if (words(reg).at(0) !== 1n) throw new Error("that address was not created by the OPEQ shared vault factory, refusing to use it");
     const [o, t, c, n, bal] = await Promise.all([
       rpc.ethCall(this.address, bytesToHex(SEL.getOwners), block),
       rpc.ethCall(this.address, bytesToHex(SEL.threshold), block),
@@ -159,7 +181,9 @@ export class Vault {
     const count = Number(ow.at(1));
     if (count < 1 || count > MAX_OWNERS) throw new Error("malformed owner list from the network");
     const owners = Array.from({ length: count }, (_, i) => readAddr(ow.at(2 + i)));
-    return { owners, threshold: Number(words(t).at(0)), config: Number(words(c).at(0)), proposals: Number(words(n).at(0)), balance: bal };
+    const threshold = Number(words(t).at(0));
+    if (new Set(owners).size !== owners.length || threshold < 1 || threshold > owners.length) throw new Error("malformed vault settings from the network");
+    return { owners, threshold, config: Number(words(c).at(0)), proposals: Number(words(n).at(0)), balance: bal };
   }
 
   async read() {
@@ -167,6 +191,7 @@ export class Vault {
     if (this.chain.check) {
       const b = await this.readAt(this.chain.check, "latest").catch(() => null);
       if (!b || b.owners.join() !== a.owners.join() || b.threshold !== a.threshold || b.config !== a.config) throw new Error("two independent network sources disagree about this shared vault, so nothing is shown as safe to sign. Try again in a minute");
+      a.proposals = Math.max(a.proposals, b.proposals);
     }
     return a;
   }
@@ -192,14 +217,18 @@ export class Vault {
     const a = await this.chain.at((b) => this.proposalAt(this.chain.rpc, id, b));
     if (this.chain.check) {
       const b = await this.proposalAt(this.chain.check, id).catch(() => null);
-      if (!b || b.callsHash !== a.callsHash || b.proposer !== a.proposer || b.expires !== a.expires || b.config !== a.config) throw new Error("two independent network sources disagree about this proposal, so nothing was signed. Try again in a minute");
+      if (!b || ["callsHash", "proposer", "expires", "config", "executed", "cancelled", "approvals", "live"].some((k) => b[k] !== a[k])) throw new Error("two independent network sources disagree about this proposal, so nothing was signed. Try again in a minute");
     }
     return a;
   }
 
   async approvedBy(id, owner) {
-    const s = sel("approved(uint256,address)");
-    const r = await this.chain.rpc.ethCall(this.address, bytesToHex(concat(s, word(id), addressWord(owner))));
-    return words(r).at(0) !== 0n;
+    const data = bytesToHex(concat(SEL.approvedBy, word(id), addressWord(owner)));
+    const a = words(await this.chain.rpc.ethCall(this.address, data)).at(0) !== 0n;
+    if (this.chain.check) {
+      const b = await this.chain.check.ethCall(this.address, data).then((r) => words(r).at(0) !== 0n).catch(() => null);
+      if (b !== a) throw new Error("two independent network sources disagree about your approval. Try again in a minute");
+    }
+    return a;
   }
 }

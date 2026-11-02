@@ -314,6 +314,20 @@ export class EvmChain {
     return Math.max(Number(await this.rpc.call("eth_getTransactionCount", [this.feeAddress, "pending"])), this.nextNonce || 0);
   }
 
+  async install(deployer, data, expect, onHash) {
+    await this.checkNetwork();
+    return this.lock(async () => {
+      if ((await this.rpc.code(expect)) !== "0x") return { hash: null, nothing: true };
+      await this.idle();
+      const r = await this.record();
+      if (r && r.pending) await this.resolvePending(r);
+      const gas = await this.estimate(deployer, data);
+      const res = await this.sendTx(deployer, data, 0n, gas, onHash);
+      if ((await this.rpc.code(expect)) === "0x") throw new Error("the contract install did not land; check the explorer and try again");
+      return res;
+    });
+  }
+
   async waiting() {
     for (let i = 0; i < 3; i++) {
       let stuck = false;
@@ -478,8 +492,8 @@ export class EvmChain {
         if (gone(a) && gone(b)) { delete r.pending; await this.put(r); return { hash: null, gasUsed: 0n, nothing: true, landed: true }; }
       }
       if (!cancel) { await this.resolvePending(r); await this.idle(); }
-      await this.gasCheck(EXEC_GAS + 40000n * BigInt(calls.length));
       const inner = await this.callsGas(calls);
+      await this.gasCheck(EXEC_GAS + inner);
       const deadline = (await this.clock()) + DEADLINE_S;
       const leaf = Math.max(r.next_leaf, st.next);
       const prev = cancel ? r.pending : null;
@@ -496,7 +510,6 @@ export class EvmChain {
       r.pending = { leaf, deadline, ...(prev ? { prev } : {}) };
       await this.reserve(r, st, E.EXEC_LIMIT);
       const rnd = crypto.getRandomValues(new Uint8Array(16));
-      const out = await this.run("evmSignExec", { chainId: this.id, account: this.account, epoch: r.epoch, pubSeed: hexToBytes(r.pub_seed), root: hexToBytes(r.root), leaves: unb64(r.leaves), leaf, deadline, rnd, calls });
       const mine = (p) => p && p.leaf === leaf;
       const done = async () => { const cur = await this.record(); if (cur && mine(cur.pending)) { delete cur.pending; await this.put(cur); } };
       const unsent = async () => { const cur = await this.record(); if (cur && mine(cur.pending)) { if (prev) cur.pending = prev; else delete cur.pending; await this.put(cur); } };
@@ -504,6 +517,7 @@ export class EvmChain {
       let res;
       this.sent = false;
       try {
+        const out = await this.run("evmSignExec", { chainId: this.id, account: this.account, epoch: r.epoch, pubSeed: hexToBytes(r.pub_seed), root: hexToBytes(r.root), leaves: unb64(r.leaves), leaf, deadline, rnd, calls });
         const gas = await this.gasFor(out.calldata.length, out.cost, [], inner);
         res = await this.sendTx(this.account, out.calldata, 0n, gas, onHash, opts);
       } catch (e) {

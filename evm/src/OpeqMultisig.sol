@@ -52,6 +52,7 @@ contract OpeqMultisig {
     error NotEnoughApprovals(uint256 have, uint256 need);
     error CallsMismatch();
     error CallFailed(uint256 index, bytes reason);
+    error NonCanonical();
 
     modifier onlyOwner() {
         if (!isOwner[msg.sender]) revert NotOwner();
@@ -133,17 +134,19 @@ contract OpeqMultisig {
         emit Approved(id, msg.sender);
     }
 
-    function approve(uint256 id) external onlyOwner {
+    function approve(uint256 id, bytes32 callsHash) external onlyOwner {
         Proposal storage p = _get(id);
         if (!_live(p)) revert NotLive();
+        if (p.callsHash != callsHash) revert CallsMismatch();
         if (approved[id][msg.sender]) revert AlreadyApproved();
         approved[id][msg.sender] = true;
         emit Approved(id, msg.sender);
     }
 
-    function revoke(uint256 id) external onlyOwner {
+    function revoke(uint256 id, bytes32 callsHash) external onlyOwner {
         Proposal storage p = _get(id);
         if (!_live(p)) revert NotLive();
+        if (p.callsHash != callsHash) revert CallsMismatch();
         if (!approved[id][msg.sender]) revert NotApproved();
         approved[id][msg.sender] = false;
         emit Revoked(id, msg.sender);
@@ -172,6 +175,7 @@ contract OpeqMultisig {
     }
 
     function setOwners(address[] calldata owners_, uint8 threshold_) external onlySelf {
+        if (keccak256(msg.data) != keccak256(abi.encodeCall(this.setOwners, (owners_, threshold_)))) revert NonCanonical();
         for (uint256 i; i < owners.length; ++i) isOwner[owners[i]] = false;
         delete owners;
         _setOwners(owners_, threshold_);
