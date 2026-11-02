@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
-import {OpeqAccount} from "./OpeqAccount.sol";
-
 contract OpeqMultisig {
     struct Call {
         address to;
@@ -21,7 +19,7 @@ contract OpeqMultisig {
 
     uint256 public constant MAX_OWNERS = 10;
     uint256 public constant MAX_LIFETIME = 30 days;
-    bytes32 public constant ACCOUNT_CODEHASH = keccak256(type(OpeqAccount).runtimeCode);
+    bytes32 public constant ACCOUNT_CODEHASH = 0xffa907784a55292e0e842dd77da1d1dde5437208024a1be7e16b36ddbb3119cd;
 
     address[] internal owners;
     mapping(address => bool) public isOwner;

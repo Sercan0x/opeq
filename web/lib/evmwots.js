@@ -153,7 +153,7 @@ export function deriveChainTree(master, chainId, account, epoch, pubSeed, progre
   return EvmTreeKey.generate(s.skSeed, s.pubSeed, progress);
 }
 
-function word(n) {
+export function word(n) {
   let v = BigInt(n);
   if (v < 0n || v >= 1n << 256n) throw new Error("value does not fit in 256 bits");
   const out = new Uint8Array(32);
@@ -161,7 +161,7 @@ function word(n) {
   return out;
 }
 
-function leftWord(bytes) {
+export function leftWord(bytes) {
   if (bytes.length > 32) throw new Error("fixed bytes longer than 32");
   const out = new Uint8Array(32);
   out.set(bytes, 0);
@@ -173,13 +173,13 @@ export function addressBytes(addr) {
   return Uint8Array.from(addr.slice(2).match(/../g), (h) => parseInt(h, 16));
 }
 
-function addressWord(addr) {
+export function addressWord(addr) {
   const out = new Uint8Array(32);
   out.set(addressBytes(addr), 12);
   return out;
 }
 
-function concat(...parts) {
+export function concat(...parts) {
   const n = parts.reduce((s, p) => s + p.length, 0);
   const out = new Uint8Array(n);
   let o = 0;
@@ -187,7 +187,7 @@ function concat(...parts) {
   return out;
 }
 
-function dynBytes(data) {
+export function dynBytes(data) {
   const pad = (32 - (data.length % 32)) % 32;
   return concat(word(data.length), data, new Uint8Array(pad));
 }

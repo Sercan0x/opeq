@@ -98,6 +98,7 @@ contract OpeqMultisigTest is Asserts {
         assertEq(vault.getOwners().length, 3, "owners");
         for (uint256 i; i < 3; ++i) assertTrue(vault.isOwner(address(acc[i])), "owner registered");
         assertTrue(address(acc[0]).codehash == vault.ACCOUNT_CODEHASH(), "owner code is an OPEQ account");
+        assertTrue(keccak256(type(OpeqAccount).runtimeCode) == vault.ACCOUNT_CODEHASH(), "pinned fingerprint equals the compiled account code");
     }
 
     function testTwoOfThreePays() public {
