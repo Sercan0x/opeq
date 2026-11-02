@@ -459,6 +459,7 @@ export function init(api) {
     $, hide, chain: () => chain, tag, feeText, last, explorer, lookalike, recipient, remember,
     ask: (m, y) => ui.ask(m, y),
     guard: (fn) => ui.guard("e-err", "e-ok", fn),
+    busy: () => ui.busy(),
     ok: (t) => { $("e-ok").textContent = t; },
     copy: (el, text, msg) => ui.copyTo(el, text, msg),
     refreshMain: () => refresh(),

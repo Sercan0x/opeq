@@ -75,14 +75,25 @@ export async function refresh(ready) {
   const list = await loadList();
   if (!list.length) { box.append(el("p", "hint", "No shared vaults on this network yet.")); return; }
   for (const a of list) {
+    const line = el("div", "ms-line");
     const row = el("button", "ms-row");
     row.type = "button";
-    row.append(el("span", "mono", short(a)), el("span", "ms-meta", "…"));
+    const meta = el("span", "ms-meta", "…");
+    row.append(el("span", "mono", short(a)), meta);
     row.addEventListener("click", () => x.guard(() => showVault(a)));
-    box.append(row);
+    const rm = el("button", "ms-rm", "Remove");
+    rm.type = "button";
+    rm.title = "Remove from this list. The vault and its funds stay on chain; you can add it again later.";
+    rm.addEventListener("click", () => x.guard(async () => {
+      if (!(await x.ask({ ...x.tag(), title: "Remove this vault from the list?", rows: [["Vault", a, true]], notes: [{ text: "Only this list changes. The vault, its funds and your ownership stay on chain. Add it again any time with its address." }] }, "Remove"))) return;
+      await saveList((await loadList()).filter((b) => b !== a));
+      await refresh(true);
+    }));
+    line.append(row, rm);
+    box.append(line);
     new M.Vault(x.chain(), a).readAt(x.chain().rpc, "latest").then((v) => {
-      row.lastChild.textContent = `${v.threshold} of ${v.owners.length}, ${formatUnits(v.balance, 18)} ${x.chain().chain.symbol}`;
-    }).catch(() => { row.lastChild.textContent = "could not read"; });
+      meta.textContent = `${v.threshold} of ${v.owners.length}, ${formatUnits(v.balance, 18)} ${x.chain().chain.symbol}`;
+    }).catch(() => { meta.textContent = "could not read"; });
   }
 }
 
@@ -92,36 +103,60 @@ async function tokenInfo(addr, vault) {
   return { ...t, vaultBalance: BigInt(raw) };
 }
 
+const cache = new Map();
+function memo(key, fn) {
+  if (!cache.has(key)) cache.set(key, fn().catch(() => null));
+  if (cache.size > 500) cache.delete(cache.keys().next().value);
+  return cache.get(key);
+}
+
+async function isNft(c, a) {
+  const r = await c.rpc.ethCall(a, "0x01ffc9a780ac58cd00000000000000000000000000000000000000000000000000000000").catch(() => "0x");
+  return /^0x0*1$/.test(r);
+}
+
 async function words(call, vault, info) {
   const c = x.chain();
   const d = M.describe(call, vault);
   const sym = c.chain.symbol;
   const notes = [];
-  const hasCode = async (a) => (await c.rpc.code(a).catch(() => "0x")) !== "0x";
+  const hasCode = async (a) => (await memo(`${c.id}:code:${a}`, () => c.rpc.code(a))) !== "0x";
+  const tok = (a) => memo(`${c.id}:tok:${a}`, () => c.token(a));
   if (d.kind === "pay") {
     if (await hasCode(d.to)) notes.push("The receiver is a contract, not a plain wallet. Make sure it can receive this payment.");
-    return { title: `Send ${formatUnits(d.value, 18, 18)} ${sym}`, rows: [["To", d.to, true]], d, notes, to: d.to };
+    return { title: `Send ${formatUnits(d.value, 18, 18)} ${sym}`, rows: [["To", d.to, true]], d, notes, check: [d.to] };
+  }
+  if (d.kind === "allowance" && (await memo(`${c.id}:nft:${d.token}`, () => isNft(c, d.token)))) {
+    return { title: `Allow ${d.spender} to take NFT #${d.amount} from the vault`, rows: [["Spender", d.spender, true], ["NFT contract", d.token, true]], d, notes: ["This lets the spender move that NFT out of the vault later without any further approval."], risky: true, check: [d.spender] };
   }
   if (d.kind === "token" || d.kind === "allowance") {
-    const t = await c.token(d.token).catch(() => null);
+    const t = await tok(d.token);
     const fake = t && t.symbol.toUpperCase() === sym.toUpperCase();
     const amt = t ? `${formatUnits(d.amount, t.decimals, t.decimals)} ${t.symbol}${fake ? " token" : ""} (unverified)` : `${d.amount} units of an unknown token`;
     if (fake) notes.push(`This token contract calls itself ${t.symbol}. It is not ${sym}, the network's own coin.`);
     notes.push("Anyone can create a token with any name. Check the token contract against the project's official site.");
-    if (d.kind === "allowance") return { title: `Allow ${d.spender} to take up to ${amt} from the vault`, rows: [["Spender", d.spender, true], ["Token contract", d.token, true]], d, notes: ["An allowance lets the spender move the vault's tokens later without any further approval.", ...notes], risky: true };
+    if (d.kind === "allowance") return { title: `Allow ${d.spender} to take up to ${amt} from the vault`, rows: [["Spender", d.spender, true], ["Token contract", d.token, true]], d, notes: ["An allowance lets the spender move the vault's tokens later without any further approval.", ...notes], risky: true, check: [d.spender] };
     if (await hasCode(d.to)) notes.push("The receiver is a contract, not a plain wallet. Make sure it can receive this token.");
-    return { title: `Send ${amt}`, rows: [["To", d.to, true], ["Token contract", d.token, true]], d, notes, to: d.to };
+    return { title: `Send ${amt}`, rows: [["To", d.to, true], ["Token contract", d.token, true]], d, notes, check: [d.to] };
   }
   if (d.kind === "owners") {
     const cur = new Set(info.owners), me = c.account;
     const rows = d.owners.map((o, i) => [`Owner ${i + 1}${o === me ? " (you)" : cur.has(o) ? "" : " (NEW)"}`, o, true]);
     for (const o of info.owners) if (!d.owners.includes(o)) rows.push([`Removed${o === me ? " (you)" : ""}`, o, true]);
     const added = d.owners.filter((o) => !cur.has(o));
+    const removed = info.owners.filter((o) => !d.owners.includes(o));
     if (added.length) notes.push(`${added.length} new owner${added.length > 1 ? "s" : ""} would get control over this vault. Confirm each new address with its owner directly.`);
-    return { title: `Change owners: ${d.threshold} of ${d.owners.length} approvals`, rows, d, notes, risky: added.length > 0 };
+    if (removed.length) notes.push(removed.includes(me) ? "You would be removed and lose all control over this vault." : `${removed.length} current owner${removed.length > 1 ? "s" : ""} would be removed.`);
+    if (d.threshold < info.threshold) notes.push(`Approvals needed would drop from ${info.threshold} to ${d.threshold}. Fewer owners could then move the vault's funds.`);
+    if (d.threshold === 1 && d.owners.length > 1) notes.push("With 1 approval needed, any single owner could move everything alone.");
+    return { title: `Change owners: from ${info.threshold} of ${info.owners.length} to ${d.threshold} of ${d.owners.length}`, rows, d, notes, risky: added.length > 0 || removed.length > 0 || d.threshold < info.threshold, check: added };
   }
-  if (d.kind === "threshold") return { title: `Change approvals needed from ${info.threshold} to ${d.threshold}`, rows: [], d, notes, risky: d.threshold < info.threshold };
-  return { title: "Contract call that cannot be shown in plain words", rows: [["Contract", d.to, true], ["Value", `${formatUnits(d.value, 18, 18)} ${sym}`], ["Function", d.selector], ["Data", d.size > 300 ? `${d.data.slice(0, 600)}… (${d.size} bytes)` : d.data, true]], d, notes, risky: true };
+  if (d.kind === "threshold") {
+    if (d.threshold < info.threshold) notes.push(`Approvals needed would drop from ${info.threshold} to ${d.threshold}. Fewer owners could then move the vault's funds.`);
+    if (d.threshold === 1 && info.owners.length > 1) notes.push("With 1 approval needed, any single owner could move everything alone.");
+    return { title: `Change approvals needed from ${info.threshold} to ${d.threshold}`, rows: [], d, notes, risky: d.threshold < info.threshold };
+  }
+  return { check: [d.to], title: "Contract call that cannot be shown in plain words", rows: [["Contract", d.to, true], ["Value", `${formatUnits(d.value, 18, 18)} ${sym}`], ["Function", d.selector], ["Data", d.size > 300 ? `${d.data.slice(0, 600)}… (${d.size} bytes)` : d.data, true]], d, notes, risky: true };
 }
 
 async function showVault(addr) {
@@ -173,6 +208,11 @@ async function showProposals(v, info) {
   }
 }
 
+async function later(fn) {
+  for (let i = 0; i < 120 && x.busy(); i++) await new Promise((r) => setTimeout(r, 250));
+  return x.guard(fn);
+}
+
 async function proposalCard(v, info, id, me) {
   const p = await v.proposal(id);
   const mine = await v.approvedBy(id, me);
@@ -185,7 +225,7 @@ async function proposalCard(v, info, id, me) {
   card.append(el("p", "hint", `Proposed by ${p.proposer === me ? "you" : short(p.proposer)}${p.live ? `, open until ${new Date(p.expires * 1000).toLocaleString()}` : ""}`));
   if (p.live) {
     const row = el("div", "row tight");
-    const btn = (label, cls, fn) => { const b = el("button", `btn btn-sm ${cls}`, label); b.type = "button"; b.addEventListener("click", () => x.guard(fn)); row.append(b); };
+    const btn = (label, cls, fn) => { const b = el("button", `btn btn-sm ${cls}`, label); b.type = "button"; b.addEventListener("click", () => later(fn)); row.append(b); };
     if (p.approvals >= info.threshold) btn("Execute", "btn-solid", () => act(v, p, info, "execute"));
     else if (!mine) btn("Approve", "btn-solid", () => act(v, p, info, "approve"));
     if (mine) btn("Revoke my approval", "btn-line", () => act(v, p, info, "revoke"));
@@ -201,7 +241,7 @@ async function act(v, p, info, kind) {
   if (fresh.callsHash !== p.callsHash) throw new Error("the proposal changed since it was shown. Refresh and check it again");
   if (!fresh.live) throw new Error("this proposal is no longer open. Refresh to see its state");
   const w = await Promise.all(fresh.calls.map((call) => words(call, v.address, info)));
-  if (kind === "approve" || kind === "execute") for (const t of w) if (t.to) await x.lookalike(t.to);
+  if (kind === "approve" || kind === "execute") for (const a of new Set(w.flatMap((t) => t.check || []))) await x.lookalike(a);
   const rows = w.flatMap((t) => [["Action", t.title], ...t.rows]);
   const label = { approve: "Approve", revoke: "Revoke", cancel: "Cancel proposal", execute: "Execute" }[kind];
   const notes = [{ text: "Signed with one quantum-resistant one-time key from your account." }];
@@ -231,16 +271,17 @@ export function init(ctx) {
     if (owners.length < 2) throw new Error("add at least one other owner");
     for (const a of owners) await ownerCheck(c, a);
     const threshold = Number(x.$("ms-thr").value.trim());
+    if ((await loadList()).length >= LIST_MAX) throw new Error(`your list already holds ${LIST_MAX} vaults on this network. Remove one first`);
     const fac = M.factoryAddress();
     const fresh = (await c.rpc.code(fac)) === "0x";
     const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const addr = M.vaultAddress(c.account, owners, threshold, nonce);
+    const addr = M.vaultAddress(c.id, c.account, owners, threshold, nonce);
     if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} shared vault`, rows: [["Vault address", addr, true], ...owners.map((o, i) => [`Owner ${i + 1}${o === c.account ? " (you)" : ""}`, o, true]), ["Network fee", await x.feeText((fresh ? 2600000n : 0n) + 2200000n)]],
-      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each with their own OPEQ wallet.` }, ...(fresh ? [{ text: "The first transaction installs the OPEQ shared vault factory on this network, once for everyone." }] : []), { text: "Send the vault address to the other owners so they can add it in their wallet." }, { text: "Beta: the shared vault contract has had internal reviews only. Start with small amounts.", warn: true }] }, "Create"))) return;
+      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each with their own OPEQ wallet.` }, { text: `The vault exists only on ${c.chain.name}. Never send funds to this address on any other network.`, warn: true }, ...(fresh ? [{ text: "The first transaction installs the OPEQ shared vault factory on this network, once for everyone." }] : []), { text: "Send the vault address to the other owners so they can add it in their wallet." }, { text: "Beta: the shared vault contract has had internal reviews only. Start with small amounts.", warn: true }] }, "Create"))) return;
     if (fresh) await c.install("0x4e59b44847b379578588920ca78fbf26c0b4956c", M.factoryDeployData(), M.factoryAddress(), (h) => x.last("Factory install sent.", h));
     await run(() => c.execute([M.createCall(owners, threshold, nonce)], (h) => x.last("Vault creation sent.", h)));
     if ((await c.rpc.code(addr)) === "0x") throw new Error("the vault was not created; check the explorer and try again");
-    await saveList([addr, ...(await loadList()).filter((a) => a !== addr)]);
+    await saveList([addr, ...(await loadList()).filter((a) => a !== addr)].slice(0, LIST_MAX));
     x.$("ms-owners").value = x.$("ms-thr").value = "";
     x.ok("shared vault created");
     open = addr;

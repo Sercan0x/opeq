@@ -59,15 +59,15 @@ export function checkOwners(owners, threshold) {
   return list;
 }
 
-export function vaultSalt(creator, owners, threshold, nonce) {
+export function vaultSalt(chainId, creator, owners, threshold, nonce) {
   const tag = enc.encode("opeq/evm/multisig/v1");
   const strTail = dynBytes(tag);
-  return keccak256(word(160), addressWord(creator), word(160 + strTail.length), word(threshold), leftWord(nonce), strTail, addressArray(owners));
+  return keccak256(word(192), word(chainId), addressWord(creator), word(192 + strTail.length), word(threshold), leftWord(nonce), strTail, addressArray(owners));
 }
 
-export function vaultAddress(creator, owners, threshold, nonce, factory = factoryAddress()) {
+export function vaultAddress(chainId, creator, owners, threshold, nonce, factory = factoryAddress()) {
   const args = concat(word(64), word(threshold), addressArray(owners));
-  return create2(factory, vaultSalt(creator, owners, threshold, nonce), keccak256(MS_INIT_BYTES, args));
+  return create2(factory, vaultSalt(chainId, creator, owners, threshold, nonce), keccak256(MS_INIT_BYTES, args));
 }
 
 export function createCall(owners, threshold, nonce) {
@@ -183,7 +183,9 @@ export class Vault {
     const owners = Array.from({ length: count }, (_, i) => readAddr(ow.at(2 + i)));
     const threshold = Number(words(t).at(0));
     if (new Set(owners).size !== owners.length || threshold < 1 || threshold > owners.length) throw new Error("malformed vault settings from the network");
-    return { owners, threshold, config: Number(words(c).at(0)), proposals: Number(words(n).at(0)), balance: bal };
+    const pcount = words(n).at(0);
+    if (pcount > 1000000n) throw new Error("malformed proposal count from the network");
+    return { owners, threshold, config: Number(words(c).at(0)), proposals: Number(pcount), balance: bal };
   }
 
   async read() {
@@ -217,7 +219,7 @@ export class Vault {
     const a = await this.chain.at((b) => this.proposalAt(this.chain.rpc, id, b));
     if (this.chain.check) {
       const b = await this.proposalAt(this.chain.check, id).catch(() => null);
-      if (!b || ["callsHash", "proposer", "expires", "config", "executed", "cancelled", "approvals", "live"].some((k) => b[k] !== a[k])) throw new Error("two independent network sources disagree about this proposal, so nothing was signed. Try again in a minute");
+      if (!b || ["callsHash", "proposer", "expires", "config", "executed", "cancelled"].some((k) => b[k] !== a[k])) throw new Error("two independent network sources disagree about this proposal, so nothing was signed. Try again in a minute");
     }
     return a;
   }
