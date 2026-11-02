@@ -3,6 +3,7 @@ import { encodeErc20Transfer, factoryAddress } from "./lib/evmwots.js";
 import { IdbStore } from "./lib/vaultstore.js";
 import { NET } from "./net.js";
 import { sha256 } from "./lib/sha256.js";
+import * as MSV from "./evmvault.js";
 
 const $ = (id) => document.getElementById(id);
 const store = new IdbStore("opeq-evm");
@@ -103,6 +104,7 @@ function clearCard() {
   $("e-ok").textContent = $("e-err").textContent = "";
   for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset"]) $(id).textContent = "";
   for (const id of ["e-to", "e-amt", "e-tok"]) $(id).value = "";
+  MSV.hideAll();
 }
 
 export function stop() {
@@ -117,7 +119,7 @@ export async function forget(id) {
   const prefix = `${id}:evm:`;
   for (const r of await store.all()) if (typeof r.id === "string" && r.id.startsWith(prefix)) await store.del(r.id);
   try {
-    const keys = Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith(`opeq:evm-tokens:${id}:`) || k === `opeq:evm-recent:${id}`);
+    const keys = Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith(`opeq:evm-tokens:${id}:`) || k.startsWith(`opeq:evm-ms:${id}:`) || k === `opeq:evm-recent:${id}`);
     if (keys.length) await chrome.storage.local.remove(keys);
   } catch {}
 }
@@ -180,6 +182,7 @@ async function refresh() {
   if (p) $("e-pend-text").textContent = `A transfer you signed may still go through until ${new Date(p.deadline * 1000).toLocaleTimeString()}. New sends wait until it confirms, that time passes, or you cancel it.`;
   $("e-rw-text").textContent = `${s.left} signatures left on this network's key tree. Rekey soon, it takes one transaction.`;
   await refreshTokens();
+  if (c === chain) await MSV.refresh(s.state === "ready").catch((e) => { $("e-err").textContent = e.message; });
 }
 
 const tokMeta = new Map();
@@ -452,4 +455,17 @@ export function init(api) {
   }
   ui = api;
   bind();
+  MSV.init({
+    $, hide, chain: () => chain, tag, feeText, last, explorer, lookalike, recipient, remember,
+    ask: (m, y) => ui.ask(m, y),
+    guard: (fn) => ui.guard("e-err", "e-ok", fn),
+    ok: (t) => { $("e-ok").textContent = t; },
+    copy: (el, text, msg) => ui.copyTo(el, text, msg),
+    refreshMain: () => refresh(),
+    tokens: () => loadTokens(),
+    kv: {
+      get: async (k) => { try { return (await chrome.storage.local.get(k))[k]; } catch { return null; } },
+      set: async (k, v) => { try { await chrome.storage.local.set({ [k]: v }); } catch {} },
+    },
+  });
 }

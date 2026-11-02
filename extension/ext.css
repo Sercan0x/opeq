@@ -154,3 +154,19 @@
 .gasline .fe-go:hover { color: #fff; }
 .gasline .fe-go:first-of-type:not(.hidden), .gasline .fe-go:not(.hidden) { margin-left: auto; }
 .gasline .fe-go:not(.hidden) ~ .fe-go:not(.hidden) { margin-left: 12px; }
+.ms-list { display: grid; gap: 8px; margin: 12px 0 4px; }
+.ms-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 12px; border: 1px solid #2e3c50; border-radius: 6px; background: #070b11; color: #fff; font-size: 13px; cursor: pointer; text-align: left; }
+.ms-row:hover { border-color: var(--ice); }
+.ms-meta { color: var(--text-2); font-size: 12.5px; white-space: nowrap; }
+.ms-owners { display: grid; gap: 4px; margin: 10px 0 14px; }
+.ms-owner { margin: 0; font-size: 12px; color: var(--text-2); word-break: break-all; }
+.ms-owner.me { color: var(--ice); }
+.ms-props { display: grid; gap: 10px; margin-bottom: 6px; }
+.ms-prop { padding: 12px; border: 1px solid #2e3c50; border-radius: 6px; background: #070b11; }
+.ms-prop.done { opacity: 0.55; }
+.ms-prop p { margin: 0 0 6px; }
+.ms-prop-head { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); }
+.ms-prop-title { font-size: 14px; color: #fff; font-weight: 600; }
+.ms-prop-title.warn { color: var(--red); }
+.ms-prop-row { font-size: 12px; color: var(--text-2); word-break: break-all; }
+.ms-prop .row { margin-top: 8px; }

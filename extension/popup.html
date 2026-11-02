@@ -155,6 +155,38 @@
         <div class="row"><button class="btn btn-line btn-sm" id="e-tok-go" type="button">Add token</button></div>
       </details>
     </div>
+    <div class="card hidden" id="e-ms">
+      <h2 class="silk"><span>PCIE_3</span><b>shared vaults</b></h2>
+      <p class="hint">Optional. A shared vault moves funds only after several OPEQ accounts approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature.</p>
+      <div class="ms-list" id="ms-list"></div>
+      <details class="ev-more"><summary>Create a shared vault</summary>
+        <label class="f" for="ms-owners">Other owners' EVM addresses, one per line</label><textarea id="ms-owners" rows="3" spellcheck="false" autocomplete="off" placeholder="0x…"></textarea>
+        <p class="hint">Your address is added for you. Each owner must have pressed Set up for OPEQ on this network.</p>
+        <label class="f" for="ms-thr">Approvals needed</label><input type="text" id="ms-thr" inputmode="numeric" autocomplete="off" placeholder="2">
+        <div class="row"><button class="btn btn-solid btn-sm" id="ms-create" type="button">Create vault</button></div>
+      </details>
+      <details class="ev-more"><summary>Add a vault you are an owner of</summary>
+        <label class="f" for="ms-add">Vault address</label><input type="text" id="ms-add" spellcheck="false" autocomplete="off" placeholder="0x…">
+        <div class="row"><button class="btn btn-line btn-sm" id="ms-add-go" type="button">Add vault</button></div>
+      </details>
+    </div>
+    <div class="card hidden" id="ms-v">
+      <h2 class="silk"><span>VAULT</span><b>shared vault</b></h2>
+      <div class="addr-row"><p class="mono addr" id="ms-v-addr"></p><button class="icon-btn small" id="ms-v-copy" type="button" title="Copy vault address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy vault address</span></button></div>
+      <dl class="kv">
+        <div><dt>Balance</dt><dd id="ms-v-bal">–</dd></div>
+        <div><dt>Approvals needed</dt><dd id="ms-v-thr">–</dd></div>
+      </dl>
+      <div class="ms-owners" id="ms-v-owners"></div>
+      <div class="ms-props" id="ms-v-props"></div>
+      <details class="ev-more"><summary>Propose a payment</summary>
+        <label class="f" for="ms-asset">Asset</label><select id="ms-asset"></select>
+        <label class="f" for="ms-to">To address</label><input type="text" id="ms-to" spellcheck="false" autocomplete="off" placeholder="0x…">
+        <label class="f" for="ms-amt">Amount</label><input type="text" id="ms-amt" inputmode="decimal" autocomplete="off" placeholder="0.01">
+        <div class="row"><button class="btn btn-solid btn-sm" id="ms-pay-go" type="button">Propose</button></div>
+      </details>
+      <div class="row tight"><a class="btn btn-line btn-sm" id="ms-v-exp" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="ms-v-refresh" type="button">Refresh</button><button class="btn btn-line btn-sm" id="ms-v-close" type="button">All vaults</button></div>
+    </div>
     <div class="card hidden" id="e-rekey">
       <h2 class="silk"><span>CMOS</span><b>rekey</b></h2>
       <p class="hint">Moves this network to a fresh key tree. Your address stays the same.</p>
