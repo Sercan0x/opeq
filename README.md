@@ -137,6 +137,23 @@ python3 opeq.py recover --program <PROGRAM_ID> --vault restored.json
 
 The vault file holds the encrypted master seed. Keep one copy in use at a time: two machines signing from the same file can reuse a one-time key. `recover` reads the on-chain counter and skips 64 keys, and `restore` does the same for an older copy of a vault file.
 
+## Multisig (beta)
+
+A multisig is optional. A normal wallet works exactly as before; a multisig is a separate shared account that several OPEQ wallets control together. Every owner is an OPEQ wallet or OPEQ account, never a plain Ed25519 or ECDSA key, so each approval is a quantum-resistant one-time signature from that owner's own wallet.
+
+- **Solana:** the separate program `msig_program.py` (hand-written sBPF, reference model `msig_ref.py`, tests and differential fuzzing in `test_msig.py`). A multisig has an ID (`["m", creator, nonce]`) and a deposit address (`["v", multisig]`) that holds the funds. Owners are OPEQ wallet addresses of the mainnet wallet program, up to 8. Proposals store the full instructions on chain; owners approve a proposal by its id and content hash, and any owner can execute it once enough approvals are in. Owner and threshold changes are proposals too and void every pending proposal.
+- **EVM:** `evm/src/OpeqMultisig.sol` and `evm/src/OpeqMultisigFactory.sol`. Only OPEQ accounts (checked by code hash) can be owners. The vault address depends only on the owners, the threshold and a nonce, so it is the same on every network; funds sent to it on another network can be recovered by deploying the same configuration there. The contracts are immutable.
+
+| | Address |
+|---|---|
+| Solana multisig program (mainnet) | `3qjjDf8MdqDTFmBm3zJfKFqZKbZ5xgZM1ntGYVeqEuHB` |
+| Its code sha256 | `83ff2e876a98bccc62080f739792860c0b964355b9848c0cf6695dee28fc222c` |
+| Its upgrade authority | `6KX8M2fwCGyMTFodAL2HE1gbhwM5vYzfia2rsjhuHPU8` (the admin opeq wallet) |
+| EVM multisig factory (Ethereum, Base, Arbitrum, Robinhood Chain) | `0x260e85a98575012b816605b0feacb6cfdde78cef` |
+| Solana multisig program (devnet) | `8kP9V6jqA2vArHNjXTLXJUG9p2wBte7ZxXYuEJYuiNWN` |
+
+The Solana multisig program stays upgradeable by the admin opeq wallet during the beta and will be made immutable after the external audit. Its code is reproducible: `python3 msig_program.py --opeq HL598vrersxS5AUUV6NyzHgpSyK31xAmqMsqUhxzeKm8 --out vault.elf` prints the hash above. The multisig has had internal reviews only; start with small amounts.
+
 ## Mainnet deployment
 
 | | Address |
