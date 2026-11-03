@@ -61,8 +61,13 @@ def config(args):
         raise SystemExit("the --rpc url carries a key that every user can read from the extension; use a proxy or pass --allow-rpc-key")
     if not args.version or not re.match(r"^\d+\.\d+\.\d+$", args.version):
         raise SystemExit("a mainnet build needs an explicit --version like 1.0.0")
-    return {"name": "mainnet", "mainnet": True, "program": args.program, "rpc": args.rpc, "genesis": MAINNET_GENESIS,
-            "explorerQuery": "", "sol": "SOL", "swap": False, "jupiter": True, "evm": EVM_MAINNETS}
+    cfg = {"name": "mainnet", "mainnet": True, "program": args.program, "rpc": args.rpc, "genesis": MAINNET_GENESIS,
+           "explorerQuery": "", "sol": "SOL", "swap": False, "jupiter": True, "evm": EVM_MAINNETS}
+    if args.vault_program:
+        if not B58.match(args.vault_program) or args.vault_program == DEVNET_VAULT:
+            raise SystemExit("--vault-program must be the mainnet vault program id")
+        cfg["vault"] = args.vault_program
+    return cfg
 
 
 def strip_other(html, net):
@@ -127,6 +132,20 @@ def check_mainnet(cfg):
     if P.state_pda(aid, pk(CHECK["gov"]))[0] != pk(CHECK["admin_state"]) or b58(P.wallet_pda(aid, pk(CHECK["gov"]))[0]) != CHECK["authority"]:
         raise SystemExit("--authority is not the wallet of the admin vault on --gov")
     print("mainnet check ok: genesis, executable program, code sha256", hashlib.sha256(elf).hexdigest()[:16], "upgrade authority", b58(auth), "gov immutable")
+    if cfg.get("vault"):
+        import msig_program
+        vacc = rpc_call(cfg["rpc"], "getAccountInfo", [cfg["vault"], {"encoding": "jsonParsed"}])["value"]
+        if not vacc or vacc["owner"] != LOADER or not vacc["executable"]:
+            raise SystemExit("the --vault-program account is not a deployed upgradeable program on mainnet")
+        vraw = base64.b64decode(rpc_call(cfg["rpc"], "getAccountInfo", [vacc["data"]["parsed"]["info"]["programData"], {"encoding": "base64"}])["value"]["data"][0])
+        velf = msig_program.build(pk(cfg["program"])).elf()
+        vcode = vraw[45:]
+        if vcode[:len(velf)] != velf or any(vcode[len(velf):]):
+            raise SystemExit("on-chain vault program code differs from the vault program built from msig_program.py for this wallet program")
+        vauth = vraw[13:45] if vraw[12] == 1 else None
+        if vauth is not None and b58(vauth) != CHECK["authority"]:
+            raise SystemExit(f"vault program upgrade authority is {b58(vauth)}, expected the admin vault {CHECK['authority']} or none")
+        print("vault program check ok: code sha256", hashlib.sha256(velf).hexdigest()[:16], "upgrade authority", b58(vauth) if vauth else "none (immutable)")
 
 
 def b58(b):
@@ -227,6 +246,7 @@ if __name__ == "__main__":
     ap.add_argument("--authority")
     ap.add_argument("--gov")
     ap.add_argument("--admin-state")
+    ap.add_argument("--vault-program")
     ap.add_argument("--allow-rpc-key", action="store_true")
     args = ap.parse_args()
     dist, cfg, version = build(args)

@@ -1198,9 +1198,16 @@ def emit_sweep(a):
 
 
 def main():
-    opeq = bytes.fromhex(sys.argv[1]) if len(sys.argv) > 1 else hashlib.sha256(b"opeq program").digest()
-    elf = build(opeq).elf()
-    print(len(elf), "bytes")
+    import argparse
+    from solkit import pk
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--opeq", required=True, help="the OPEQ wallet program id this vault program accepts owners from")
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args()
+    elf = build(pk(a.opeq)).elf()
+    with open(a.out, "wb") as f:
+        f.write(elf)
+    print(a.out, len(elf), "bytes, sha256", hashlib.sha256(elf).hexdigest())
 
 
 if __name__ == "__main__":

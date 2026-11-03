@@ -217,7 +217,7 @@ def main():
         if args.authority_vault:
             import opeq
             opeq.prove_vault(rpc, args.authority_vault)
-            auth = vault_authority(rpc, args.authority_vault, elf)
+            auth = vault_authority(rpc, args.authority_vault, None if re.search(rb"opeq/\d+\.\d+ vault", elf) else elf)
         else:
             auth = None if not args.authority else ("none" if args.authority == "none" else pk(args.authority))
         import hashlib
