@@ -9,6 +9,7 @@ import * as keep from "./keep.js";
 import { NET } from "./net.js";
 import * as evm from "./evm.js";
 import * as SV from "./solvaultui.js";
+import * as BR from "./bridge.js";
 
 const PROGRAM = NET.program;
 const EXPLORER = "https://explorer.solana.com";
@@ -1292,6 +1293,24 @@ async function init() {
   } else {
     if ($("tab-vaults")) $("tab-vaults").remove();
     if ($("pane-vaults")) $("pane-vaults").remove();
+  }
+  if (NET.bridge && $("pane-bridge") && evm.available()) {
+    BR.initSol({
+      $, NET, ask, log, planTopup, run,
+      session: () => session, rpc: () => rpc,
+      tag: () => ({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds" }),
+      guard: (fn) => guard("b-err", "b-ok", fn),
+      ok: (t) => { $("b-ok").textContent = t; },
+      fee: async (cu) => `about ${sol(await networkFee(cu))} SOL`,
+      done: () => { refreshWallet().catch(() => {}); },
+      myAddress: async (to) => {
+        const a = await evm.accountOn(to);
+        return { address: a.address, note: a.ready ? "" : "Your OPEQ account on that network is not set up yet. The funds arrive anyway; switch to that network and press Set up before you move them." };
+      },
+    });
+  } else {
+    if ($("tab-bridge")) $("tab-bridge").remove();
+    if ($("pane-bridge")) $("pane-bridge").remove();
   }
   initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
   const kept = await keep.load(IDLE_MS);

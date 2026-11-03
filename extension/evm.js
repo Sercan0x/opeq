@@ -4,6 +4,8 @@ import { IdbStore } from "./lib/vaultstore.js";
 import { NET } from "./net.js";
 import { sha256 } from "./lib/sha256.js";
 import * as MSV from "./evmvault.js";
+import * as BR from "./bridge.js";
+import { b58encode } from "./lib/solana.js";
 import { factoryAddress as msFactoryAddress } from "./lib/evmmultisig.js";
 
 const $ = (id) => document.getElementById(id);
@@ -99,8 +101,23 @@ async function saveTokens(list) {
   try { await chrome.storage.local.set({ [tokKey()]: list.slice(0, TOK_MAX) }); } catch {}
 }
 
+let bridgePaint = null;
+
+export async function accountOn(chainId) {
+  const s = ui.session();
+  if (!s) throw new Error("unlock the wallet first");
+  const n = NETS.find((x) => x.chainId === chainId);
+  if (!n) throw new Error("that network is not available in this wallet");
+  const c = new EvmChain({ chain: n, store, macKey: await macFor(s.master), legacyMac: s.macKey, vaultId: s.id, master: s.master.slice(), compute: ui.compute });
+  try {
+    await c.loadIdentity(null);
+    const st = await c.status().catch(() => null);
+    return { address: c.account, ready: !!st && st.state === "ready" };
+  } finally { c.master.fill(0); c.fee = 0n; }
+}
+
 function clearCard() {
-  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw"]) hide(id, true);
+  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw", ...($("e-br") ? ["e-br"] : [])]) hide(id, true);
   $("e-bal").textContent = $("e-state").textContent = "…";
   $("e-ok").textContent = $("e-err").textContent = "";
   for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset"]) $(id).textContent = "";
@@ -177,6 +194,7 @@ async function refresh() {
   hide("e-take", s.state !== "other");
   hide("e-send", s.state !== "ready");
   hide("e-rekey", s.state !== "ready");
+  if ($("e-br")) { hide("e-br", s.state !== "ready"); if (bridgePaint) bridgePaint(); }
   hide("e-rw", !(s.state === "ready" && s.left <= REKEY_SOON));
   const p = s.state === "ready" && s.r && s.r.pending;
   hide("e-pend", !p);
@@ -457,6 +475,22 @@ export function init(api) {
   }
   ui = api;
   bind();
+  if (NET.bridge && $("e-br")) {
+    BR.initEvm({
+      $, NET, chain: () => chain, tag, feeText, last,
+      ask: (m, y) => ui.ask(m, y),
+      guard: (fn) => ui.guard("e-err", "e-ok", fn),
+      ok: (t) => { $("e-ok").textContent = t; },
+      refreshMain: () => refresh(),
+      done: () => { refresh().catch(() => {}); },
+      onChain: (f) => { bridgePaint = f; },
+      myAddress: async (to) => {
+        if (to === 792703809) return { address: b58encode(ui.session().wallet) };
+        const a = await accountOn(to);
+        return { address: a.address, note: a.ready ? "" : `Your OPEQ account on ${NETS.find((x) => x.chainId === to).name} is not set up yet. The funds arrive anyway; press Set up there before you move them.` };
+      },
+    });
+  } else if ($("e-br")) $("e-br").remove();
   MSV.init({
     $, hide, chain: () => chain, tag, feeText, last, explorer, lookalike, recipient, remember,
     ask: (m, y) => ui.ask(m, y),

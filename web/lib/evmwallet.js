@@ -498,7 +498,7 @@ export class EvmChain {
         if (gone(a) && gone(b)) { delete r.pending; await this.put(r); return { hash: null, gasUsed: 0n, nothing: true, landed: true }; }
       }
       if (!cancel) { await this.resolvePending(r); await this.idle(); }
-      const inner = await this.callsGas(calls);
+      const inner = limits.inner !== undefined ? limits.inner : await this.callsGas(calls);
       if (limits.maxInner !== undefined && inner > limits.maxInner) throw new Error("this transaction now needs more gas than the fee you confirmed. Nothing was signed; check the proposal and try again");
       await this.gasCheck(EXEC_GAS + inner);
       const deadline = (await this.clock()) + DEADLINE_S;

@@ -14,9 +14,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "extension")
 WEB = os.path.join(ROOT, "web")
 LIB = ["amms.js", "jupiter.js", "compute.js", "engine.js", "mnemonic.js", "protocol.js", "sha256.js", "solana.js", "tokens.js", "vaultstore.js", "wordlist.js", "worker.js", "wots.js",
-       "evmcode.js", "evmmscode.js", "evmmultisig.js", "solvault.js", "evmtx.js", "evmwallet.js", "evmwots.js", "keccak.js", "secp256k1.js"]
+       "evmcode.js", "evmmscode.js", "evmmultisig.js", "solvault.js", "relay.js", "evmtx.js", "evmwallet.js", "evmwots.js", "keccak.js", "secp256k1.js"]
 ASSETS = ["logo.svg", "mark.svg", "chain-sol.svg", "chain-eth.svg", "chain-base.svg", "chain-arb.svg", "chain-hood.svg"]
-FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "evm.js", "evmvault.js", "solvaultui.js", "feekey.js", "keep.js", "net.js", "bg.js"]
+FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "evm.js", "evmvault.js", "solvaultui.js", "bridge.js", "feekey.js", "keep.js", "net.js", "bg.js"]
 EVM_MAINNETS = [
     {"chainId": 8453, "name": "Base", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/8453", "check": "https://mainnet.base.org", "explorer": "https://basescan.org"},
     {"chainId": 42161, "name": "Arbitrum", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/42161", "check": "https://arb1.arbitrum.io/rpc", "explorer": "https://arbiscan.io"},
@@ -67,6 +67,10 @@ def config(args):
         if not B58.match(args.vault_program) or args.vault_program == DEVNET_VAULT:
             raise SystemExit("--vault-program must be the mainnet vault program id")
         cfg["vault"] = args.vault_program
+    if args.bridge_fee_bps:
+        if not (0 < args.bridge_fee_bps <= 100) or not re.match(r"^0x[0-9a-f]{40}$", args.bridge_fee_to or ""):
+            raise SystemExit("--bridge-fee-bps must be 1..100 with --bridge-fee-to <lowercase EVM address>")
+    cfg["bridge"] = {"api": "https://api.relay.link", "feeBps": args.bridge_fee_bps or 0, "feeTo": args.bridge_fee_to or ""}
     return cfg
 
 
@@ -247,6 +251,8 @@ if __name__ == "__main__":
     ap.add_argument("--gov")
     ap.add_argument("--admin-state")
     ap.add_argument("--vault-program")
+    ap.add_argument("--bridge-fee-bps", type=int, default=0)
+    ap.add_argument("--bridge-fee-to")
     ap.add_argument("--allow-rpc-key", action="store_true")
     args = ap.parse_args()
     dist, cfg, version = build(args)

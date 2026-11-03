@@ -219,6 +219,16 @@
         </details>
         <div class="row tight"><a class="btn btn-line btn-sm" id="ms-v-exp" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="ms-v-refresh" type="button">Refresh</button><button class="btn btn-line btn-sm" id="ms-v-close" type="button">All vaults</button></div>
       </div>
+      <div class="card hidden" id="e-br">
+        <h2 class="silk"><span>PCIE_4</span><b>bridge</b></h2>
+        <p class="hint">Move ETH or USDC to your own OPEQ address on another network or on Solana. Bridged by Relay.</p>
+        <label class="f" for="eb-to">To network</label><select id="eb-to"></select>
+        <label class="f" for="eb-kind">Asset</label><select id="eb-kind"></select>
+        <label class="f" for="eb-amt">Amount</label><input type="text" id="eb-amt" inputmode="decimal" autocomplete="off" placeholder="0.01">
+        <label class="f" for="eb-slip">Cancel if the price moves more than</label><select id="eb-slip"><option value="50">0.5%</option><option value="100" selected>1%</option><option value="300">3%</option></select>
+        <div class="row"><button class="btn btn-solid" id="eb-go" type="button">Review bridge</button></div>
+        <p class="hint" id="eb-st" role="status"></p>
+      </div>
       <div class="card hidden" id="e-rekey">
         <h2 class="silk"><span>CMOS</span><b>rekey</b></h2>
         <p class="hint">Moves this network to a fresh key tree. Your address stays the same.</p>
@@ -278,6 +288,7 @@
           <button class="tab" role="tab" id="tab-send" aria-controls="pane-send" aria-selected="true" type="button">Send</button>
           <button class="tab" role="tab" id="tab-tokens" aria-controls="pane-tokens" aria-selected="false" type="button">Tokens</button>
           <button class="tab" role="tab" id="tab-swap" aria-controls="pane-swap" aria-selected="false" type="button">Swap</button>
+          <button class="tab" role="tab" id="tab-bridge" aria-controls="pane-bridge" aria-selected="false" type="button">Bridge</button>
           <button class="tab" role="tab" id="tab-receive" aria-controls="pane-receive" aria-selected="false" type="button">Receive</button>
           <button class="tab" role="tab" id="tab-keys" aria-controls="pane-keys" aria-selected="false" type="button">Keys</button>
           <button class="tab" role="tab" id="tab-vaults" aria-controls="pane-vaults" aria-selected="false" type="button">Multisig</button>
@@ -338,6 +349,18 @@
           <div class="row"><button class="btn btn-solid" id="x-go" type="button">Sign and swap</button></div>
           <p class="ok" id="x-ok"></p><p class="err" id="x-err" role="alert"></p>
           </div>
+        </div>
+        </div>
+        <div class="pane hidden" role="tabpanel" id="pane-bridge" aria-labelledby="tab-bridge">
+          <div>          <h2 class="silk"><span>PCIE_5</span><b>bridge</b></h2>
+          <p class="hint">Move SOL or USDC to your own OPEQ address on Ethereum, Base, Arbitrum or Robinhood Chain. Bridged by Relay.</p>
+          <label class="f" for="b-to">To network</label><select id="b-to"></select>
+          <label class="f" for="b-kind">Asset</label><select id="b-kind"></select>
+          <label class="f" for="b-amt">Amount</label><input type="text" id="b-amt" inputmode="decimal" autocomplete="off" placeholder="0.1">
+          <label class="f" for="b-slip">Cancel if the price moves more than</label><select id="b-slip"><option value="50">0.5%</option><option value="100" selected>1%</option><option value="300">3%</option></select>
+          <div class="row"><button class="btn btn-solid" id="b-go" type="button">Review bridge</button></div>
+          <p class="hint" id="b-st" role="status"></p>
+          <p class="ok" id="b-ok"></p><p class="err" id="b-err" role="alert"></p>
         </div>
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-receive" aria-labelledby="tab-receive">
