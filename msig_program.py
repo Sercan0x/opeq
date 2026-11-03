@@ -97,7 +97,7 @@ def build(opeq_program):
     if len(opeq_program) != 32:
         raise ValueError("the OPEQ program id must be 32 bytes")
     a = Asm()
-    a.data("version", b"opeq-vault/1")
+    a.data("version", b"opeq/1.0 vault")
     a.data("opeq_id", opeq_program)
     a.data("seed_w", b"w")
     a.data("seed_m", b"m")
