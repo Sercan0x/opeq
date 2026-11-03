@@ -56,6 +56,11 @@ if (live.length) {
   tamper("minimum below slippage", (t) => { const p = t.protocol.v2.orderData.output.payments[0]; p.minimumAmount = (BigInt(p.expectedAmount) / 2n).toString(); }, /slippage/);
   tamper("different output asset", (t) => { t.protocol.v2.orderData.output.payments[0].currency = "0x000000000000000000000000000000000000dead"; }, /different asset/);
   tamper("expired order", (t) => { t.protocol.v2.orderData.output.deadline = now() - 1; }, /expires/);
+  tamper("extra order fees", (t) => { t.protocol.v2.orderData.fees = [{ recipient: "0x000000000000000000000000000000000000dead", amount: "1" }]; }, /extra fees/);
+  tamper("refund in another asset", (t) => { t.protocol.v2.orderData.inputs[0].refunds[0].currency = "0x000000000000000000000000000000000000dead"; }, /another asset/);
+  tamper("no refund on the sending network", (t) => { const r = t.protocol.v2.orderData.inputs[0].refunds; t.protocol.v2.orderData.inputs[0].refunds = r.filter((x) => x.chainId !== t.protocol.v2.paymentDetails.chainId); }, /sending network/);
+  tamper("unknown order version", (t) => { t.protocol.v2.orderData.version = "v9"; }, /order format/);
+  tamper("refund chain as a prototype key", (t) => { t.protocol.v2.orderData.inputs[0].refunds[0].chainId = "constructor"; }, /another network/);
   tamper("missing order data", (t) => { delete t.protocol; }, /no order data/);
   tamper("malformed amount", (t) => { t.protocol.v2.orderData.output.payments[0].expectedAmount = "1e30"; }, /malformed/);
   const t = clone(q);

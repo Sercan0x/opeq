@@ -110,13 +110,19 @@ export function check(q, req, nowS) {
   if (!Array.isArray(od.inputs) || od.inputs.length !== 1) bad("unexpected inputs");
   const inp = od.inputs[0];
   if (!inp.payment || inp.payment.chainId !== NAMES[from] || !sameAddress(from, inp.payment.currency, req.originCurrency) || big(inp.payment.amount) !== amount) bad("input does not match");
+  if (v2.hubType !== "onchain" || od.version !== "v1") bad("unknown order format");
+  if (!Array.isArray(od.fees) || od.fees.length) bad("the order pays extra fees");
   if (!Array.isArray(inp.refunds) || !inp.refunds.length) bad("no refund path");
+  let originRefund = false;
   for (const rf of inp.refunds) {
-    const chain = Object.keys(NAMES).map(Number).find((id) => NAMES[id] === rf.chainId);
-    if (chain !== from && chain !== to) bad("refund on another network");
+    const chain = rf.chainId === NAMES[from] ? from : rf.chainId === NAMES[to] ? to : null;
+    if (chain === null) bad("refund on another network");
     const mine = chain === from ? req.user : req.recipient;
     if (!sameAddress(chain, rf.recipient, mine)) bad("refund goes to someone else");
+    if (!sameAddress(chain, rf.currency, chain === from ? req.originCurrency : req.destinationCurrency)) bad("refund in another asset");
+    if (chain === from) originRefund = true;
   }
+  if (!originRefund) bad("no refund on the sending network");
   const out = od.output;
   if (!out || out.chainId !== NAMES[to]) bad("wrong destination network");
   if (Array.isArray(out.calls) ? out.calls.length : out.calls) bad("the order runs extra calls");

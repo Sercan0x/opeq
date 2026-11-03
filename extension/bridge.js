@@ -9,7 +9,10 @@ const ERC20_DEPOSIT_GAS = 150000n;
 const POLL_MS = 4000, POLL_MAX = 75;
 const NAME = { 1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 4663: "Robinhood Chain", [R.SOLANA_ID]: "Solana" };
 
-let sx = null, ex = null;
+
+const solCard = { gen: 0 }, evmCard = { gen: 0 };
+export function stopEvm() { evmCard.gen++; }
+export function stopSol() { solCard.gen++; }
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -58,15 +61,16 @@ function reviewRows(from, to, kind, p) {
     ["At least", `${fmt(p.c.min, b.decimals)} ${b.symbol}`],
     [`Your address on ${NAME[to]}`, p.dest.address, true],
   ];
-  if (p.c.feeUsd !== null) rows.push(["Bridge fee", `about $${p.c.feeUsd.toFixed(2)}`]);
+  if (p.c.feeUsd !== null) rows.push(["Relay fee", `about $${p.c.feeUsd.toFixed(2)}`]);
+  if (p.c.appFee > 0n) rows.push(["OPEQ fee", `${fmt(p.c.appFee, a.decimals)} ${a.symbol}`]);
   if (p.c.seconds) rows.push(["Time", `about ${p.c.seconds < 60 ? `${p.c.seconds} seconds` : `${Math.round(p.c.seconds / 60)} minutes`}`]);
   return rows;
 }
 
-function reviewNotes(ctx, to, p) {
+function reviewNotes(ctx, from, to, p) {
   const notes = [
     { text: "Signed with one quantum-resistant one-time key." },
-    { text: `Bridged by Relay. The funds go into Relay's deposit contract and arrive at your own OPEQ address on ${NAME[to]}. For those few seconds you rely on Relay, and that step is not quantum-resistant. If the bridge does not complete, Relay refunds this address.`, warn: true },
+    { text: `Bridged by Relay. The funds go into Relay's deposit contract and arrive at your own OPEQ address on ${NAME[to]}. Until Relay delivers, usually within seconds, you rely on Relay, and that step is not quantum-resistant. If the bridge does not complete, Relay has committed to refund your own address on ${NAME[from]} or ${NAME[to]}.`, warn: true },
   ];
   const f = feeConfig(ctx.NET);
   if (f) notes.push({ text: `Includes an OPEQ fee of ${(f.bps / 100).toFixed(2)}%.` });
@@ -74,21 +78,30 @@ function reviewNotes(ctx, to, p) {
   return notes;
 }
 
-async function follow(ctx, requestId, to, stEl) {
+function follow(ctx, card, requestId, from, to, stEl) {
   if (!requestId) return;
-  const say = (t) => { stEl.textContent = t; };
-  say("Bridge: waiting for Relay to see the deposit…");
-  for (let i = 0; i < POLL_MAX; i++) {
-    await new Promise((r) => setTimeout(r, POLL_MS));
-    let s;
-    try { s = await R.status(requestId, { api: (ctx.NET.bridge && ctx.NET.bridge.api) || R.API }); } catch { continue; }
-    if (s.status === "success") { say(`Bridge done: the funds arrived on ${NAME[to]}.`); ctx.done(); return; }
-    if (s.status === "refund") { say("Bridge refunded: Relay sent the funds back to this address."); ctx.done(); return; }
-    if (s.status === "failure") { say(`Bridge failed on Relay's side. Relay refunds failed bridges; check request ${requestId.slice(0, 10)}… on relay.link if nothing arrives.`); return; }
-    say(s.status === "pending" || s.status === "submitted" ? `Bridge: sending on ${NAME[to]}…` : "Bridge: waiting for Relay to see the deposit…");
-  }
-  say(`Bridge: still in progress. Check request ${requestId.slice(0, 10)}… on relay.link.`);
+  const gen = card.gen, who = ctx.owner();
+  const live = () => card.gen === gen && ctx.owner() === who;
+  const say = (t) => { if (live()) stEl.textContent = t; };
+  const ref = `Relay request ${requestId}`;
+  (async () => {
+    say(`Bridge: waiting for Relay to see the deposit. ${ref}`);
+    for (let i = 0; i < POLL_MAX; i++) {
+      await new Promise((r) => setTimeout(r, POLL_MS));
+      if (!live()) return;
+      let s;
+      try { s = await R.status(requestId, { api: (ctx.NET.bridge && ctx.NET.bridge.api) || R.API }); } catch { continue; }
+      if (s.status === "success") { say(`Bridge done: the funds arrived on ${NAME[to]}. ${ref}`); if (live()) ctx.done(); return; }
+      if (s.status === "refund") { say(`Bridge refunded: Relay sent the funds back to your own address on ${NAME[from]} or ${NAME[to]}. ${ref}`); if (live()) ctx.done(); return; }
+      if (s.status === "failure") { say(`Bridge failed on Relay's side. Relay has committed to refund failed bridges; look up the request on relay.link if nothing arrives. ${ref}`); return; }
+      const word = { waiting: "waiting for Relay to see the deposit", pending: `sending on ${NAME[to]}`, submitted: `sending on ${NAME[to]}`, delayed: "delayed at Relay, still in progress" }[s.status] || `Relay reports "${s.status}"`;
+      say(`Bridge: ${word}. ${ref}`);
+    }
+    say(`Bridge: still in progress. Look up the request on relay.link. ${ref}`);
+  })();
 }
+
+const sent = (e) => !!(e && (e.sent || e.broadcast || e.pending || e.maybeLanded || e.hash));
 
 function slipOf(sel) {
   const v = Number(sel.value);
@@ -96,7 +109,7 @@ function slipOf(sel) {
 }
 
 export function initSol(ctx) {
-  sx = ctx;
+
   const $ = ctx.$;
   const from = R.SOLANA_ID;
   const paint = () => {
@@ -107,6 +120,8 @@ export function initSol(ctx) {
   paint();
   $("b-to").addEventListener("change", paint);
   $("b-go").addEventListener("click", () => ctx.guard(async () => {
+    solCard.gen++;
+    $("b-st").textContent = "";
     const s = ctx.session(), rpc = ctx.rpc();
     const to = Number($("b-to").value), kind = $("b-kind").value;
     const asset = R.ASSETS[from][kind];
@@ -124,24 +139,29 @@ export function initSol(ctx) {
       if (have < amount) throw new Error(`not enough USDC: the wallet holds ${fmt(have, 6)}`);
     }
     $("b-st").textContent = "Getting a quote from Relay…";
-    const p = await prepare(ctx, from, to, kind, amount, b58encode(wallet), slipOf($("b-slip")));
-    const ix = R.solanaIx(wallet, mint, amount, p.c.orderId, T.TOKEN);
-    if (!R.matchesApi(p.q, from, ix)) throw new Error("Relay's deposit instruction differs from the one this wallet builds. Nothing was signed");
-    $("b-st").textContent = "";
+    let p, ix;
+    try {
+      p = await prepare(ctx, from, to, kind, amount, b58encode(wallet), slipOf($("b-slip")));
+      ix = R.solanaIx(wallet, mint, amount, p.c.orderId, T.TOKEN);
+      if (!R.matchesApi(p.q, from, ix)) throw new Error("Relay's deposit instruction differs from the one this wallet builds. Nothing was signed");
+    } finally { $("b-st").textContent = ""; }
     const plan = await ctx.planTopup([ix], [], spend);
     const rows = [...reviewRows(from, to, kind, p), ["Network fee", await ctx.fee(CU_BRIDGE)]];
-    const notes = [...reviewNotes(ctx, to, p), ...(plan.note ? [{ text: plan.note.trim() }] : [])];
+    const notes = [...reviewNotes(ctx, from, to, p), ...(plan.note ? [{ text: plan.note.trim() }] : [])];
     if (!(await ctx.ask({ ...ctx.tag(), title: `Bridge ${fmt(amount, asset.decimals)} ${asset.symbol} to ${NAME[to]}`, rows, notes }, "Bridge"))) return;
-    const sig = await ctx.run("bridging, grinding the signature", [ix], plan, { cu: CU_BRIDGE, spend });
-    ctx.log(`bridge ${fmt(amount, asset.decimals)} ${asset.symbol} to ${NAME[to]}: ${sig}`, "ok");
+    ctx.log(`bridge ${fmt(amount, asset.decimals)} ${asset.symbol} to ${NAME[to]}: Relay request ${p.c.requestId}`);
+    let sig;
+    try { sig = await ctx.run("bridging, grinding the signature", [ix], plan, { cu: CU_BRIDGE, spend }); }
+    catch (e) { if (sent(e)) follow(ctx, solCard, p.c.requestId, from, to, $("b-st")); throw e; }
+    ctx.log(`bridge deposit to Relay: ${sig}`, "ok");
     ctx.ok(`deposit sent to Relay: ${sig.slice(0, 12)}…`);
     $("b-amt").value = "";
-    follow(ctx, p.c.requestId, to, $("b-st"));
+    follow(ctx, solCard, p.c.requestId, from, to, $("b-st"));
   }));
 }
 
 export function initEvm(ctx) {
-  ex = ctx;
+
   const $ = ctx.$;
   const paint = () => {
     const c = ctx.chain();
@@ -154,6 +174,8 @@ export function initEvm(ctx) {
   ctx.onChain(paint);
   $("eb-to").addEventListener("change", paint);
   $("eb-go").addEventListener("click", () => ctx.guard(async () => {
+    evmCard.gen++;
+    $("eb-st").textContent = "";
     const c = ctx.chain();
     const from = c.id, to = Number($("eb-to").value), kind = $("eb-kind").value;
     if (!R.kinds(from, to).includes(kind)) throw new Error("pick where to bridge");
@@ -164,23 +186,33 @@ export function initEvm(ctx) {
     if (kind === "native") { if (s.bal < amount) throw new Error(`not enough ETH: the account holds ${fmt(s.bal, 18)}`); }
     else { const t = await c.token(asset.address); if (t.balance < amount) throw new Error(`not enough USDC: the account holds ${fmt(t.balance, 6)}`); }
     $("eb-st").textContent = "Getting a quote from Relay…";
-    const p = await prepare(ctx, from, to, kind, amount, c.account, slipOf($("eb-slip")));
-    const calls = R.evmCalls(c.account, asset.address, amount, p.c.orderId);
-    if (!R.matchesApi(p.q, from, calls)) throw new Error("Relay's deposit differs from the one this wallet builds. Nothing was signed");
-    $("eb-st").textContent = "";
+    let p, calls;
+    try {
+      p = await prepare(ctx, from, to, kind, amount, c.account, slipOf($("eb-slip")));
+      calls = R.evmCalls(c.account, asset.address, amount, p.c.orderId);
+      if (!R.matchesApi(p.q, from, calls)) throw new Error("Relay's deposit differs from the one this wallet builds. Nothing was signed");
+    } finally { $("eb-st").textContent = ""; }
     const inner = kind === "native" ? await c.callsGas(calls) : (await c.callsGas([calls[0]])) + ERC20_DEPOSIT_GAS;
     const top = await c.topupPlan(kind === "native" ? amount : 0n);
     if (top) calls.push({ to: c.feeAddress, value: top, data: new Uint8Array(0) });
     const rows = [...reviewRows(from, to, kind, p), ["Network fee", await ctx.feeText(EXEC_GAS + inner)]];
-    const notes = reviewNotes(ctx, to, p);
+    const notes = reviewNotes(ctx, from, to, p);
     if (kind === "usdc") notes.push({ text: `This also lets Relay's deposit contract take exactly ${fmt(amount, 6)} USDC, in the same transaction.` });
     if (top) notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18, 8)} ETH from your account to it for future network fees.` });
     if (!(await ctx.ask({ ...ctx.tag(), title: `Bridge ${fmt(amount, asset.decimals)} ${asset.symbol} to ${NAME[to]}`, rows, notes }, "Bridge"))) return;
-    const res = await c.execute(calls, (h) => ctx.last("Bridge deposit sent.", h), false, { maxInner: (inner * 12n) / 10n + 20000n, inner });
+    if (ctx.chain() !== c) throw new Error("the network changed. Nothing was signed");
+    if (Math.floor(Date.now() / 1000) > p.c.deadline - 60) throw new Error("the quote expired. Nothing was signed; review the bridge again");
+    const now = await c.status();
+    const left = kind === "native" ? now.bal : (await c.token(asset.address)).balance;
+    if (left < amount) throw new Error("the balance changed after you confirmed. Nothing was signed");
+    ctx.log(`bridge ${fmt(amount, asset.decimals)} ${asset.symbol} from ${NAME[from]} to ${NAME[to]}: Relay request ${p.c.requestId}`);
+    let res;
+    try { res = await c.execute(calls, (h) => ctx.last("Bridge deposit sent.", h), false, { maxInner: (inner * 12n) / 10n + 20000n, inner }); }
+    catch (e) { if (sent(e)) follow(ctx, evmCard, p.c.requestId, from, to, $("eb-st")); throw e; }
     ctx.last("Bridge deposit confirmed.", res.hash);
     ctx.ok("deposit sent to Relay");
     $("eb-amt").value = "";
-    follow(ctx, p.c.requestId, to, $("eb-st"));
+    follow(ctx, evmCard, p.c.requestId, from, to, $("eb-st"));
     await ctx.refreshMain();
   }));
 }

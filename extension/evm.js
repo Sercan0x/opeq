@@ -103,6 +103,11 @@ async function saveTokens(list) {
 
 let bridgePaint = null;
 
+export function notReady(a) {
+  if (a.ready) return "";
+  return `Your OPEQ account on ${a.name} is not set up yet. The funds arrive anyway, but you can only move them after Set up there, and Set up is paid from that network's gas key (${a.feeAddress}), which this bridge does not fund${a.feeBal === 0n ? " and which is empty right now" : ""}. Send a little ETH on ${a.name} to that gas key first.`;
+}
+
 export async function accountOn(chainId) {
   const s = ui.session();
   if (!s) throw new Error("unlock the wallet first");
@@ -112,7 +117,7 @@ export async function accountOn(chainId) {
   try {
     await c.loadIdentity(null);
     const st = await c.status().catch(() => null);
-    return { address: c.account, ready: !!st && st.state === "ready" };
+    return { address: c.account, ready: !!st && st.state === "ready", feeAddress: c.feeAddress, feeBal: st ? st.feeBal : null, name: n.name };
   } finally { c.master.fill(0); c.fee = 0n; }
 }
 
@@ -123,6 +128,8 @@ function clearCard() {
   for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset"]) $(id).textContent = "";
   for (const id of ["e-to", "e-amt", "e-tok"]) $(id).value = "";
   MSV.hideAll();
+  BR.stopEvm();
+  if ($("eb-st")) $("eb-st").textContent = "";
 }
 
 export function stop() {
@@ -483,11 +490,13 @@ export function init(api) {
       ok: (t) => { $("e-ok").textContent = t; },
       refreshMain: () => refresh(),
       done: () => { refresh().catch(() => {}); },
+      owner: () => ui.session(),
+      log: (t, k) => ui.log(t, k),
       onChain: (f) => { bridgePaint = f; },
       myAddress: async (to) => {
         if (to === 792703809) return { address: b58encode(ui.session().wallet) };
         const a = await accountOn(to);
-        return { address: a.address, note: a.ready ? "" : `Your OPEQ account on ${NETS.find((x) => x.chainId === to).name} is not set up yet. The funds arrive anyway; press Set up there before you move them.` };
+        return { address: a.address, note: notReady(a) };
       },
     });
   } else if ($("e-br")) $("e-br").remove();

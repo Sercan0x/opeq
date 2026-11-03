@@ -708,6 +708,7 @@ function lockVault(reason) {
   if (session.master) session.master.fill(0);
   try { evm.stop(); } catch {}
   try { SV.hide(); } catch {}
+  try { BR.stopSol(); if ($("b-st")) $("b-st").textContent = ""; } catch {}
   if (session.macRaw) session.macRaw.fill(0);
   session.master = null;
   session = null;
@@ -1303,9 +1304,10 @@ async function init() {
       ok: (t) => { $("b-ok").textContent = t; },
       fee: async (cu) => `about ${sol(await networkFee(cu))} SOL`,
       done: () => { refreshWallet().catch(() => {}); },
+      owner: () => session,
       myAddress: async (to) => {
         const a = await evm.accountOn(to);
-        return { address: a.address, note: a.ready ? "" : "Your OPEQ account on that network is not set up yet. The funds arrive anyway; switch to that network and press Set up before you move them." };
+        return { address: a.address, note: evm.notReady(a) };
       },
     });
   } else {
