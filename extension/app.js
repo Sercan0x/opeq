@@ -306,7 +306,7 @@ async function checkRecipient(to, token) {
   if (acc && eq(acc.owner, engine.program) && acc.data && acc.data.length) throw new Error("that is the internal state account of an opeq wallet, not a wallet address");
   if (acc && NET.vault && eq(acc.owner, pubkey(NET.vault))) {
     const isMs = acc.data && acc.data.length >= 8 && new TextDecoder().decode(acc.data.slice(0, 8)) === "OPEQMS01";
-    throw new Error(isMs ? `that is a shared vault ID, not its deposit address. Funds sent there are stuck until someone sweeps them. Send to the vault's deposit address instead (Vaults tab)` : "that is a shared vault proposal account, not a wallet");
+    throw new Error(isMs ? `that is a multisig ID, not its deposit address. Funds sent there are stuck until someone sweeps them. Send to the vault's deposit address instead (Multisig tab)` : "that is a multisig proposal account, not a wallet");
   }
   if (acc && !eq(acc.owner, SYSTEM) && !eq(acc.owner, engine.program)) return `\nWarning: this address is owned by another program (${short(b58encode(acc.owner))}). Funds sent there may be lost.`;
   if (!isOnCurve(to) && !acc) return `\nWarning: this address has no private key and has never held anything on ${NET.mainnet ? "mainnet" : "devnet"}. If it is an opeq address from the ${NET.mainnet ? "devnet" : "mainnet"} app, funds sent here are lost.`;

@@ -96,10 +96,10 @@ ok(info.owners.length === 2 && !info.owners.includes(C.account), "carol removed"
 await throws(C.execute([M.proposeCall(want, pay, now + 3600)]), /would fail on chain|Nothing was signed/, "removed owner cannot propose");
 
 console.log("guards");
-await throws(new M.Vault(A, A.account).read(), /not the OPEQ shared vault/, "an OPEQ account address is not accepted as a vault");
-await throws(new M.Vault(A, dest).read(), /no shared vault/, "an empty address is not accepted as a vault");
+await throws(new M.Vault(A, A.account).read(), /not the OPEQ multisig/, "an OPEQ account address is not accepted as a vault");
+await throws(new M.Vault(A, dest).read(), /no multisig/, "an empty address is not accepted as a vault");
 const rogue = cast("send", "--private-key", ANVIL0, "--create", JSON.parse(readFileSync(new URL("./out/OpeqMultisig.sol/OpeqMultisig.json", import.meta.url))).bytecode.object + execFileSync(process.env.HOME + "/.foundry/bin/cast", ["abi-encode", "f(address[],uint8)", `[${owners.join(",")}]`, "1"], { encoding: "utf8" }).trim().slice(2), "--json");
-await throws(new M.Vault(A, JSON.parse(rogue).contractAddress).read(), /not created by the OPEQ shared vault factory/, "a vault deployed outside the factory is refused even with identical code");
+await throws(new M.Vault(A, JSON.parse(rogue).contractAddress).read(), /not created by the OPEQ multisig factory/, "a vault deployed outside the factory is refused even with identical code");
 const smuggle = { to: want, value: 0n, data: Uint8Array.from(Buffer.from(M.setOwnersCall(want, [A.account, B.account], 2).data.slice(0, 4).reduce((h, b) => h + b.toString(16).padStart(2, "0"), "") + "00000000000000000000000000000000000000000000000000000000000000a0" + "0000000000000000000000000000000000000000000000000000000000000001" + "0000000000000000000000000000000000000000000000000000000000000002" + A.account.slice(2).padStart(64, "0") + B.account.slice(2).padStart(64, "0") + "0000000000000000000000000000000000000000000000000000000000000001" + C.account.slice(2).padStart(64, "0"), "hex")) };
 ok(M.describe(smuggle, want).kind === "contract", "a non-standard owner change is shown as a risky contract call, not as an owner list");
 ok(M.describe({ to: dest, value: 0n, data: Uint8Array.of(0xa9, 0x05, 0x9c, 0xbb, 1, 2) }, want).kind === "contract", "malformed token data does not throw");

@@ -188,23 +188,23 @@
         </details>
       </div>
       <div class="card hidden" id="e-ms">
-        <h2 class="silk"><span>PCIE_3</span><b>shared vaults</b></h2>
-        <p class="hint">Optional. A shared vault moves funds only after several OPEQ accounts approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature.</p>
+        <h2 class="silk"><span>PCIE_3</span><b>multisig</b></h2>
+        <p class="hint">Optional. A multisig moves funds only after several OPEQ accounts approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature.</p>
         <div class="ms-list" id="ms-list"></div>
-        <details class="ev-more"><summary>Create a shared vault</summary>
+        <details class="ev-more"><summary>Create a multisig</summary>
           <label class="f" for="ms-owners">Other owners' EVM addresses, one per line</label><textarea id="ms-owners" rows="3" spellcheck="false" autocomplete="off" placeholder="0x…"></textarea>
           <p class="hint">Your address is added for you. Each owner must have pressed Set up for OPEQ on this network.</p>
           <label class="f" for="ms-thr">Approvals needed</label><input type="text" id="ms-thr" inputmode="numeric" autocomplete="off" placeholder="2">
           <div class="row"><button class="btn btn-solid btn-sm" id="ms-create" type="button">Create vault</button></div>
         </details>
-        <details class="ev-more"><summary>Add a vault you are an owner of</summary>
+        <details class="ev-more"><summary>Add a multisig you are an owner of</summary>
           <label class="f" for="ms-add">Vault address</label><input type="text" id="ms-add" spellcheck="false" autocomplete="off" placeholder="0x…">
           <div class="row"><button class="btn btn-line btn-sm" id="ms-add-go" type="button">Add vault</button></div>
         </details>
       </div>
       <div class="card hidden" id="ms-v">
-        <h2 class="silk"><span>VAULT</span><b>shared vault</b></h2>
-        <div class="addr-row"><p class="mono addr" id="ms-v-addr"></p><button class="icon-btn small" id="ms-v-copy" type="button" title="Copy vault address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy vault ID</span></button></div>
+        <h2 class="silk"><span>VAULT</span><b>multisig</b></h2>
+        <div class="addr-row"><p class="mono addr" id="ms-v-addr"></p><button class="icon-btn small" id="ms-v-copy" type="button" title="Copy vault address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy multisig ID</span></button></div>
         <dl class="kv">
           <div><dt>Balance</dt><dd id="ms-v-bal">–</dd></div>
           <div><dt>Approvals needed</dt><dd id="ms-v-thr">–</dd></div>
@@ -280,7 +280,7 @@
           <button class="tab" role="tab" id="tab-swap" aria-controls="pane-swap" aria-selected="false" type="button">Swap</button>
           <button class="tab" role="tab" id="tab-receive" aria-controls="pane-receive" aria-selected="false" type="button">Receive</button>
           <button class="tab" role="tab" id="tab-keys" aria-controls="pane-keys" aria-selected="false" type="button">Keys</button>
-          <button class="tab" role="tab" id="tab-vaults" aria-controls="pane-vaults" aria-selected="false" type="button">Vaults</button>
+          <button class="tab" role="tab" id="tab-vaults" aria-controls="pane-vaults" aria-selected="false" type="button">Multisig</button>
         </div>
         <div class="pane" role="tabpanel" id="pane-send" aria-labelledby="tab-send">
           <div id="w-send-box">          <h2 class="silk"><span>PCIE_2</span><b>send SOL</b></h2>
@@ -349,27 +349,27 @@
         </div>
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-vaults" aria-labelledby="tab-vaults">
-          <h2 class="silk"><span>PCIE_3</span><b>shared vaults</b></h2>
-          <p class="hint">Optional. A shared vault moves funds only after several OPEQ wallets approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature.</p>
+          <h2 class="silk"><span>PCIE_3</span><b>multisig</b></h2>
+          <p class="hint">Optional. A multisig moves funds only after several OPEQ wallets approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature.</p>
           <div class="addr-row"><p class="mono addr"><span class="hint">Your owner ID </span><span id="sv-id"></span></p><button class="icon-btn small" id="sv-id-copy" type="button" title="Copy your owner ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy your owner ID</span></button></div>
-          <p class="hint">Give this ID to whoever creates a vault with you. It is public and cannot move funds.</p>
+          <p class="hint">Give this ID to whoever creates a multisig with you. It is public and cannot move funds.</p>
           <div id="sv-list-box">
             <div class="ms-list" id="sv-list"></div>
-            <details class="ev-more"><summary>Create a shared vault</summary>
+            <details class="ev-more"><summary>Create a multisig</summary>
               <label class="f" for="sv-owners-in">Other owners' IDs, one per line</label><textarea id="sv-owners-in" rows="3" spellcheck="false" autocomplete="off"></textarea>
               <p class="hint">You are added for you. Each owner finds their ID in this tab; their wallet must be activated.</p>
               <label class="f" for="sv-thr-in">Approvals needed</label><input type="text" id="sv-thr-in" inputmode="numeric" autocomplete="off" placeholder="2">
               <div class="row"><button class="btn btn-solid btn-sm" id="sv-create" type="button">Create vault</button></div>
             </details>
-            <details class="ev-more"><summary>Add a vault you are an owner of</summary>
-              <label class="f" for="sv-add-in">Vault ID</label><input type="text" id="sv-add-in" spellcheck="false" autocomplete="off">
+            <details class="ev-more"><summary>Add a multisig you are an owner of</summary>
+              <label class="f" for="sv-add-in">Multisig ID</label><input type="text" id="sv-add-in" spellcheck="false" autocomplete="off">
               <div class="row"><button class="btn btn-line btn-sm" id="sv-add" type="button">Add vault</button></div>
             </details>
           </div>
           <div class="hidden" id="sv-view">
-            <div class="addr-row"><p class="mono addr"><span class="hint">Vault ID </span><span id="sv-addr"></span></p><button class="icon-btn small" id="sv-copy" type="button" title="Copy vault ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy vault ID</span></button></div>
+            <div class="addr-row"><p class="mono addr"><span class="hint">Multisig ID </span><span id="sv-addr"></span></p><button class="icon-btn small" id="sv-copy" type="button" title="Copy multisig ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy multisig ID</span></button></div>
             <div class="addr-row"><p class="mono addr"><span class="hint">Deposit to </span><span id="sv-deposit"></span></p><button class="icon-btn small" id="sv-dep-copy" type="button" title="Copy deposit address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy deposit address</span></button></div>
-            <p class="hint">Send funds only to the deposit address. The vault ID is for sharing with co-owners, never for payments.</p>
+            <p class="hint">Send funds only to the deposit address. The multisig ID is for sharing with co-owners, never for payments.</p>
     <div class="rw hidden" id="sv-stuck" role="status"><p id="sv-stuck-text"></p><button class="btn btn-sm rw-go" id="sv-sweep" type="button">Move to deposit address</button></div>
             <dl class="kv"><div><dt>Balance</dt><dd id="sv-bal">–</dd></div><div><dt>Approvals needed</dt><dd id="sv-thr">–</dd></div></dl>
             <div class="ms-owners" id="sv-owners"></div>

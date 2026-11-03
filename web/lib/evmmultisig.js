@@ -53,7 +53,7 @@ export function factoryDeployData() {
 
 export function checkOwners(owners, threshold) {
   const list = owners.map(lower);
-  if (!list.length || list.length > MAX_OWNERS) throw new Error(`a shared vault needs between 1 and ${MAX_OWNERS} owners`);
+  if (!list.length || list.length > MAX_OWNERS) throw new Error(`a multisig needs between 1 and ${MAX_OWNERS} owners`);
   if (new Set(list).size !== list.length) throw new Error("the same owner is listed twice");
   if (!Number.isInteger(threshold) || threshold < 1 || threshold > list.length) throw new Error(`the number of approvals must be between 1 and ${list.length}`);
   return list;
@@ -165,11 +165,11 @@ export class Vault {
 
   async readAt(rpc, block) {
     const code = await rpc.code(this.address, block);
-    if (code === "0x") throw new Error("there is no shared vault at that address on this network");
-    if (lower(code.slice(2)) !== lower(MS_RUNTIME)) throw new Error("the code at that address is not the OPEQ shared vault contract, refusing to use it");
+    if (code === "0x") throw new Error("there is no multisig at that address on this network");
+    if (lower(code.slice(2)) !== lower(MS_RUNTIME)) throw new Error("the code at that address is not the OPEQ multisig contract, refusing to use it");
     const fac = factoryAddress();
     const reg = await rpc.ethCall(fac, bytesToHex(concat(SEL.isVault, addressWord(this.address))), block);
-    if (words(reg).at(0) !== 1n) throw new Error("that address was not created by the OPEQ shared vault factory, refusing to use it");
+    if (words(reg).at(0) !== 1n) throw new Error("that address was not created by the OPEQ multisig factory, refusing to use it");
     const [o, t, c, n, bal] = await Promise.all([
       rpc.ethCall(this.address, bytesToHex(SEL.getOwners), block),
       rpc.ethCall(this.address, bytesToHex(SEL.threshold), block),
@@ -192,7 +192,7 @@ export class Vault {
     const a = await this.chain.at((b) => this.readAt(this.chain.rpc, b));
     if (this.chain.check) {
       const b = await this.readAt(this.chain.check, "latest").catch(() => null);
-      if (!b || b.owners.join() !== a.owners.join() || b.threshold !== a.threshold || b.config !== a.config) throw new Error("two independent network sources disagree about this shared vault, so nothing is shown as safe to sign. Try again in a minute");
+      if (!b || b.owners.join() !== a.owners.join() || b.threshold !== a.threshold || b.config !== a.config) throw new Error("two independent network sources disagree about this multisig, so nothing is shown as safe to sign. Try again in a minute");
       a.proposals = Math.max(a.proposals, b.proposals);
     }
     return a;

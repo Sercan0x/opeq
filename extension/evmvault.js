@@ -25,7 +25,7 @@ const ERRORS = Object.fromEntries([
   ["NotOpeqAccount(address)", "every owner must be an OPEQ account that is set up on this network"],
   ["DuplicateOwner(address)", "the same owner is listed twice"],
   ["BadThreshold()", "the number of approvals must be between 1 and the number of owners"],
-  ["BadOwnerCount()", `a shared vault needs between 1 and ${M.MAX_OWNERS} owners`],
+  ["BadOwnerCount()", `a multisig needs between 1 and ${M.MAX_OWNERS} owners`],
 ].map(([sig, text]) => [bytesToHex(keccak256(enc.encode(sig)).slice(0, 4)), text]));
 
 function friendly(e) {
@@ -73,7 +73,7 @@ export async function refresh(ready) {
   const box = x.$("ms-list");
   box.textContent = "";
   const list = await loadList();
-  if (!list.length) { box.append(el("p", "hint", "No shared vaults on this network yet.")); return; }
+  if (!list.length) { box.append(el("p", "hint", "No multisigs on this network yet.")); return; }
   for (const a of list) {
     const line = el("div", "ms-line");
     const row = el("button", "ms-row");
@@ -259,7 +259,7 @@ async function act(v, p, info, kind) {
 async function ownerCheck(c, a) {
   const code = await c.rpc.code(a);
   if (code === "0x") throw new Error(`${a} has not set up OPEQ on ${c.chain.name} yet. Ask them to press Set up first`);
-  if (code.slice(2).toLowerCase() !== ACCOUNT_RUNTIME.toLowerCase()) throw new Error(`${a} is not an OPEQ account. Only OPEQ accounts can own a shared vault, so no owner relies on an ECDSA key`);
+  if (code.slice(2).toLowerCase() !== ACCOUNT_RUNTIME.toLowerCase()) throw new Error(`${a} is not an OPEQ account. Only OPEQ accounts can own a multisig, so no owner relies on an ECDSA key`);
 }
 
 export function init(ctx) {
@@ -276,14 +276,14 @@ export function init(ctx) {
     const fresh = (await c.rpc.code(fac)) === "0x";
     const nonce = crypto.getRandomValues(new Uint8Array(32));
     const addr = M.vaultAddress(c.id, c.account, owners, threshold, nonce);
-    if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} shared vault`, rows: [["Vault address", addr, true], ...owners.map((o, i) => [`Owner ${i + 1}${o === c.account ? " (you)" : ""}`, o, true]), ["Network fee", await x.feeText((fresh ? 2600000n : 0n) + 2200000n)]],
-      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each with their own OPEQ wallet.` }, { text: `The vault exists only on ${c.chain.name}. Never send funds to this address on any other network.`, warn: true }, ...(fresh ? [{ text: "The first transaction installs the OPEQ shared vault factory on this network, once for everyone." }] : []), { text: "Send the vault address to the other owners so they can add it in their wallet." }, { text: "Beta: the shared vault contract has had internal reviews only. Start with small amounts.", warn: true }] }, "Create"))) return;
+    if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} multisig`, rows: [["Vault address", addr, true], ...owners.map((o, i) => [`Owner ${i + 1}${o === c.account ? " (you)" : ""}`, o, true]), ["Network fee", await x.feeText((fresh ? 2600000n : 0n) + 2200000n)]],
+      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each with their own OPEQ wallet.` }, { text: `The vault exists only on ${c.chain.name}. Never send funds to this address on any other network.`, warn: true }, ...(fresh ? [{ text: "The first transaction installs the OPEQ multisig factory on this network, once for everyone." }] : []), { text: "Send the vault address to the other owners so they can add it in their wallet." }, { text: "Beta: the multisig contract has had internal reviews only. Start with small amounts.", warn: true }] }, "Create"))) return;
     if (fresh) await c.install("0x4e59b44847b379578588920ca78fbf26c0b4956c", M.factoryDeployData(), M.factoryAddress(), (h) => x.last("Factory install sent.", h));
     await run(() => c.execute([M.createCall(owners, threshold, nonce)], (h) => x.last("Vault creation sent.", h)));
     if ((await c.rpc.code(addr)) === "0x") throw new Error("the vault was not created; check the explorer and try again");
     await saveList([addr, ...(await loadList()).filter((a) => a !== addr)].slice(0, LIST_MAX));
     x.$("ms-owners").value = x.$("ms-thr").value = "";
-    x.ok("shared vault created");
+    x.ok("multisig created");
     open = addr;
     await refresh(true);
   }));
@@ -294,7 +294,7 @@ export function init(ctx) {
     if (!info.owners.includes(x.chain().account)) throw new Error("your account on this network is not an owner of that vault");
     const list = await loadList();
     if (!list.includes(a)) {
-      if (list.length >= LIST_MAX) throw new Error(`at most ${LIST_MAX} shared vaults per network`);
+      if (list.length >= LIST_MAX) throw new Error(`at most ${LIST_MAX} multisigs per network`);
       await saveList([a, ...list]);
     }
     x.$("ms-add").value = "";
@@ -309,7 +309,7 @@ export function init(ctx) {
     const asset = x.$("ms-asset").value;
     const to = checkAddress(x.$("ms-to").value);
     if (to === v.address) throw new Error("that is the vault's own address");
-    if (to === M.factoryAddress()) throw new Error("that is the OPEQ shared vault factory, not a wallet");
+    if (to === M.factoryAddress()) throw new Error("that is the OPEQ multisig factory, not a wallet");
     await x.lookalike(to);
     const warn = to === c.account ? "" : await x.recipient(to);
     let calls, title, rows = [["To", to, true]];

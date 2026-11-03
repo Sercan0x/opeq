@@ -142,9 +142,9 @@ const dv = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
 const magic = (b) => new TextDecoder().decode(b.slice(0, 8));
 
 export function unpackMs(data) {
-  if (data.length !== MS_LEN || magic(data) !== MS_MAGIC) throw new Error("that account is not an OPEQ shared vault");
+  if (data.length !== MS_LEN || magic(data) !== MS_MAGIC) throw new Error("that account is not an OPEQ multisig");
   const d = dv(data), n = data[77];
-  if (n < 1 || n > MAX_OWNERS || data[76] < 1 || data[76] > n) throw new Error("malformed shared vault account");
+  if (n < 1 || n > MAX_OWNERS || data[76] < 1 || data[76] > n) throw new Error("malformed multisig account");
   return {
     creator: data.slice(8, 40), nonce: data.slice(40, 72), config: d.getUint32(72, true), threshold: data[76], n,
     mbump: data[78], vbump: data[79], next: Number(d.getBigUint64(80, true)),

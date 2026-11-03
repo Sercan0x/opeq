@@ -47,11 +47,11 @@ async function readAccount(key) {
 async function loadVault(addr) {
   const ms = pubkey(addr);
   const a = await readAccount(ms);
-  if (!a) throw new Error("there is no shared vault at that address on this network");
-  if (!eq(a.owner, prog())) throw new Error("that address is not an OPEQ shared vault, refusing to use it");
+  if (!a) throw new Error("there is no multisig at that address on this network");
+  if (!eq(a.owner, prog())) throw new Error("that address is not an OPEQ multisig, refusing to use it");
   const info = V.unpackMs(a.data);
   const vault = V.vaultPda(ms, prog()).key;
-  if (!eq(V.createProgramAddress([new TextEncoder().encode("v"), ms, Uint8Array.of(info.vbump)], prog()), vault)) throw new Error("malformed shared vault account");
+  if (!eq(V.createProgramAddress([new TextEncoder().encode("v"), ms, Uint8Array.of(info.vbump)], prog()), vault)) throw new Error("malformed multisig account");
   const balance = BigInt(await x.rpc().balance(vault));
   return { ms, vault, info, balance, msLamports: BigInt(a.lamports) };
 }
@@ -129,7 +129,7 @@ export async function refresh() {
   const box = x.$("sv-list");
   box.textContent = "";
   const list = await loadList();
-  if (!list.length) { box.append(el("p", "hint", "No shared vaults yet.")); return; }
+  if (!list.length) { box.append(el("p", "hint", "No multisigs yet.")); return; }
   for (const a of list) {
     const line = el("div", "ms-line");
     const row = el("button", "ms-row");
@@ -164,7 +164,7 @@ async function showVault(addr) {
   x.$("sv-thr").textContent = `${v.info.threshold} of ${v.info.n}`;
   const stuck = v.msLamports - BigInt(await x.rpc().rent(V.MS_LEN)) - 2n;
   x.$("sv-stuck").classList.toggle("hidden", stuck <= 0n);
-  if (stuck > 0n) x.$("sv-stuck-text").textContent = `${sol(stuck)} SOL was sent to the vault ID instead of the deposit address. Anyone can move it into the vault.`;
+  if (stuck > 0n) x.$("sv-stuck-text").textContent = `${sol(stuck)} SOL was sent to the multisig ID instead of the deposit address. Anyone can move it into the vault.`;
   const ob = x.$("sv-owners");
   ob.textContent = "";
   for (const o of v.info.owners) ob.append(el("p", "mono ms-owner" + (eq(o, me) ? " me" : ""), eq(o, me) ? `${b58encode(o)} (you)` : b58encode(o)));
@@ -264,12 +264,12 @@ async function fits(v, prop, stored) {
 export function init(ctx) {
   x = ctx;
   x.$("sv-id-copy").addEventListener("click", (e) => x.guard(async () => x.copy(e.currentTarget, b58encode(await myAid()), "owner ID copied")));
-  x.$("sv-copy").addEventListener("click", (e) => x.copy(e.currentTarget, open, "vault ID copied"));
+  x.$("sv-copy").addEventListener("click", (e) => x.copy(e.currentTarget, open, "multisig ID copied"));
   x.$("sv-sweep").addEventListener("click", () => x.guard(async () => {
     const v = await loadVault(open);
     const ix = V.sweepIx(prog(), v.ms, v.vault);
     const plan = await x.planTopup([ix], [], 0n);
-    if (!(await x.ask({ ...x.tag(), title: "Move stuck SOL into the vault", rows: [["From vault ID", open, true], ["To deposit address", b58encode(v.vault), true], ["Network fee", await x.fee(CU_VAULT)]], notes: [{ text: "This only moves SOL above the account's own rent into the vault. It needs no approvals and anyone can do it." }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Move"))) return;
+    if (!(await x.ask({ ...x.tag(), title: "Move stuck SOL into the vault", rows: [["From multisig ID", open, true], ["To deposit address", b58encode(v.vault), true], ["Network fee", await x.fee(CU_VAULT)]], notes: [{ text: "This only moves SOL above the account's own rent into the vault. It needs no approvals and anyone can do it." }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Move"))) return;
     const sig = await x.run("moving stuck SOL, grinding the signature", [ix], plan, { cu: CU_VAULT });
     x.log(`vault ${short(open)}: stuck SOL moved to the deposit address: ${sig}`, "ok");
     x.ok("moved into the vault");
@@ -288,7 +288,7 @@ export function init(ctx) {
     for (const t of ids) {
       let aid;
       try { aid = b58decode(t); } catch { aid = null; }
-      if (!aid || aid.length !== 32) throw new Error(`${t.slice(0, 12)}… is not an owner ID. Ask each owner to copy it from their Vaults tab`);
+      if (!aid || aid.length !== 32) throw new Error(`${t.slice(0, 12)}… is not an owner ID. Ask each owner to copy it from their Multisig tab`);
       if (eq(aid, mine) || others.some((o) => eq(o.aid, aid))) continue;
       const st = await x.rpc().account(P.statePda(aid, opeq()).key);
       if (!st || !eq(st.owner, opeq())) throw new Error(`the wallet with owner ID ${short(t)} is not active on this network yet. It must be activated first`);
@@ -296,7 +296,7 @@ export function init(ctx) {
     }
     if (!others.length) throw new Error("add at least one other owner ID");
     const owners = [V.ownerFromId(mine, opeq()), ...others];
-    if (owners.length > V.MAX_OWNERS) throw new Error(`a shared vault holds at most ${V.MAX_OWNERS} owners`);
+    if (owners.length > V.MAX_OWNERS) throw new Error(`a multisig holds at most ${V.MAX_OWNERS} owners`);
     const t = x.$("sv-thr-in").value.trim();
     const threshold = /^\d+$/.test(t) ? Number(t) : NaN;
     if (!(threshold >= 1 && threshold <= owners.length)) throw new Error(`the number of approvals must be between 1 and ${owners.length}`);
@@ -306,14 +306,14 @@ export function init(ctx) {
     const ix = V.createIx(prog(), s.wallet, ms, nonce, threshold, owners);
     const rent = await x.rpc().rent(V.MS_LEN);
     const plan = await x.planTopup([ix], [], BigInt(rent));
-    if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} shared vault`,
-      rows: [["Vault ID", b58encode(ms), true], ["Deposit address", b58encode(vault), true], ...owners.map((o, i) => [`Owner ${i + 1}${i === 0 ? " (you)" : ""}`, b58encode(o.wallet), true]), ["Account rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]],
-      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each from their own OPEQ wallet.` }, { text: "Funds go to the deposit address only. Share the vault ID with the other owners so they can add it; never send funds to the vault ID." }, { text: "Beta: the shared vault program has had internal reviews only. Start with small amounts.", warn: true }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Create"))) return;
+    if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} multisig`,
+      rows: [["Multisig ID", b58encode(ms), true], ["Deposit address", b58encode(vault), true], ...owners.map((o, i) => [`Owner ${i + 1}${i === 0 ? " (you)" : ""}`, b58encode(o.wallet), true]), ["Account rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]],
+      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each from their own OPEQ wallet.` }, { text: "Funds go to the deposit address only. Share the multisig ID with the other owners so they can add it; never send funds to the multisig ID." }, { text: "Beta: the multisig program has had internal reviews only. Start with small amounts.", warn: true }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Create"))) return;
     const sig = await x.run("creating the vault, grinding the signature", [ix], plan, { cu: CU_VAULT, spend: BigInt(rent) });
-    x.log(`shared vault ${short(ms)} created: ${sig}`, "ok");
+    x.log(`multisig ${short(ms)} created: ${sig}`, "ok");
     await saveList([b58encode(ms), ...(await loadList()).filter((a) => a !== b58encode(ms))]);
     x.$("sv-owners-in").value = x.$("sv-thr-in").value = "";
-    x.ok("shared vault created");
+    x.ok("multisig created");
     open = b58encode(ms);
     await refresh();
   }));
@@ -322,10 +322,10 @@ export function init(ctx) {
     const a = x.$("sv-add-in").value.trim();
     const v = await loadVault(a);
     if (!v.info.owners.some((o) => eq(o, x.session().wallet))) throw new Error("this wallet is not an owner of that vault");
-    if (v.info.threshold <= v.info.n - 1 && !(await x.ask({ ...x.tag(), title: "Add this shared vault?", rows: [["Vault ID", b58encode(v.ms), true], ["Created by", b58encode(v.info.creator), true], ["Approvals needed", `${v.info.threshold} of ${v.info.n}`]], notes: [{ text: `The other owners can move this vault's funds without your approval: they need ${v.info.threshold} and there are ${v.info.n - 1} of them.`, warn: true }] }, "Add"))) return;
+    if (v.info.threshold <= v.info.n - 1 && !(await x.ask({ ...x.tag(), title: "Add this multisig?", rows: [["Multisig ID", b58encode(v.ms), true], ["Created by", b58encode(v.info.creator), true], ["Approvals needed", `${v.info.threshold} of ${v.info.n}`]], notes: [{ text: `The other owners can move this vault's funds without your approval: they need ${v.info.threshold} and there are ${v.info.n - 1} of them.`, warn: true }] }, "Add"))) return;
     const list = await loadList();
     if (!list.includes(b58encode(v.ms))) {
-      if (list.length >= LIST_MAX) throw new Error(`at most ${LIST_MAX} shared vaults`);
+      if (list.length >= LIST_MAX) throw new Error(`at most ${LIST_MAX} multisigs`);
       await saveList([b58encode(v.ms), ...list]);
     }
     x.$("sv-add-in").value = "";
@@ -383,7 +383,7 @@ export function init(ctx) {
         if (!st || !eq(st.owner, opeq())) throw new Error(`the wallet with owner ID ${short(t)} is not active on this network`);
         owners.push(V.ownerFromId(aid, opeq()));
       }
-      if (owners.length > V.MAX_OWNERS) throw new Error(`a shared vault holds at most ${V.MAX_OWNERS} owners`);
+      if (owners.length > V.MAX_OWNERS) throw new Error(`a multisig holds at most ${V.MAX_OWNERS} owners`);
       if (!(threshold >= 1 && threshold <= owners.length)) throw new Error(`the number of approvals must be between 1 and ${owners.length}`);
       ixs = [[prog(), [], V.setOwnersData(threshold, owners)]];
     }
