@@ -64,7 +64,9 @@ ERRORS = {
 }
 
 
-def rent(space):
+def rent(space, lpby=LAMPORTS_PER_BYTE // 2, threshold=2.0):
+    if threshold == 2.0 and lpby > 0:
+        return (ACCOUNT_OVERHEAD + space) * lpby * 2
     return (ACCOUNT_OVERHEAD + space) * LAMPORTS_PER_BYTE
 
 

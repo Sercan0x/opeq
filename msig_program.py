@@ -25,6 +25,8 @@ SLICE = 0x5D0
 INFOS = 0x600
 VSEEDS = 0x1600
 WBUMP = 0x1640
+RENT = 0x1648
+TWO = 0x4000000000000000
 MAX_ACCOUNTS = 64
 
 ACC_SIGNER = 1
@@ -483,8 +485,22 @@ def emit_check_stored(a):
 
 def emit_rent(a):
     a.label("rent")
+    a.stx(8, r9, S5, r1)
+    heap_ptr(a, r1, RENT)
+    a.syscall("sol_get_rent_sysvar")
+    a.ldx(8, r1, r9, S5)
+    a.add(r1, M.ACCOUNT_OVERHEAD)
+    a.ldx(8, r2, r9, RENT + 8)
+    a.lddw(r3, TWO)
+    a.jne(r2, r3, "rent_fixed")
+    a.ldx(8, r2, r9, RENT)
+    a.jeq(r2, 0, "rent_fixed")
     a.mov(r0, r1)
-    a.add(r0, M.ACCOUNT_OVERHEAD)
+    a.mul(r0, r2)
+    a.lsh(r0, 1)
+    a.exit()
+    a.label("rent_fixed")
+    a.mov(r0, r1)
     a.mul(r0, M.LAMPORTS_PER_BYTE)
     a.exit()
 

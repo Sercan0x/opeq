@@ -38,7 +38,7 @@ class RefBackend:
     def run(self, w, accounts, data, now):
         snap = copy.deepcopy([dict(a) for a in accounts])
         try:
-            R.process(w.program, w.opeq, accounts, data, now, system_handler)
+            R.process(w.program, w.opeq, accounts, data, now, system_handler, w.lpby, w.threshold)
             return 0
         except (R.Reject, RuntimeError, R.Escalation) as e:
             for a, s in zip(accounts, snap):
@@ -57,7 +57,7 @@ class EmuBackend:
         import emu
         snap = copy.deepcopy([dict(a) for a in accounts])
         try:
-            vm = emu.Vm(self.elf, accounts, data, w.program, cpi_handler=system_handler, now=now)
+            vm = emu.Vm(self.elf, accounts, data, w.program, cpi_handler=system_handler, now=now, lpby=w.lpby, rent_threshold=w.threshold)
             rc = vm.run()
         except emu.Fault as f:
             rc = f"fault: {f}"
@@ -84,6 +84,7 @@ class World:
         self.program = hashlib.sha256(b"vault program").digest()
         self.opeq = hashlib.sha256(b"opeq program").digest()
         self.now = NOW
+        self.lpby, self.threshold = 3480, 2.0
         self.people = []
         for i in range(n_people):
             for bump in range(255, -1, -1):
@@ -171,6 +172,10 @@ def ok(cond, msg):
 
 
 def scenario(backend):
+    for lpby, thr, want in ((2540, 2.0, (128 + M.MS_LEN) * 5080), (5000, 2.0, (128 + M.MS_LEN) * 10000), (3480, 1.5, (128 + M.MS_LEN) * 6960), (0, 2.0, (128 + M.MS_LEN) * 6960)):
+        wr = World(backend)
+        wr.lpby, wr.threshold = lpby, thr
+        ok(wr.create(0, [0, 1], 1) == 0 and wr.ms["lamports"] == want, f"rent follows the network ({lpby}, {thr})")
     w = World(backend)
     ok(w.create(0, [0, 1, 2], 2) == 0, "create 2 of 3")
     info = w.msinfo()
@@ -324,6 +329,7 @@ def fuzz(elf, trials):
     b.rng = rng
     for t in range(trials):
         w = World(b, n_people=5)
+        w.lpby = rng.choice([3480, 2540, 1, 9000])
         k = rng.randint(1, 4)
         owners = rng.sample(range(5), k)
         creator = rng.choice(owners if rng.random() < 0.9 else range(5))

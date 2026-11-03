@@ -27,7 +27,7 @@ EVM_TESTNETS = [{"chainId": 84532, "name": "Base Sepolia", "symbol": "ETH", "rpc
 ICONS = ["16.png", "32.png", "48.png", "128.png"]
 LEGACY_PROGRAM = "424ckcA6GGswYmQbrGjQmzdfhk4G9eB2zD1gK8xLw7sN"
 DEVNET_RPC = "https://api.devnet.solana.com"
-DEVNET_VAULT = "K2TL4mwjfG5qEggV11mGQPsXuFHg63srbnvhkigAe6K"
+DEVNET_VAULT = "8kP9V6jqA2vArHNjXTLXJUG9p2wBte7ZxXYuEJYuiNWN"
 B58 = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 TAG = re.compile(r'<(title|p|span|li|a)((?:\s[^<>]*?)?)\sdata-only="(devnet|mainnet)"([^<>]*)>(.*?)</\1>', re.S)
 HOST = re.compile(r"^[a-z0-9.-]+(:[0-9]{1,5})?$")

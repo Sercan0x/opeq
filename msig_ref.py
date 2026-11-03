@@ -24,8 +24,9 @@ def pda(seeds, program):
 
 
 class Run:
-    def __init__(self, program, opeq, accounts, data, now, handler):
+    def __init__(self, program, opeq, accounts, data, now, handler, lpby=3480, threshold=2.0):
         self.program, self.opeq, self.accounts, self.data, self.now, self.handler = program, opeq, accounts, data, now, handler
+        self.lpby, self.threshold = lpby, threshold
 
     def cpi(self, prog, metas, data, signer_keys=()):
         if self.find(prog) is None:
@@ -51,7 +52,7 @@ class Run:
             raise Reject(3)
 
     def create_account(self, payer, target, space, seeds_key):
-        lam = M.rent(space) - target.get("lamports", 0)
+        lam = M.rent(space, self.lpby, self.threshold) - target.get("lamports", 0)
         if lam > 0:
             self.cpi(SYSTEM, [(payer["key"], True, True), (target["key"], False, True)], struct.pack("<IQ", 2, lam))
         self.cpi(SYSTEM, [(target["key"], True, True)], struct.pack("<IQ", 8, space), (seeds_key,))
@@ -140,8 +141,8 @@ class Run:
         return ixs
 
 
-def process(program, opeq, accounts, data, now, handler):
-    r = Run(program, opeq, accounts, data, now, handler)
+def process(program, opeq, accounts, data, now, handler, lpby=3480, threshold=2.0):
+    r = Run(program, opeq, accounts, data, now, handler, lpby, threshold)
     if len(accounts) > 64:
         raise Reject(2)
     if not data:

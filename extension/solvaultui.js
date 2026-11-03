@@ -268,7 +268,7 @@ export function init(ctx) {
     const ms = V.msPda(s.wallet, nonce, prog()).key;
     const vault = V.vaultPda(ms, prog()).key;
     const ix = V.createIx(prog(), s.wallet, ms, nonce, threshold, owners);
-    const rent = V.rent(V.MS_LEN);
+    const rent = await x.rpc().rent(V.MS_LEN);
     const plan = await x.planTopup([ix], [], BigInt(rent));
     if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} shared vault`,
       rows: [["Vault address", b58encode(ms), true], ["Deposit address", b58encode(vault), true], ...owners.map((o, i) => [`Owner ${i + 1}${i === 0 ? " (you)" : ""}`, b58encode(o.wallet), true]), ["Account rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]],
@@ -310,7 +310,7 @@ export function init(ctx) {
     const prop = V.proposalPda(v.ms, v.info.next, prog()).key;
     const expires = (await nowOnChain()) + V.DEFAULT_LIFETIME;
     const ix = V.proposeIx(prog(), x.session().wallet, v.ms, prop, expires, stored);
-    const rent = V.rent(V.PR_OFF_DATA + stored.length);
+    const rent = await x.rpc().rent(V.PR_OFF_DATA + stored.length);
     const plan = await x.planTopup([ix], [], BigInt(rent));
     const notes = [{ text: `This only proposes the payment. It moves funds after ${v.info.threshold} of ${v.info.n} owners approve; your proposal counts as your approval. It stays open for 7 days.` }, { text: "The rent comes back to you when you close the proposal after it is done." }];
     if (warn) notes.push({ text: warn.trim(), warn: true });
