@@ -174,3 +174,5 @@
 .ms-line .ms-row { flex: 1; min-width: 0; }
 .ms-rm { flex: 0 0 auto; padding: 0 12px; border: 1px solid #2e3c50; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .ms-rm:hover { border-color: var(--red); color: var(--red); }
+#pane-vaults .addr-row { display: flex; align-items: center; gap: 8px; }
+#pane-vaults .addr-row .addr { flex: 1; min-width: 0; margin: 0; word-break: break-all; }
