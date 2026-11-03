@@ -11,6 +11,7 @@ export const MAX_LIFETIME = 30 * 24 * 3600, DEFAULT_LIFETIME = 7 * 24 * 3600;
 export const M_SIGNER = 1, M_WRITABLE = 2;
 export const MS_LEN = 88 + 32 * MAX_OWNERS;
 export const PR_OFF_DATA = 132;
+export const rent = (space) => (128 + space) * 6960;
 export const ERRORS = {
   1: "bad instruction", 2: "too many accounts", 3: "account index out of range", 4: "caller must sign",
   5: "bad system program", 6: "bad owner list", 7: "bad threshold", 8: "owner is not an OPEQ wallet",

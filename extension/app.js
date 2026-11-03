@@ -8,6 +8,7 @@ import { feePayer } from "./feekey.js";
 import * as keep from "./keep.js";
 import { NET } from "./net.js";
 import * as evm from "./evm.js";
+import * as SV from "./solvaultui.js";
 
 const PROGRAM = NET.program;
 const EXPLORER = "https://explorer.solana.com";
@@ -700,6 +701,7 @@ function lockVault(reason) {
   loadLog(null);
   if (session.master) session.master.fill(0);
   try { evm.stop(); } catch {}
+  try { SV.hide(); } catch {}
   if (session.macRaw) session.macRaw.fill(0);
   session.master = null;
   session = null;
@@ -864,6 +866,7 @@ function initUnlock() {
     if (!(await ask("Remove this wallet from this browser? Its funds stay on chain, but you can only get it back with your 24 recovery words. Make sure you have them written down.", "Remove"))) return;
     await engine.remove(current);
     try { await evm.forget(current); } catch {}
+    try { await chrome.storage.local.remove(`opeq:sol-ms:${current}`); } catch {}
     try { await chrome.storage.local.remove(`opeq:log:${current}`); } catch {}
     try { if (localStorage.getItem("opeq:last") === current) localStorage.removeItem("opeq:last"); } catch {}
     current = null; session = null;
@@ -1264,6 +1267,26 @@ async function init() {
   else if (!NET.swap) { $("tab-swap").remove(); $("pane-swap").classList.add("hidden"); }
   watchLock();
   evm.init({ ask, guard, log, copyTo, session: () => session, busy: () => busy, lock: () => lockVault(""), compute: engine.compute });
+  if (NET.vault && $("pane-vaults")) {
+    SV.init({
+      $, NET, ask, log, lookalike, checkRecipient, parseSol, planTopup, run,
+      session: () => session, engine: () => engine, rpc: () => rpc, busy: () => busy,
+      tag: () => ({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds" }),
+      guard: (fn) => guard("sv-err", "sv-ok", fn),
+      ok: (t) => { $("sv-ok").textContent = t; },
+      fee: async (cu) => `about ${sol(await networkFee(cu))} SOL`,
+      copy: (b, t, n) => copyTo(b, t, n),
+      remember: (a) => rememberTo(a),
+      kv: {
+        get: async (k) => { try { return (await chrome.storage.local.get(k))[k]; } catch { return null; } },
+        set: async (k, v) => { try { await chrome.storage.local.set({ [k]: v }); } catch {} },
+      },
+    });
+    $("tab-vaults").addEventListener("click", () => guard("sv-err", null, () => SV.refresh()));
+  } else {
+    if ($("tab-vaults")) $("tab-vaults").remove();
+    if ($("pane-vaults")) $("pane-vaults").remove();
+  }
   initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
   const kept = await keep.load(IDLE_MS);
   if (kept) {
