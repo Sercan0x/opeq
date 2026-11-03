@@ -127,7 +127,7 @@ export function check(q, req, nowS) {
   const expected = big(pay.expectedAmount), min = big(pay.minimumAmount);
   if (expected <= 0n || min <= 0n || min > expected) bad("bad output amounts");
   const slip = BigInt(req.slippageTolerance);
-  if (min * 10000n < expected * (10000n - slip)) bad("the minimum is below your slippage limit");
+  if (min * 1000000n < expected * (1000000n - slip * 100n - 10n)) bad("the minimum is below your slippage limit");
   if (!Number.isFinite(out.deadline) || out.deadline < nowS + 60) bad("the order expires too soon");
   const d = q.details || {};
   if (d.recipient !== undefined && !sameAddress(to, d.recipient, req.recipient)) bad("details name another receiver");
