@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
-<title>opeq: Solana wallets built to resist quantum computers</title>
-<meta name="description" content="opeq, a Solana wallet built to resist quantum computers, laid out as a motherboard. Click a part to open its section.">
+<title>opeq: wallets built to resist quantum computers, on Solana and EVM</title>
+<meta name="description" content="opeq, a wallet built to resist quantum computers on Solana, Ethereum, Base, Arbitrum and Robinhood Chain, laid out as a motherboard. Click a part to open its section.">
 <meta name="theme-color" content="#070b11">
-<meta property="og:title" content="opeq: Solana wallets built to resist quantum computers">
-<meta property="og:description" content="Hash-based signatures for Solana. Same address, every app, no protocol change.">
+<meta property="og:title" content="opeq: wallets built to resist quantum computers, on Solana and EVM">
+<meta property="og:description" content="Hash-based signatures on Solana and four EVM networks. Same address, optional multisig, no protocol change.">
 <meta property="og:image" content="https://opeq.io/assets/og.png">
 <meta property="og:url" content="https://opeq.io/">
 <meta name="twitter:card" content="summary_large_image">
@@ -41,14 +41,14 @@
   <section class="panel" id="p-usb" hidden aria-labelledby="h-usb">
     <p class="crumb mono" id="h-usb">USB / start here</p>
     <h2>Wallets built to resist quantum computers.</h2>
-    <p class="intro">Hash-based signatures that work with any Solana app, keep the same address, and need no change to the protocol. Every part of this board opens one piece of the story.</p>
+    <p class="intro">Hash-based signatures on Solana and on four EVM networks: Ethereum, Base, Arbitrum and Robinhood Chain. They keep the same address and need no change to any protocol. Every part of this board opens one piece of the story.</p>
     <dl class="list">
       <div><dt>Signature</dt><dd>448 bytes</dd></div>
       <div><dt>Quantum security</dt><dd>64 bits, NIST category 1</dd></div>
       <div><dt>Signatures per tree</dt><dd>688, then rekey</dd></div>
       <div><dt>Protocol changes</dt><dd>none</dd></div>
     </dl>
-    <p>opeq is live on mainnet in beta, in Chrome or on a USB drive for Windows. Start with small amounts.</p>
+    <p>opeq is live on mainnet in beta, in Chrome or on a USB drive for Windows. One set of 24 words opens a Solana wallet and an EVM account, and wallets can team up in an optional multisig. Start with small amounts.</p>
     <p>Not sure your current wallet is exposed? <a href="scan.html">Check any Solana address</a>.</p>
     <div class="actions"><a class="btn btn-solid" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer"><svg class="ico-chrome" viewBox="-1 -1 2 2" aria-hidden="true"><path d="M0 0L.866-.5A1 1 0 0 0-.866-.5Z" fill="#db4437"/><path d="M0 0L-.866-.5A1 1 0 0 0 0 1Z" fill="#0f9d58"/><path d="M0 0L0 1A1 1 0 0 0 .866-.5Z" fill="#f4b400"/><circle r=".46" fill="#fff"/><circle r=".36" fill="#4285f4"/></svg>Add to Chrome</a><a class="btn btn-line" href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.2.0" target="_blank" rel="noopener noreferrer">Get it for a USB drive</a><a class="btn btn-line" href="app.html">Try it on devnet</a></div>
   </section>
@@ -75,7 +75,7 @@
   <section class="panel" id="p-chipset" hidden aria-labelledby="h-chipset">
     <p class="crumb mono" id="h-chipset">Chipset / what opeq is</p>
     <h2>A wallet that stays safe</h2>
-    <p class="intro">opeq is a Solana program plus a client. Your funds sit in an address that has no private key at all. The program moves them only after it checks a hash-based signature.</p>
+    <p class="intro">opeq is a Solana program, a set of EVM contracts and a client. Your funds sit in an address that has no private key at all. The code on chain moves them only after it checks a hash-based signature.</p>
     <dl class="list">
       <div><dt>A normal address</dt><dd>Receive SOL, hold SPL and Token-2022 tokens, share it like any other address. Other programs see an ordinary signer.</dd></div>
       <div><dt>Works with any app</dt><dd>One signature authorizes a list of instructions to any programs. Tested with transfers, tokens, token accounts and Memo. On mainnet, swaps route through Jupiter.</dd></div>
@@ -83,6 +83,9 @@
       <div><dt>24 recovery words</dt><dd>Standard BIP39 words. Every key tree is derived from them, so the words stay valid after any number of rekeys.</dd></div>
       <div><dt>No protocol change</dt><dd>Runs on Solana as it is today. No new chain, no fork, no waiting for a network upgrade.</dd></div>
       <div><dt>Quantum-safe upgrades</dt><dd>The program's own upgrade key is an opeq wallet. Even the code can't be changed with a broken Ed25519 key.</dd></div>
+      <div><dt>EVM accounts</dt><dd>The same 24 words open a smart-contract account on Ethereum, Base, Arbitrum and Robinhood Chain, with the same address on all four. It checks the same kind of hash-based signature, built on keccak256. Send ETH and ERC-20 tokens; a small gas key derived from your words pays the network fees and has no power over the account.</dd></div>
+      <div><dt>Multisig</dt><dd>Optional. A shared vault moves funds only after several opeq wallets approve, for example 2 of 3. Every owner is an opeq wallet or account, never a plain Ed25519 or ECDSA key, so every approval is a one-time hash-based signature. On Solana and on all four EVM networks.</dd></div>
+      <div><dt>No dApp connections</dt><dd>The wallet signs only what you build inside it. No website can connect to it or ask it for a signature, so wallet drainers and fake signature requests have nothing to hook into.</dd></div>
     </dl>
   </section>
   <section class="panel" id="p-cpu" hidden aria-labelledby="h-cpu">
@@ -147,8 +150,8 @@
     <h2>What is protected</h2>
     <p class="intro">A clear threat model, the limits we know about, and what two internal reviews found.</p>
     <dl class="list">
-      <div><dt>Protected</dt><dd>Funds and tokens in your opeq wallet. Every action needs a hash-based signature over the exact instructions. The program's upgrade key is also an opeq wallet.</dd></div>
-      <div><dt>Not protected by opeq</dt><dd>The Ed25519 key that pays fees (keep little SOL in it). Solana's validators and consensus, which use classical cryptography and need their own migration.</dd></div>
+      <div><dt>Protected</dt><dd>Funds and tokens in your opeq wallet, your EVM account and any multisig vault. Every action needs a hash-based signature over the exact instructions or calls. The upgrade key of the Solana programs is also an opeq wallet. The EVM contracts have no owner and cannot be upgraded.</dd></div>
+      <div><dt>Not protected by opeq</dt><dd>The Ed25519 key that pays Solana fees and the secp256k1 gas key that pays EVM fees (both hold only a little, for fees). The validators and consensus of every network, which use classical cryptography and need their own migration.</dd></div>
     </dl>
     <h3>Security level</h3>
     <table class="tbl">
@@ -176,12 +179,12 @@
         <tr><td class="mono">low</td><td>A failed transaction could be replayed until it expired</td><td>Failed keys are burned</td></tr>
       </tbody>
     </table>
-    <p class="warn"><b>Mainnet beta.</b> Start with small amounts. The program can still be upgraded by the developer.</p>
+    <p class="warn"><b>Mainnet beta.</b> Start with small amounts. The Solana wallet program and the Solana multisig program can still be upgraded by the developer; the multisig program will be locked for good after the external audit. The EVM contracts are immutable and have had internal reviews only.</p>
   </section>
   <section class="panel" id="p-ram" hidden aria-labelledby="h-ram">
     <p class="crumb mono" id="h-ram">RAM / specification</p>
     <h2>The details</h2>
-    <p class="intro">Everything needed to write an independent client or verifier.</p>
+    <p class="intro">Everything needed to write an independent client or verifier, for Solana, EVM and multisig.</p>
     <h3>Parameters</h3>
 <dl class="params">
   <div><dt>one-time signature</dt><dd><span>WOTS+, n = 16 bytes, w = 256, 16 message + 2 checksum chains</span></dd></div>
@@ -237,36 +240,91 @@ costs
     <div class="codes">
       <span><b>1</b>bad instruction</span><span><b>13</b>bad signature</span><span><b>2</b>too many accounts</span><span><b>14</b>state not writable</span><span><b>3</b>state not owned by program</span><span><b>15</b>init address mismatch</span><span><b>4</b>bad state account</span><span><b>16</b>too many slices</span><span><b>5</b>wallet/state mismatch</span><span><b>17</b>account index out of range</span><span><b>6</b>signature expired</span><span><b>18</b>payer must sign</span><span><b>7</b>leaf already used</span><span><b>19</b>already initialized</span><span><b>8</b>leaf out of range</span><span><b>20</b>bad system program</span><span><b>9</b>self cpi</span><span><b>21</b>too many metas</span><span><b>10</b>bad meta flags</span><span><b>22</b>rekey to the current root</span><span><b>11</b>signer escalation</span><span><b>23</b>expiry too far in the future</span><span><b>12</b>malformed inner instructions</span>
     </div>
+    <h3>EVM accounts</h3>
+<dl class="params">
+  <div><dt>networks</dt><dd><span>Ethereum (1), Base (8453), Arbitrum (42161), Robinhood Chain (4663)</span></dd></div>
+  <div><dt>account factory</dt><dd><span>0xa9993f90af137adc80c70814d27fe4ecc773b50b, same address on all four, no owner</span></dd></div>
+  <div><dt>one-time signature</dt><dd><span>WOTS+ as on Solana, n = 16 bytes, w = 256, 18 chains, with keccak256 instead of SHA-256</span></dd></div>
+  <div><dt>proof size</dt><dd><span>448 B (288 B signature + 160 B Merkle path)</span></dd></div>
+  <div><dt>merkle tree</dt><dd><span>height 10, 1024 leaves</span><span>leaves 0..959 sign calls, 960..1023 only rekeys and device takeovers</span></dd></div>
+  <div><dt>trees</dt><dd><span>one identity tree fixes the address on every network</span><span>each network gets its own key trees, so a key is never shared between networks</span></dd></div>
+  <div><dt>deadline</dt><dd><span>named by the signer, at most 1 hour ahead, checked on chain</span></dd></div>
+  <div><dt>gas key</dt><dd><span>secp256k1, derived from the 24 words, pays gas only</span></dd></div>
+  <div><dt>gas</dt><dd><span>about 170,000 to 200,000 per send</span></dd></div>
+</dl>
+<pre>digest = keccak256(abi.encode(
+    rnd (16 random bytes),
+    keccak256("opeq/evm/exec/v1"),
+    chain id, account address, epoch,
+    leaf, deadline,
+    keccak256(abi.encode(calls)),
+    salt
+))[0..16]
+
+execute(calls, leaf, deadline, salt, rnd, proof 448 B)
+rekey(new pub_seed, new root, leaf, deadline, salt, rnd, proof)</pre>
+    <h3>Multisig</h3>
+    <p class="quiet">Optional and separate from the wallet: a normal opeq wallet never needs it. Every owner is an opeq wallet or opeq account, so each approval is that owner's own hash-based signature. A proposal stores the full instructions or calls on chain, so every owner approves exactly what will run. Owner and threshold changes are proposals too, and they void every open proposal.</p>
+<dl class="params">
+  <div><dt>Solana program</dt><dd><span>3qjjDf8MdqDTFmBm3zJfKFqZKbZ5xgZM1ntGYVeqEuHB</span><span>code sha256 83ff2e876a98bccc62080f739792860c0b964355b9848c0cf6695dee28fc222c</span><span>upgrade key: the admin opeq wallet, locked after the external audit</span></dd></div>
+  <div><dt>EVM factory</dt><dd><span>0x260e85a98575012b816605b0feacb6cfdde78cef on all four networks, immutable</span></dd></div>
+  <div><dt>owners</dt><dd><span>Solana: up to 8 opeq wallets, named by their owner ID (account id)</span><span>EVM: up to 10 opeq accounts, checked by code hash</span></dd></div>
+  <div><dt>Solana addresses (PDAs)</dt><dd><span>multisig = ["m", creator, nonce 32]</span><span>deposit address = ["v", multisig]</span><span>proposal = ["p", multisig, proposer, config u32, seq u32]</span></dd></div>
+  <div><dt>EVM vault address</dt><dd><span>CREATE2 from (owners, threshold, nonce): the same on every network</span></dd></div>
+  <div><dt>proposal lifetime</dt><dd><span>at most 30 days</span></dd></div>
+</dl>
+<pre>Solana instructions
+0 create    threshold | nonce 32 | owners
+1 propose   expires i64 | stored instructions
+2 approve   id u64 | content hash 32
+3 revoke    id u64 | content hash 32
+4 cancel    id u64        (proposer only)
+5 execute   id u64        (any owner, enough approvals)
+6 close     id u64        (rent back to the proposer)
+7 sweep     moves SOL sent to the multisig ID
+            to its deposit address
+
+EVM calls
+propose(calls, expires)   approve(id, callsHash)
+revoke(id, callsHash)     cancel(id)
+execute(id, calls)        setOwners / setThreshold
+                          (only through an executed proposal)</pre>
+    <p class="quiet">Send funds only to the deposit address on Solana, or to the vault address on the network it was created on. The multisig ID is for sharing with co-owners.</p>
   </section>
   <section class="panel" id="p-power" hidden aria-labelledby="h-power">
     <p class="crumb mono" id="h-power">Power / built from scratch</p>
     <h2>Built from scratch</h2>
     <p>The program is written in sBPF v3 assembly through a hand-made Python assembler. There is no Rust, LLVM or Solana CLI anywhere. A custom sBPF emulator runs the program locally with Solana's compute-unit prices. Its count matched the live network to within 0.05%. Every change is checked against a reference model with differential fuzzing.</p>
     <p>This website is plain JavaScript with no dependencies: SHA-256, WOTS+, BIP39, base58, program addresses and the transaction format are all written by hand. It loads nothing from third parties. The block hashes on this page are computed by the same SHA-256 the wallet uses.</p>
+    <p>The EVM contracts are plain Solidity with hand-written assembly for the hash chains, built and tested offline with Foundry. The keccak256, secp256k1 and transaction encoding in the wallet are written by hand too.</p>
     <h3>Where this goes</h3>
     <div class="road">
-      <div><h4 class="mono">done</h4><ul><li>On-chain program</li><li>Any-program CPI, tokens, Raydium swap</li><li>Rekey, quantum-safe upgrades</li><li>24 recovery words</li><li>Two internal security reviews</li><li>Command line client</li><li>Web app with tokens and swaps</li><li>On-chain expiry cap (rev 1.1)</li></ul></div>
-      <div><h4 class="mono">next</h4><ul><li>TypeScript SDK</li><li>Upgrade governance: timelock or an immutable program</li><li>External audit</li></ul></div>
-      <div><h4 class="mono">later</h4><ul><li>Integrations with existing wallets</li><li>Falcon signatures once SIMD-0416 lands</li><li>Mobile</li></ul></div>
+      <div><h4 class="mono">done</h4><ul><li>On-chain program</li><li>Any-program CPI, tokens, Jupiter swaps</li><li>Rekey, quantum-safe upgrades</li><li>24 recovery words</li><li>Repeated internal security reviews</li><li>Chrome extension</li><li>USB edition for Windows</li><li>EVM: Ethereum, Base, Arbitrum, Robinhood Chain</li><li>Multisig on Solana and EVM</li></ul></div>
+      <div><h4 class="mono">next</h4><ul><li>Bridge between Solana and EVM</li><li>Android app</li><li>External audits</li><li>Upgrade governance: timelock or an immutable program</li></ul></div>
+      <div><h4 class="mono">later</h4><ul><li>EVM swaps</li><li>TypeScript SDK</li><li>Falcon signatures once SIMD-0416 lands</li></ul></div>
     </div>
   </section>
   <section class="panel" id="p-audio" hidden aria-labelledby="h-audio">
     <p class="crumb mono" id="h-audio">Audio / questions</p>
     <h2>Questions</h2>
     <div class="faqs">
-      <details><summary>Is opeq live?</summary><p>Yes, as a beta on Solana mainnet. Start with small amounts.</p></details>
+      <details><summary>Is opeq live?</summary><p>Yes, as a beta on Solana mainnet and on Ethereum, Base, Arbitrum and Robinhood Chain. Start with small amounts.</p></details>
       <details><summary>When will quantum computers break Ed25519?</summary><p>Nobody knows. Published estimates range from five to twenty years. What is certain is that network-wide migrations take years, and that on Solana every public key is already visible on chain.</p></details>
       <details><summary>Why not wait for Solana to add post-quantum signatures?</summary><p>A Falcon verification syscall has been proposed (SIMD-0416), and a full migration plan exists on paper. Protocol migrations are slow. opeq works today, on the network as it is, and can adopt Falcon later.</p></details>
       <details><summary>Do I get a new address?</summary><p>Yes. Your opeq wallet is a new address. You move funds into it like into any other address. After that the address never changes.</p></details>
       <details><summary>What is the fee key?</summary><p>Solana needs an Ed25519 key to pay each transaction's fee. opeq derives a small one from your words and keeps only a few cents of SOL on it. Your funds don't live there: they live in the opeq address, which only moves with your hash-based signature. If the fee key were ever broken, the attacker would get the fee balance and nothing else.</p></details>
-      <details><summary>Where are my keys stored?</summary><p>In your browser, encrypted with your password (PBKDF2 with 600,000 rounds and AES-256-GCM). They never leave your device and are never sent to any server. The site loads nothing from third parties. An open wallet locks itself after 10 minutes without activity, and showing the 24 words always asks for the password again.</p></details>
+      <details><summary>Where are my keys stored?</summary><p>In your browser, encrypted with your password (PBKDF2 with 600,000 rounds and AES-256-GCM). They never leave your device and are never sent to any server. The site loads nothing from third parties. An open wallet locks itself after 10 minutes without activity in Chrome and after 3 minutes on the USB edition, and showing the 24 words always asks for the password again. On the USB edition the encrypted wallet lives on the stick, not on the computer.</p></details>
       <details><summary>What if I clear my browser or lose my device?</summary><p>Use your 24 words in the OPEQ Chrome extension or the OPEQ USB app, never on a website. The client rebuilds your keys, finds your current tree on chain and skips ahead 64 keys to stay safe.</p></details>
       <details><summary>Can I use the same words on two devices?</summary><p>For recovery, yes. Don't sign from two devices at the same time: each device tracks which keys it used, and two devices can't see each other's counters until a transaction lands.</p></details>
       <details><summary>What happens after 688 transactions?</summary><p>You rekey. The wallet moves to a fresh tree of 1024 keys derived from the same words. Your address, balances and words stay the same. The remaining keys of every tree are held back for rekeys and for moving the wallet to a new device, so you can never get locked out.</p></details>
       <details><summary>How much does it cost?</summary><p>The normal 5000 lamport fee, plus a one-time activation of about 0.0015 SOL rent and 0.005 SOL kept on the fee key. A transfer uses about 160,000 compute units, well inside Solana's limits. When priority fees apply, they scale with compute units, so a busy network costs a little more than a plain transfer.</p></details>
       <details><summary>Why are the signatures so big?</summary><p>Hash-based signatures trade size for safety. 288 bytes of signature plus 160 bytes of Merkle path, 448 bytes in total, against 64 bytes for Ed25519. It still fits in one transaction, together with a swap.</p></details>
       <details><summary>Which apps work?</summary><p>Any program that accepts a signer. Tested: system transfers, SPL Token, Token-2022, associated token accounts, Memo, and swaps through Jupiter on mainnet. Large transactions need address lookup tables, which opeq supports. Programs that demand an Ed25519 signature from the wallet itself can't work with any program-based wallet.</p></details>
-      <details><summary>Could the opeq team steal my funds?</summary><p>The program can be upgraded, and whoever controls upgrades could change it. The upgrade key is itself an opeq wallet held by the developer, on a governance program nobody can change. There is no timelock yet, so an upgrade takes effect at once. Upgrades are announced on @opeqio, and a timelock or an immutable program is on the roadmap.</p></details>
+      <details><summary>How does opeq work on EVM networks?</summary><p>Every EVM address you know is an ECDSA key that a quantum computer could break once its public key is seen. opeq gives you a smart-contract account instead. It holds your funds and moves them only after it checks a hash-based signature, the same scheme as on Solana, built on keccak256. The account has the same address on Ethereum, Base, Arbitrum and Robinhood Chain. Press Set up once per network. A small gas key derived from your words pays the fees and can't move your funds.</p></details>
+      <details><summary>What does an EVM transaction cost?</summary><p>About 170,000 to 200,000 gas for a send. On Base, Arbitrum and Robinhood Chain that is usually a cent or less; on Ethereum it depends on the gas price. Set up on a network costs a few transactions once.</p></details>
+      <details><summary>What is a multisig?</summary><p>A shared vault that moves funds only after several opeq wallets approve, for example 2 of 3. Each owner shares their owner ID (Solana) or account address (EVM), one owner creates the vault, any owner proposes a payment, and it runs once enough owners approve. Each approval is a one-time hash-based signature from that owner's own wallet. It is optional, in the Multisig tab, on Solana and all four EVM networks.</p></details>
+      <details><summary>Can websites connect to opeq?</summary><p>No, on purpose. opeq signs only transactions you build inside the wallet. No site can ask it for a signature, so wallet drainers and fake approval requests can't reach it. Type your 24 words only into the OPEQ Chrome extension or the OPEQ USB app.</p></details>
+      <details><summary>Could the opeq team steal my funds?</summary><p>The program can be upgraded, and whoever controls upgrades could change it. The upgrade key is itself an opeq wallet held by the developer, on a governance program nobody can change. There is no timelock yet, so an upgrade takes effect at once. The Solana multisig program has the same upgrade key until the external audit, then it will be locked. The EVM contracts have no owner and can't be upgraded by anyone. Upgrades are announced on @opeqio, and a timelock or an immutable program is on the roadmap.</p></details>
       <details><summary>Is the code open source?</summary><p>Yes, under the Apache 2.0 license, at github.com/Sercan0x/opeq.</p></details>
     </div>
   </section>
