@@ -26,7 +26,6 @@ INFOS = 0x600
 VSEEDS = 0x1600
 WBUMP = 0x1640
 RENT = 0x1648
-TWO = 0x4000000000000000
 MAX_ACCOUNTS = 64
 
 ACC_SIGNER = 1
@@ -490,14 +489,33 @@ def emit_rent(a):
     a.syscall("sol_get_rent_sysvar")
     a.ldx(8, r1, r9, S5)
     a.add(r1, M.ACCOUNT_OVERHEAD)
-    a.ldx(8, r2, r9, RENT + 8)
-    a.lddw(r3, TWO)
-    a.jne(r2, r3, "rent_fixed")
     a.ldx(8, r2, r9, RENT)
     a.jeq(r2, 0, "rent_fixed")
-    a.mov(r0, r1)
+    a.mov(r4, r1)
+    a.mul(r4, r2)
+    a.lddw(r0, 1 << 32)
+    a.jge(r4, r0, "rent_fixed")
+    a.ldx(8, r2, r9, RENT + 8)
+    a.mov(r3, r2)
+    a.rsh(r3, 63)
+    a.jne(r3, 0, "rent_fixed")
+    a.mov(r3, r2)
+    a.rsh(r3, 52)
+    a.and_(r3, 0x7FF)
+    a.jlt(r3, 1000, "rent_fixed")
+    a.jgt(r3, 1050, "rent_fixed")
+    a.lddw(r0, (1 << 52) - 1)
+    a.and_(r2, r0)
+    a.lddw(r0, 1 << 52)
+    a.or_(r2, r0)
+    a.rsh(r2, 21)
+    a.add(r2, 1)
+    a.mov(r0, r4)
     a.mul(r0, r2)
-    a.lsh(r0, 1)
+    a.mov(r5, 1054)
+    a.sub(r5, r3)
+    a.rsh(r0, r5)
+    a.add(r0, 1)
     a.exit()
     a.label("rent_fixed")
     a.mov(r0, r1)

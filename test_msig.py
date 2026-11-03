@@ -172,10 +172,13 @@ def ok(cond, msg):
 
 
 def scenario(backend):
-    for lpby, thr, want in ((2540, 2.0, (128 + M.MS_LEN) * 5080), (5000, 2.0, (128 + M.MS_LEN) * 10000), (3480, 1.5, (128 + M.MS_LEN) * 6960), (0, 2.0, (128 + M.MS_LEN) * 6960)):
+    for lpby, thr in ((3480, 2.0), (3480, 1.4597701149425288), (2540, 2.0), (5000, 2.0), (3480, 1.5), (3480, 1.0), (0, 2.0), (3480, -2.0), (3480, 1e-300), (3480, 1e300)):
+        exact = int((128 + M.MS_LEN) * lpby * thr) if 0 < thr < 1e10 and lpby else None
+        want = M.rent(M.MS_LEN, lpby, thr)
+        okv = want >= (exact or 0) and (exact is None or exact <= 0 or want - exact <= 2 or want == (128 + M.MS_LEN) * 6960)
         wr = World(backend)
         wr.lpby, wr.threshold = lpby, thr
-        ok(wr.create(0, [0, 1], 1) == 0 and wr.ms["lamports"] == want, f"rent follows the network ({lpby}, {thr})")
+        ok(okv and wr.create(0, [0, 1], 1) == 0 and wr.ms["lamports"] == want, f"rent covers the network minimum within 2 lamports ({lpby}, {thr}): {want} vs {exact}")
     w = World(backend)
     ok(w.create(0, [0, 1, 2], 2) == 0, "create 2 of 3")
     info = w.msinfo()
@@ -330,6 +333,7 @@ def fuzz(elf, trials):
     for t in range(trials):
         w = World(b, n_people=5)
         w.lpby = rng.choice([3480, 2540, 1, 9000])
+        w.threshold = rng.choice([2.0, 1.4597701149425288, 1.0, 0.5, 3.75])
         k = rng.randint(1, 4)
         owners = rng.sample(range(5), k)
         creator = rng.choice(owners if rng.random() < 0.9 else range(5))

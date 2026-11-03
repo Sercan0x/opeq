@@ -65,9 +65,14 @@ ERRORS = {
 
 
 def rent(space, lpby=LAMPORTS_PER_BYTE // 2, threshold=2.0):
-    if threshold == 2.0 and lpby > 0:
-        return (ACCOUNT_OVERHEAD + space) * lpby * 2
-    return (ACCOUNT_OVERHEAD + space) * LAMPORTS_PER_BYTE
+    fixed = (ACCOUNT_OVERHEAD + space) * LAMPORTS_PER_BYTE
+    bits, = struct.unpack("<Q", struct.pack("<d", threshold))
+    e = (bits >> 52) & 0x7FF
+    n = (ACCOUNT_OVERHEAD + space) * lpby
+    if lpby == 0 or n >= 1 << 32 or bits >> 63 or e < 1000 or e > 1050:
+        return fixed
+    m = (bits & ((1 << 52) - 1)) | (1 << 52)
+    return ((n * ((m >> 21) + 1)) >> (1054 - e)) + 1
 
 
 def create_program_address(seeds, program):
