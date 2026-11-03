@@ -41,8 +41,8 @@ ok((await A.rpc.code(fac)) !== "0x", `multisig factory at ${fac}`);
 
 console.log("create vault");
 const nonce = sha256(enc.encode("vault nonce"));
-const want = M.vaultAddress(A.account, owners, 2, nonce);
-const predicted = cast("call", fac, "predict(address,address[],uint8,bytes32)(address)", A.account, `[${owners.join(",")}]`, "2", bytesToHex(nonce));
+const want = M.vaultAddress(owners, 2, nonce);
+const predicted = cast("call", fac, "predict(address[],uint8,bytes32)(address)", `[${owners.join(",")}]`, "2", bytesToHex(nonce));
 ok(predicted.toLowerCase() === want, "local vault address matches the factory's own prediction");
 const rc = await A.execute([M.createCall(owners, 2, nonce)]);
 ok((await A.rpc.code(want)) !== "0x", `vault created (gas ${rc.gasUsed})`);

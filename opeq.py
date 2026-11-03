@@ -926,6 +926,7 @@ def cmd_upgrade(rpc, payer, v, args):
         raise SystemExit("a mainnet upgrade needs --sha256 <hash of the elf>")
     preflight(rpc, v)
     pd = rpc.account(programdata_of(target))
+    deploy.check_upgrade(rpc, bytes(pd["data"])[deploy.PROGRAMDATA_META:], elf, args)
     if len(elf) > len(pd["data"]) - deploy.PROGRAMDATA_META:
         raise SystemExit("the elf is larger than the program's reserved size (max_len); refusing")
     old = deploy.elf_version(bytes(pd["data"]))
@@ -978,6 +979,7 @@ def main():
     ap.add_argument("--target")
     ap.add_argument("--new-authority")
     ap.add_argument("--elf")
+    ap.add_argument("--opeq")
     ap.add_argument("--buffer")
     ap.add_argument("--plaintext", action="store_true")
     ap.add_argument("--yes", action="store_true")

@@ -260,7 +260,8 @@ async function act(v, p, info, kind) {
   if (kind === "execute" && inner > 400000n) notes.push({ text: `Executing needs about ${inner.toLocaleString()} gas for the proposal's own calls, more than a plain payment. A contract in this proposal may be wasting gas on purpose.`, warn: true });
   if (!(await x.ask({ ...x.tag(), title: `${label}: proposal #${p.id}`, rows: [["Vault", v.address, true], ...rows, ["Network fee", await x.feeText(EXEC_GAS + inner)]], notes }, label))) return;
   const call = kind === "execute" ? M.executeCall(v.address, p.id, fresh.calls) : M.idCall(v.address, kind, p.id, fresh.callsHash);
-  await run(() => c.execute([call], (h) => x.last(`${label} sent.`, h), false, { maxInner: (inner * 12n) / 10n + 20000n }));
+  const settled = async () => { const q = await v.proposal(p.id); return !q.live; };
+  await run(() => c.execute([call], (h) => x.last(`${label} sent.`, h), false, { maxInner: (inner * 12n) / 10n + 20000n, settled, settledText: "The proposal was executed, cancelled or changed before your transaction landed, so nothing stays pending and your account is free" }));
   x.ok(kind === "execute" ? "executed" : kind === "approve" ? "approved" : kind === "revoke" ? "approval revoked" : "proposal cancelled");
   await x.refreshMain();
 }
@@ -284,12 +285,14 @@ export function init(ctx) {
     const fac = M.factoryAddress();
     const fresh = (await c.rpc.code(fac)) === "0x";
     const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const addr = M.vaultAddress(c.account, owners, threshold, nonce);
+    const addr = M.vaultAddress(owners, threshold, nonce);
     if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} multisig`, rows: [["Vault address", addr, true], ...owners.map((o, i) => [`Owner ${i + 1}${o === c.account ? " (you)" : ""}`, o, true]), ["Network fee", await x.feeText((fresh ? 2600000n : 0n) + 2200000n)]],
       notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each with their own OPEQ wallet.` }, { text: `The vault exists only on ${c.chain.name}. Never send funds to this address on any other network.`, warn: true }, ...(fresh ? [{ text: "The first transaction installs the OPEQ multisig factory on this network, once for everyone." }] : []), { text: "Send the vault address to the other owners so they can add it in their wallet." }, { text: "Beta: the multisig contract has had internal reviews only. Start with small amounts.", warn: true }] }, "Create"))) return;
     if (fresh) await c.install("0x4e59b44847b379578588920ca78fbf26c0b4956c", M.factoryDeployData(), M.factoryAddress(), (h) => x.last("Factory install sent.", h));
-    await run(() => c.execute([M.createCall(owners, threshold, nonce)], (h) => x.last("Vault creation sent.", h)));
-    await new M.Vault(c, addr).read();
+    const same = async () => { const i = await new M.Vault(c, addr).read(); return i.threshold === threshold && i.owners.length === owners.length && owners.every((o) => i.owners.includes(o)); };
+    try { await run(() => c.execute([M.createCall(owners, threshold, nonce)], (h) => x.last("Vault creation sent.", h), false, { settled: same, settledText: "This multisig already exists" })); }
+    catch (e) { if (!(await same().catch(() => false))) throw e; }
+    if (!(await same())) throw new Error("the multisig on chain does not match what you created. Do not use it");
     await saveList([addr, ...(await loadList()).filter((a) => a !== addr)].slice(0, LIST_MAX));
     x.$("ms-owners").value = x.$("ms-thr").value = "";
     x.ok("multisig created");

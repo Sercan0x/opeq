@@ -59,15 +59,15 @@ export function checkOwners(owners, threshold) {
   return list;
 }
 
-export function vaultSalt(creator, owners, threshold, nonce) {
+export function vaultSalt(owners, threshold, nonce) {
   const tag = enc.encode("opeq/evm/multisig/v1");
   const strTail = dynBytes(tag);
-  return keccak256(word(160), addressWord(creator), word(160 + strTail.length), word(threshold), leftWord(nonce), strTail, addressArray(owners));
+  return keccak256(word(128), word(128 + strTail.length), word(threshold), leftWord(nonce), strTail, addressArray(owners));
 }
 
-export function vaultAddress(creator, owners, threshold, nonce, factory = factoryAddress()) {
+export function vaultAddress(owners, threshold, nonce, factory = factoryAddress()) {
   const args = concat(word(64), word(threshold), addressArray(owners));
-  return create2(factory, vaultSalt(creator, owners, threshold, nonce), keccak256(MS_INIT_BYTES, args));
+  return create2(factory, vaultSalt(owners, threshold, nonce), keccak256(MS_INIT_BYTES, args));
 }
 
 export function createCall(owners, threshold, nonce) {

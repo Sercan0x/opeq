@@ -1,5 +1,6 @@
 import * as V from "./lib/solvault.js";
 import * as P from "./lib/protocol.js";
+import * as T from "./lib/tokens.js";
 import { pubkey, b58encode, b58decode, SYSTEM, eq, unhex, concat, u32, u64 } from "./lib/solana.js";
 
 const LIST_MAX = 20;
@@ -105,21 +106,34 @@ async function words(ix, v) {
     const notes = d.mayHaveFee ? ["This token program can take a transfer fee, so the receiver may get less."] : [];
     const acc = await readAccount(d.dest).catch(() => null);
     const real = acc && (eq(acc.owner, d.program)) && acc.data && acc.data.length >= 165 && eq(acc.data.slice(0, 32), d.mint);
-    const holder = real ? b58encode(acc.data.slice(32, 64)) : "unknown";
+    const owner = real ? acc.data.slice(32, 64) : null;
+    const standard = real && eq(T.ata(owner, d.mint, d.program), d.dest);
+    const opt = (off) => real && acc.data[off] === 1 && acc.data[off + 1] === 0 && acc.data[off + 2] === 0 && acc.data[off + 3] === 0 ? acc.data.slice(off + 4, off + 36) : null;
+    const delegate = opt(72), closer = opt(129);
+    const holder = real ? b58encode(owner) : "unknown";
     if (!real) notes.push("The receiving token account does not exist yet or is not an account of this token. Do not approve unless you know why.");
-    return { title: `Send ${d.amount} token units (${d.decimals} decimals)`, rows: [["Token account", b58encode(d.dest), true], ["Held by", holder, true], ["Mint", b58encode(d.mint), true]], notes, risky: true, check: [b58encode(d.dest), ...(holder !== "unknown" ? [holder] : [])] };
+    else if (!standard) notes.push("The receiving account is not the holder's standard token account. Whoever set it up may be able to change who receives the tokens before the proposal is executed. Do not approve unless the holder gave you this exact account.");
+    if (closer && !eq(closer, owner)) notes.push(`Someone other than the holder (${short(closer)}) can close the receiving account and re-open it for someone else. Do not approve.`);
+    if (delegate) notes.push(`The receiving account has a delegate (${short(delegate)}) who can move tokens out of it.`);
+    if (real && acc.data[108] === 2) notes.push("The receiving account is frozen, so the transfer will fail.");
+    return { title: `Send ${d.amount} token units (${d.decimals} decimals)`, rows: [["Token account", b58encode(d.dest), true], [standard ? "Held by" : "Held by (not verified)", holder, true], ["Mint", b58encode(d.mint), true]], notes, risky: true, check: [b58encode(d.dest), ...(standard ? [holder] : [])] };
   }
   if (d.kind === "owners") {
     const me = x.session().wallet, cur = new Set(v.info.owners.map(b58encode));
-    const rows = d.wallets.map((w, i) => [`Owner ${i + 1}${eq(w, me) ? " (you)" : cur.has(b58encode(w)) ? "" : " (NEW)"}`, b58encode(w), true]);
+    const rows = d.wallets.flatMap((w, i) => [[`Owner ${i + 1}${eq(w, me) ? " (you)" : cur.has(b58encode(w)) ? "" : " (NEW)"}`, b58encode(w), true], ["Owner ID", b58encode(d.owners[i].aid), true]]);
     const removed = v.info.owners.filter((o) => !d.wallets.some((w) => eq(w, o)));
     for (const o of removed) rows.push([`Removed${eq(o, me) ? " (you)" : ""}`, b58encode(o), true]);
     const added = d.wallets.filter((w) => !cur.has(b58encode(w)));
+    const addedIds = d.owners.filter((o, i) => !cur.has(b58encode(d.wallets[i]))).map((o) => o.aid);
     const notes = [];
-    if (added.length) notes.push(`${added.length} new owner${added.length > 1 ? "s" : ""} would get control over this vault. Confirm each new owner directly.`);
+    for (const aid of addedIds) {
+      const st = await readAccount(P.statePda(aid, opeq()).key).catch(() => null);
+      if (!st || !eq(st.owner, opeq())) notes.push(`The new owner with owner ID ${short(aid)} is not an active OPEQ wallet on this network.`);
+    }
+    if (added.length) notes.push(`${added.length} new owner${added.length > 1 ? "s" : ""} would get control over this vault. Compare each new owner ID with the one that person gave you directly.`);
     if (removed.length) notes.push(removed.some((o) => eq(o, me)) ? "You would be removed and lose all control over this vault." : `${removed.length} current owner${removed.length > 1 ? "s" : ""} would be removed.`);
     if (d.threshold < v.info.threshold) notes.push(`Approvals needed would drop from ${v.info.threshold} to ${d.threshold}.`);
-    return { title: `Change owners: from ${v.info.threshold} of ${v.info.n} to ${d.threshold} of ${d.wallets.length}`, rows, notes, risky: added.length > 0 || removed.length > 0 || d.threshold < v.info.threshold, check: added.map(b58encode) };
+    return { title: `Change owners: from ${v.info.threshold} of ${v.info.n} to ${d.threshold} of ${d.wallets.length}`, rows, notes, risky: added.length > 0 || removed.length > 0 || d.threshold < v.info.threshold, check: [...added, ...addedIds].map(b58encode) };
   }
   if (d.kind === "threshold") {
     const notes = d.threshold < v.info.threshold ? [`Approvals needed would drop from ${v.info.threshold} to ${d.threshold}.`] : [];
@@ -276,6 +290,7 @@ async function act(v0, p0, kind) {
     for (const t of w) {
       if (!t.payee) continue;
       if (eq(t.payee, v.vault) || eq(t.payee, v.ms)) { notes.push({ text: "The payment goes back to this vault itself.", warn: true }); continue; }
+      if (eq(t.payee, me)) { notes.push({ text: "The payment goes to your own wallet." }); continue; }
       try { const warn = await x.checkRecipient(t.payee); if (warn) notes.push({ text: warn.trim(), warn: true }); }
       catch (e) { notes.push({ text: `Do not approve: ${e.message}.`, warn: true }); }
     }

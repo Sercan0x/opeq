@@ -172,7 +172,13 @@ export class EvmChain {
 
   async gasFor(len, steps, calls = [], extra = 0n) {
     const filler = crypto.getRandomValues(new Uint8Array(len));
-    const base = BigInt(await this.rpc.call("eth_estimateGas", [{ from: this.feeAddress, to: this.feeAddress, data: bytesToHex(filler) }]));
+    const req = [{ from: this.feeAddress, to: this.feeAddress, data: bytesToHex(filler) }];
+    const base = BigInt(await this.rpc.call("eth_estimateGas", req));
+    if (this.check) {
+      const other = await this.check.call("eth_estimateGas", req).then(BigInt).catch(() => null);
+      if (other === null) throw new Error("the second network source did not answer the fee check. Nothing was signed; try again in a minute");
+      if (base > (other * 5n) / 4n + 2000n || other > (base * 5n) / 4n + 2000n) throw new Error("the two network sources disagree about the gas this needs. Nothing was signed; try again in a minute");
+    }
     return ((base + 30000n + BigInt(steps) * 80n + (await this.callsGas(calls)) + extra) * GAS_HEADROOM) / 10n;
   }
 
@@ -525,6 +531,7 @@ export class EvmChain {
         if (!this.sent && !e.broadcast) { await unsent(); throw e; }
         const { a, b } = await this.seenBoth().catch(() => ({}));
         if (a && b && a.epoch === r.epoch && b.epoch === r.epoch && a.next > leaf && b.next > leaf) { await done(); return { hash: e.hash, gasUsed: 0n, byOther: true }; }
+        if (e.reverted && limits.settled && (await limits.settled().catch(() => false))) { await done(); e.message = `${e.message}. ${limits.settledText || "It can never go through now, so nothing stays pending"}`; throw e; }
         const t = this.pendingText({ deadline }, true);
         e.message = `${e.message}. ${t[0].toUpperCase()}${t.slice(1)}`;
         throw e;

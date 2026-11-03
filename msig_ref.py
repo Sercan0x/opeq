@@ -114,6 +114,26 @@ class Run:
             if pos + 33 > len(buf):
                 raise Reject(18)
             prog, nm = bytes(buf[pos:pos + 32]), buf[pos + 32]
+            if prog == self.opeq:
+                raise Reject(18)
+            if prog == self.program:
+                if nm != 0 or pos + 35 > len(buf):
+                    raise Reject(18)
+                dl, = struct.unpack_from("<H", buf, pos + 33)
+                body = bytes(buf[pos + 35:pos + 35 + dl])
+                if dl < 2 or pos + 35 + dl > len(buf):
+                    raise Reject(18)
+                if body[0] == M.INNER_SET_THRESHOLD:
+                    if dl != 2:
+                        raise Reject(18)
+                elif body[0] == M.INNER_SET_OWNERS:
+                    if dl < 3 or body[2] < 1 or body[2] > M.MAX_OWNERS or dl != 3 + 33 * body[2]:
+                        raise Reject(18)
+                else:
+                    raise Reject(18)
+                ixs.append((prog, [], body))
+                pos += 35 + dl
+                continue
             pos += 33
             if nm > M.MAX_METAS:
                 raise Reject(18)

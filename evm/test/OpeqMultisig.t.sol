@@ -33,7 +33,7 @@ contract OpeqMultisigTest is Asserts {
         }
         address[] memory owners = _owners();
         _as(0, address(msFactory), abi.encodeCall(OpeqMultisigFactory.create, (owners, 2, bytes32(0))), "create 2-of-3 vault");
-        vault = OpeqMultisig(payable(msFactory.predict(address(acc[0]), owners, 2, bytes32(0))));
+        vault = OpeqMultisig(payable(msFactory.predict(owners, 2, bytes32(0))));
         assertTrue(address(vault).code.length > 0, "vault deployed at predicted address");
         vm.deal(address(vault), 5 ether);
     }
@@ -245,12 +245,24 @@ contract OpeqMultisigTest is Asserts {
         assertEq(t.balanceOf(bob), 400, "token sent");
     }
 
-    function testFrontRunCreateCannotTakeAddress() public {
+    function testFrontRunCreateGivesTheSameVault() public {
         address[] memory owners = _owners();
-        address want = msFactory.predict(address(acc[1]), owners, 2, bytes32(uint256(7)));
+        address want = msFactory.predict(owners, 2, bytes32(uint256(7)));
         vm.prank(bob);
         address got = msFactory.create(owners, 2, bytes32(uint256(7)));
-        assertTrue(got != want, "a different creator lands on a different address");
+        assertTrue(got == want, "anyone deploying the same config lands on the same address");
+        OpeqMultisig v = OpeqMultisig(payable(got));
+        assertTrue(v.threshold() == 2, "threshold fixed by the address");
+        for (uint256 i = 0; i < owners.length; i++) assertTrue(v.isOwner(owners[i]), "owners fixed by the address");
+        try msFactory.create(owners, 2, bytes32(uint256(7))) returns (address) {
+            assertTrue(false, "a second create of the same config must fail");
+        } catch {}
+    }
+
+    function testDifferentConfigDifferentAddress() public view {
+        address[] memory owners = _owners();
+        assertTrue(msFactory.predict(owners, 2, bytes32(uint256(7))) != msFactory.predict(owners, 1, bytes32(uint256(7))), "threshold is part of the address");
+        assertTrue(msFactory.predict(owners, 2, bytes32(uint256(7))) != msFactory.predict(owners, 2, bytes32(uint256(8))), "nonce is part of the address");
     }
 
     function testApprovalIsBoundToContent() public {

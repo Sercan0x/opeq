@@ -233,7 +233,12 @@ def scenario(backend):
     ok(w.propose(2, w.pay(w.bob, 1))[0] == 15, "removed owner locked out")
 
     rc, bad = w.propose(0, [(w.program, [], M.set_owners_data(1, owners) + b"\x00")])
-    ok(rc == 0 and w.execute(0, bad, []) == 18, "non-canonical owner change refused at execution")
+    ok(rc == 18, "non-canonical owner change refused at proposal")
+    ok(w.propose(0, [(w.program, [], M.build_execute(0))])[0] == 18, "a stored call into the vault program other than an owner change is refused")
+    ok(w.propose(0, [(w.program, [(w.bob["key"], M.M_WRITABLE)], M.set_threshold_data(1))])[0] == 18, "a stored owner change with accounts is refused")
+    ok(w.propose(0, [(w.program, [], M.set_threshold_data(1) + b"\x00")])[0] == 18, "a long threshold change is refused")
+    ok(w.propose(0, [(w.program, [], b"\x80\x01\x00")])[0] == 18, "an empty owner list is refused at proposal")
+    ok(w.propose(0, [(w.opeq, [], b"\x00")])[0] == 18, "a stored call into the OPEQ wallet program is refused")
     rc, dup = w.propose(0, [(w.program, [], M.set_owners_data(1, owners + owners[:1]))])
     ok(w.execute(0, dup, []) == 9, "duplicate owners refused")
 

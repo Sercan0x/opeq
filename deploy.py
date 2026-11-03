@@ -146,6 +146,23 @@ def check_vault_build(elf, args):
     print("vault build check ok: accepts owners from OPEQ program", args.opeq)
 
 
+def is_vault_build(code):
+    return re.search(rb"opeq/\d+\.\d+ vault", code) is not None
+
+
+def check_upgrade(rpc, old_code, elf, args):
+    kind = lambda c: "vault" if is_vault_build(c) else "wallet"
+    if kind(old_code) != kind(elf):
+        raise SystemExit(f"the elf is the {kind(elf)} program but the target runs the {kind(old_code)} program; refusing")
+    if kind(elf) == "vault":
+        if not args.opeq:
+            raise SystemExit("a vault program upgrade needs --opeq <the OPEQ wallet program id it accepts owners from>")
+        check_vault_build(elf, args)
+        code = code_of(rpc, pk(args.opeq))[PROGRAMDATA_META:]
+        if not elf_version(code) or is_vault_build(code):
+            raise SystemExit("--opeq is not a deployed OPEQ wallet program on this cluster")
+
+
 def confirm_typed(text, expect):
     print(text)
     if input(f"this cannot be undone. Type {expect!r} to proceed: ").strip() != expect:
@@ -252,6 +269,7 @@ def main():
         pd = code_of(rpc, pk(args.program))
         if pd[12] != 1 or pd[13:45] != payer.pub:
             raise SystemExit("the payer is not this program's upgrade authority; upgrade it with `opeq.py upgrade` through the admin vault")
+        check_upgrade(rpc, pd[PROGRAMDATA_META:], elf, args)
         print("upgraded", upgrade(rpc, payer, elf, pk(args.program)))
 
 
