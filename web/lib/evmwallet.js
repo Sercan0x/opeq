@@ -483,7 +483,7 @@ export class EvmChain {
     return this.execute([], onHash, true);
   }
 
-  async execute(calls, onHash, cancel = false) {
+  async execute(calls, onHash, cancel = false, limits = {}) {
     return this.sign(async ({ r, st }) => {
       if (cancel && !r.pending) return { hash: null, gasUsed: 0n, nothing: true };
       if (cancel) {
@@ -493,6 +493,7 @@ export class EvmChain {
       }
       if (!cancel) { await this.resolvePending(r); await this.idle(); }
       const inner = await this.callsGas(calls);
+      if (limits.maxInner !== undefined && inner > limits.maxInner) throw new Error("this transaction now needs more gas than the fee you confirmed. Nothing was signed; check the proposal and try again");
       await this.gasCheck(EXEC_GAS + inner);
       const deadline = (await this.clock()) + DEADLINE_S;
       const leaf = Math.max(r.next_leaf, st.next);

@@ -9,7 +9,7 @@ const enc = new TextEncoder();
 const prog = sha256(enc.encode("vault program")), opeq = sha256(enc.encode("opeq program"));
 const people = [0, 1, 2].map((i) => V.ownerFromId(sha256(enc.encode("aid" + i)), opeq));
 const nonce = sha256(enc.encode("nonce"));
-const ms = V.msPda(people[0].wallet, nonce, prog), vault = V.vaultPda(ms.key, prog), p7 = V.proposalPda(ms.key, 7, prog);
+const ms = V.msPda(people[0].wallet, nonce, prog), vault = V.vaultPda(ms.key, prog), p7 = V.proposalPda(ms.key, people[1].wallet, 3, 7, prog);
 const bob = sha256(enc.encode("bob"));
 const pay = [[SYSTEM, [[vault.key, V.M_SIGNER | V.M_WRITABLE], [bob, V.M_WRITABLE]], Uint8Array.of(2, 0, 0, 0, 0, 202, 154, 59, 0, 0, 0, 0)]];
 const stored = V.encodeStored(pay);
@@ -37,7 +37,7 @@ for i in range(3):
 nonce = H(b"nonce")
 ms, mb = M.ms_pda(ppl[0][2], nonce, prog)
 v, vb = M.vault_pda(ms, prog)
-p7, pb = M.proposal_pda(ms, 7, prog)
+p7, pb = M.proposal_pda(ms, ppl[1][2], 3, 7, prog)
 bob = H(b"bob")
 stored = M.encode_stored([(bytes(32), [(v, 3), (bob, 2)], struct.pack("<IQ", 2, 10**9))])
 print(json.dumps({

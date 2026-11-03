@@ -8,8 +8,8 @@ contract OpeqMultisigFactory {
 
     mapping(address => bool) public isVault;
 
-    function salt(address creator, address[] calldata owners, uint8 threshold, bytes32 nonce) public view returns (bytes32) {
-        return keccak256(abi.encode("opeq/evm/multisig/v1", block.chainid, creator, owners, threshold, nonce));
+    function salt(address creator, address[] calldata owners, uint8 threshold, bytes32 nonce) public pure returns (bytes32) {
+        return keccak256(abi.encode("opeq/evm/multisig/v1", creator, owners, threshold, nonce));
     }
 
     function predict(address creator, address[] calldata owners, uint8 threshold, bytes32 nonce)

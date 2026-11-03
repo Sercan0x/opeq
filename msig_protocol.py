@@ -34,7 +34,8 @@ MS_OFF_MBUMP = 78
 MS_OFF_VBUMP = 79
 MS_OFF_NEXT = 80
 MS_OFF_OWNERS = 88
-MS_LEN = MS_OFF_OWNERS + 32 * MAX_OWNERS
+MS_OFF_SEQS = MS_OFF_OWNERS + 32 * MAX_OWNERS
+MS_LEN = MS_OFF_SEQS + 4 * MAX_OWNERS
 
 PR_OFF_MS = 8
 PR_OFF_ID = 40
@@ -45,8 +46,9 @@ PR_OFF_APPROVALS = 54
 PR_OFF_EXPIRES = 56
 PR_OFF_PROPOSER = 64
 PR_OFF_HASH = 96
-PR_OFF_DLEN = 128
-PR_OFF_DATA = 132
+PR_OFF_SEQ = 128
+PR_OFF_DLEN = 132
+PR_OFF_DATA = 136
 
 F_EXECUTED = 1
 F_CANCELLED = 2
@@ -95,8 +97,8 @@ def vault_pda(ms, program):
     return find_pda_bump([b"v", ms], program)
 
 
-def proposal_pda(ms, pid, program):
-    return find_pda_bump([b"p", ms, struct.pack("<Q", pid)], program)
+def proposal_pda(ms, proposer, config, seq, program):
+    return find_pda_bump([b"p", ms, proposer, struct.pack("<I", config), struct.pack("<I", seq)], program)
 
 
 def encode_owners(owners):
@@ -120,7 +122,7 @@ def encode_stored(ixs):
     return out
 
 
-def decode_stored(buf, vault):
+def decode_stored(buf, vault, ms=None):
     if not buf:
         raise ValueError("empty")
     n = buf[0]
@@ -141,7 +143,7 @@ def decode_stored(buf, vault):
             key, fl = bytes(buf[pos:pos + 32]), buf[pos + 32]
             if fl & ~3:
                 raise ValueError("flags")
-            if fl & M_SIGNER and key != vault:
+            if fl & M_SIGNER and key not in (vault, ms):
                 raise ValueError("signer")
             metas.append((key, fl))
             pos += 33
@@ -199,6 +201,7 @@ def unpack_ms(data):
         "config": struct.unpack_from("<I", data, MS_OFF_CONFIG)[0], "threshold": data[MS_OFF_THRESHOLD], "n": n,
         "mbump": data[MS_OFF_MBUMP], "vbump": data[MS_OFF_VBUMP], "next": struct.unpack_from("<Q", data, MS_OFF_NEXT)[0],
         "owners": [bytes(data[MS_OFF_OWNERS + 32 * i:MS_OFF_OWNERS + 32 * i + 32]) for i in range(n)],
+        "seqs": [struct.unpack_from("<I", data, MS_OFF_SEQS + 4 * i)[0] for i in range(MAX_OWNERS)],
     }
 
 
@@ -212,5 +215,5 @@ def unpack_proposal(data):
         "ms": bytes(data[8:40]), "id": struct.unpack_from("<Q", data, PR_OFF_ID)[0],
         "config": struct.unpack_from("<I", data, PR_OFF_CONFIG)[0], "flags": data[PR_OFF_FLAGS], "pbump": data[PR_OFF_PBUMP],
         "approvals": struct.unpack_from("<H", data, PR_OFF_APPROVALS)[0], "expires": struct.unpack_from("<q", data, PR_OFF_EXPIRES)[0],
-        "proposer": bytes(data[64:96]), "hash": bytes(data[96:128]), "data": bytes(data[PR_OFF_DATA:]),
+        "proposer": bytes(data[64:96]), "hash": bytes(data[96:128]), "seq": struct.unpack_from("<I", data, PR_OFF_SEQ)[0], "data": bytes(data[PR_OFF_DATA:]),
     }

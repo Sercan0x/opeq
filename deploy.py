@@ -132,6 +132,20 @@ def vault_authority(rpc, path, elf=None):
     return wallet
 
 
+def check_vault_build(elf, args):
+    if not re.search(rb"opeq/\d+\.\d+ vault", elf):
+        return
+    import msig_program
+    from build_extension import DEVNET_PROGRAMS
+    if not args.opeq:
+        raise SystemExit("a vault program build needs --opeq <the OPEQ wallet program id it accepts owners from>")
+    if args.net == "mainnet" and any(args.opeq == p or args.opeq.startswith(p) for p in DEVNET_PROGRAMS):
+        raise SystemExit("--opeq is a devnet or test program id; a mainnet vault program must accept owners from the mainnet wallet program")
+    if msig_program.build(pk(args.opeq)).elf() != elf:
+        raise SystemExit("the --elf is not the vault program built from msig_program.py for --opeq " + args.opeq)
+    print("vault build check ok: accepts owners from OPEQ program", args.opeq)
+
+
 def confirm_typed(text, expect):
     print(text)
     if input(f"this cannot be undone. Type {expect!r} to proceed: ").strip() != expect:
@@ -153,6 +167,7 @@ def main():
     ap.add_argument("--max-len", type=int, default=0)
     ap.add_argument("--authority")
     ap.add_argument("--authority-vault")
+    ap.add_argument("--opeq", help="for a vault program build: the OPEQ wallet program id it was built for")
     args = ap.parse_args()
     if args.net == "mainnet" and (os.environ.get("OPEQ_PASSWORD") or os.environ.get("OPEQ_WORDS")):
         raise SystemExit("on mainnet type passwords at the prompt; unset OPEQ_PASSWORD and OPEQ_WORDS")
@@ -195,6 +210,7 @@ def main():
             raise SystemExit("pass --elf <program file>")
         elf = open(args.elf, "rb").read()
         check_elf(elf, args.sha256)
+        check_vault_build(elf, args)
         if args.net == "mainnet":
             if not args.program_key or not args.max_len or not args.sha256:
                 raise SystemExit("a mainnet deploy needs explicit --program-key, --max-len and --sha256")

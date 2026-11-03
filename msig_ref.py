@@ -103,7 +103,7 @@ class Run:
     def vault_key(self, ms_key, ms):
         return pda([b"v", ms_key, bytes([ms["vbump"]])], self.program)
 
-    def check_stored(self, buf, vault):
+    def check_stored(self, buf, vault, ms_key=None):
         if len(buf) < 1 or len(buf) > M.MAX_DATA:
             raise Reject(18)
         n = buf[0]
@@ -124,7 +124,7 @@ class Run:
                 key, fl = bytes(buf[pos:pos + 32]), buf[pos + 32]
                 if fl & 0xFC:
                     raise Reject(18)
-                if fl & M.M_SIGNER and key != vault:
+                if fl & M.M_SIGNER and key != vault and key != ms_key:
                     raise Reject(19)
                 metas.append((key, fl))
                 pos += 33
@@ -213,8 +213,9 @@ def propose(r, tag):
     if expires <= r.now or expires > r.now + M.MAX_LIFETIME:
         raise Reject(17)
     stored = bytes(d[9:])
-    r.check_stored(stored, r.vault_key(ms_acc["key"], ms))
-    pkey, pbump = M.proposal_pda(ms_acc["key"], ms["next"], r.program)
+    r.check_stored(stored, r.vault_key(ms_acc["key"], ms), ms_acc["key"])
+    seq = ms["seqs"][idx]
+    pkey, pbump = M.proposal_pda(ms_acc["key"], proposer["key"], ms["config"], seq, r.program)
     if prop["key"] != pkey:
         raise Reject(16)
     if prop.get("data") or prop.get("owner", SYSTEM) != SYSTEM:
@@ -227,10 +228,11 @@ def propose(r, tag):
     struct.pack_into("<QIBBHq", body, M.PR_OFF_ID, ms["next"], ms["config"], 0, pbump, 1 << idx, expires)
     body[64:96] = proposer["key"]
     body[96:128] = hashlib.sha256(stored).digest()
-    struct.pack_into("<I", body, M.PR_OFF_DLEN, len(stored))
+    struct.pack_into("<II", body, M.PR_OFF_SEQ, seq, len(stored))
     body[M.PR_OFF_DATA:] = stored
     prop["data"] = body
     struct.pack_into("<Q", ms_acc["data"], M.MS_OFF_NEXT, ms["next"] + 1)
+    struct.pack_into("<I", ms_acc["data"], M.MS_OFF_SEQS + 4 * idx, seq + 1)
 
 
 def vote(r, tag):
@@ -304,11 +306,11 @@ def execute(r, tag):
     if vault["key"] != vkey:
         raise Reject(27)
     prop["data"][M.PR_OFF_FLAGS] |= M.F_EXECUTED
-    for prog, metas, data in r.check_stored(p["data"], vkey):
+    for prog, metas, data in r.check_stored(p["data"], vkey, ms_acc["key"]):
         if prog == r.program:
             internal(r, ms_acc, metas, data)
         else:
-            r.cpi(prog, [(k, bool(f & M.M_SIGNER), bool(f & M.M_WRITABLE)) for k, f in metas], data, (vkey,))
+            r.cpi(prog, [(k, bool(f & M.M_SIGNER), bool(f & M.M_WRITABLE)) for k, f in metas], data, (vkey, ms_acc["key"]))
 
 
 def internal(r, ms_acc, metas, data):
@@ -342,6 +344,7 @@ def internal(r, ms_acc, metas, data):
         raise Reject(18)
     cfg, = struct.unpack_from("<I", body, M.MS_OFF_CONFIG)
     struct.pack_into("<I", body, M.MS_OFF_CONFIG, cfg + 1)
+    body[M.MS_OFF_SEQS:M.MS_LEN] = bytes(4 * M.MAX_OWNERS)
 
 
 def close(r, tag):

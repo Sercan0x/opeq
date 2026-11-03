@@ -4,6 +4,7 @@ import { IdbStore } from "./lib/vaultstore.js";
 import { NET } from "./net.js";
 import { sha256 } from "./lib/sha256.js";
 import * as MSV from "./evmvault.js";
+import { factoryAddress as msFactoryAddress } from "./lib/evmmultisig.js";
 
 const $ = (id) => document.getElementById(id);
 const store = new IdbStore("opeq-evm");
@@ -240,6 +241,7 @@ async function recipient(text) {
   if (to === chain.account) throw new Error("that is this EVM account's own address");
   if (to === chain.feeAddress.toLowerCase()) throw new Error("that is your gas key. It only pays network fees and is not quantum-safe, so never keep savings there");
   if (to === factoryAddress()) throw new Error("that is the OPEQ factory contract, not a wallet");
+  if (to === msFactoryAddress()) throw new Error("that is the OPEQ multisig factory contract, not a wallet");
   const code = await chain.rpc.code(to);
   return code !== "0x" ? "This address is a contract, not a plain wallet. Make sure it can receive this asset." : "";
 }

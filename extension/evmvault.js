@@ -1,4 +1,4 @@
-import { checkAddress, parseUnits, formatUnits } from "./lib/evmwallet.js";
+import { checkAddress, parseUnits, formatUnits, EXEC_GAS } from "./lib/evmwallet.js";
 import { encodeErc20Transfer } from "./lib/evmwots.js";
 import { ACCOUNT_RUNTIME } from "./lib/evmcode.js";
 import { keccak256 } from "./lib/keccak.js";
@@ -193,6 +193,7 @@ let shown = SHOW;
 async function showProposals(v, info) {
   const box = x.$("ms-v-props");
   box.textContent = "";
+  seenHashes.clear();
   const me = x.chain().account;
   if (!info.proposals) { box.append(el("p", "hint", "No proposals yet.")); return; }
   const from = Math.max(0, info.proposals - shown);
@@ -213,13 +214,18 @@ async function later(fn) {
   return x.guard(fn);
 }
 
+const seenHashes = new Map();
+
 async function proposalCard(v, info, id, me) {
   const p = await v.proposal(id);
+  const twin = seenHashes.get(p.callsHash);
+  if (twin === undefined) seenHashes.set(p.callsHash, id);
   const mine = await v.approvedBy(id, me);
   const w = await Promise.all(p.calls.map((call) => words(call, v.address, info)));
   const card = el("div", "ms-prop" + (p.live ? "" : " done"));
   const state = p.executed ? "executed" : p.cancelled ? "cancelled" : p.config !== info.config ? "void, owners changed" : p.expires * 1000 < Date.now() ? "expired" : `${p.approvals} of ${info.threshold} approvals`;
   card.append(el("p", "ms-prop-head", `#${id}: ${state}`));
+  if (twin !== undefined && twin !== id) card.append(el("p", "ms-prop-title warn", `Same content as proposal #${twin}. Approving both would pay twice.`));
   if (!w.length) card.append(el("p", "ms-prop-title", "Does nothing (no calls)"));
   for (const t of w) card.append(el("p", "ms-prop-title" + (t.risky ? " warn" : ""), t.title), ...t.rows.map(([k, val]) => el("p", "mono ms-prop-row", `${k}: ${val}`)));
   card.append(el("p", "hint", `Proposed by ${p.proposer === me ? "you" : short(p.proposer)}${p.live ? `, open until ${new Date(p.expires * 1000).toLocaleString()}` : ""}`));
@@ -249,9 +255,12 @@ async function act(v, p, info, kind) {
   if (kind === "execute") notes.push({ text: "This sends the payment now. It needs no further approvals." });
   if (kind === "approve" || kind === "execute") for (const t of w) for (const n of t.notes || []) notes.push({ text: n, warn: true });
   if (w.some((t) => t.risky)) notes.push({ text: "This proposal does something OPEQ marks as risky. Approve only if you know exactly what it does.", warn: true });
-  if (!(await x.ask({ ...x.tag(), title: `${label}: proposal #${p.id}`, rows: [["Vault", v.address, true], ...rows, ["Network fee", await x.feeText(M.APPROVE_GAS + (kind === "execute" ? 120000n : 0n))]], notes }, label))) return;
+  const call0 = kind === "execute" ? M.executeCall(v.address, p.id, fresh.calls) : M.idCall(v.address, kind, p.id, fresh.callsHash);
+  const inner = await run(() => c.callsGas([call0]));
+  if (kind === "execute" && inner > 400000n) notes.push({ text: `Executing needs about ${inner.toLocaleString()} gas for the proposal's own calls, more than a plain payment. A contract in this proposal may be wasting gas on purpose.`, warn: true });
+  if (!(await x.ask({ ...x.tag(), title: `${label}: proposal #${p.id}`, rows: [["Vault", v.address, true], ...rows, ["Network fee", await x.feeText(EXEC_GAS + inner)]], notes }, label))) return;
   const call = kind === "execute" ? M.executeCall(v.address, p.id, fresh.calls) : M.idCall(v.address, kind, p.id, fresh.callsHash);
-  await run(() => c.execute([call], (h) => x.last(`${label} sent.`, h)));
+  await run(() => c.execute([call], (h) => x.last(`${label} sent.`, h), false, { maxInner: (inner * 12n) / 10n + 20000n }));
   x.ok(kind === "execute" ? "executed" : kind === "approve" ? "approved" : kind === "revoke" ? "approval revoked" : "proposal cancelled");
   await x.refreshMain();
 }
@@ -275,12 +284,12 @@ export function init(ctx) {
     const fac = M.factoryAddress();
     const fresh = (await c.rpc.code(fac)) === "0x";
     const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const addr = M.vaultAddress(c.id, c.account, owners, threshold, nonce);
+    const addr = M.vaultAddress(c.account, owners, threshold, nonce);
     if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} multisig`, rows: [["Vault address", addr, true], ...owners.map((o, i) => [`Owner ${i + 1}${o === c.account ? " (you)" : ""}`, o, true]), ["Network fee", await x.feeText((fresh ? 2600000n : 0n) + 2200000n)]],
       notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each with their own OPEQ wallet.` }, { text: `The vault exists only on ${c.chain.name}. Never send funds to this address on any other network.`, warn: true }, ...(fresh ? [{ text: "The first transaction installs the OPEQ multisig factory on this network, once for everyone." }] : []), { text: "Send the vault address to the other owners so they can add it in their wallet." }, { text: "Beta: the multisig contract has had internal reviews only. Start with small amounts.", warn: true }] }, "Create"))) return;
     if (fresh) await c.install("0x4e59b44847b379578588920ca78fbf26c0b4956c", M.factoryDeployData(), M.factoryAddress(), (h) => x.last("Factory install sent.", h));
     await run(() => c.execute([M.createCall(owners, threshold, nonce)], (h) => x.last("Vault creation sent.", h)));
-    if ((await c.rpc.code(addr)) === "0x") throw new Error("the vault was not created; check the explorer and try again");
+    await new M.Vault(c, addr).read();
     await saveList([addr, ...(await loadList()).filter((a) => a !== addr)].slice(0, LIST_MAX));
     x.$("ms-owners").value = x.$("ms-thr").value = "";
     x.ok("multisig created");
@@ -292,6 +301,7 @@ export function init(ctx) {
     const a = checkAddress(x.$("ms-add").value);
     const info = await new M.Vault(x.chain(), a).read();
     if (!info.owners.includes(x.chain().account)) throw new Error("your account on this network is not an owner of that vault");
+    if (info.threshold <= info.owners.length - 1 && !(await x.ask({ ...x.tag(), title: "Add this multisig?", rows: [["Multisig", a, true], ["Approvals needed", `${info.threshold} of ${info.owners.length}`], ...info.owners.map((o, i) => [`Owner ${i + 1}${o === x.chain().account ? " (you)" : ""}`, o, true])], notes: [{ text: `The other owners can move this multisig's funds without your approval: they need ${info.threshold} and there are ${info.owners.length - 1} of them.`, warn: true }] }, "Add"))) return;
     const list = await loadList();
     if (!list.includes(a)) {
       if (list.length >= LIST_MAX) throw new Error(`at most ${LIST_MAX} multisigs per network`);

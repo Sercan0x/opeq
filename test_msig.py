@@ -129,8 +129,11 @@ class World:
     def propose(self, who, ixs, expires=None, pid=None):
         info = self.msinfo()
         pid = info["next"] if pid is None else pid
-        pkey, _ = M.proposal_pda(self.ms["key"], pid, self.program)
-        prop = self.props.get(pid) or acct(pkey, writable=True)
+        me = self.people[who]["acc"]["key"]
+        seq = info["seqs"][info["owners"].index(me)] if me in info["owners"] else 0
+        pkey, _ = M.proposal_pda(self.ms["key"], me, info["config"], seq, self.program)
+        old = self.props.get(pid)
+        prop = old if old is not None and old["key"] == pkey else acct(pkey, writable=True)
         self.props[pid] = prop
         stored = ixs if isinstance(ixs, (bytes, bytearray)) else M.encode_stored(ixs)
         rc = self.run([self.signer(who), self.ms, prop, self.system], M.build_propose(expires or self.now + 3600, stored))
@@ -260,6 +263,22 @@ def scenario(backend):
     ok(World(backend).create(0, [0, 1, 2, 3], 2) == 0, "4 owners")
     w9 = World(backend, n_people=9)
     ok(w9.create(0, list(range(9)), 2) == 6, "at most 8 owners")
+    wr2 = World(backend)
+    ok(wr2.create(0, [0, 1, 2], 2) == 0, "race vault")
+    rc_a, pa = wr2.propose(1, wr2.pay(wr2.bob, 1))
+    stale = wr2.msinfo()
+    wr2.cancel(1, pa)
+    rc_h, ph = wr2.propose(0, [(wr2.program, [], M.set_threshold_data(3))])
+    ok(rc_a == 0 and rc_h == 0, "another owner proposing in between does not block an honest proposal")
+    tok = acct(writable=True)
+    wr2.vault["lamports"] = 10**9
+    rc, pid = wr2.propose(0, [(SYSTEM, [(wr2.ms["key"], M.M_SIGNER | M.M_WRITABLE), (tok["key"], M.M_WRITABLE)], struct.pack("<IQ", 2, 1))])
+    ok(rc == 0, "a stored instruction may be signed by the multisig ID itself (token recovery)")
+    wr2.ms["lamports"] += 5
+    wr2.vote(1, pid)
+    ok(wr2.execute(0, pid, [tok, wr2.system]) == 0 and tok["lamports"] == 1, "execute signs as the multisig ID with valid seeds")
+    rc, pid = wr2.propose(0, [(SYSTEM, [(wr2.people[2]["acc"]["key"], M.M_SIGNER | M.M_WRITABLE), (tok["key"], M.M_WRITABLE)], struct.pack("<IQ", 2, 1))])
+    ok(rc == 19, "but never by an owner wallet")
     w3 = World(backend)
     ok(w3.create(0, [0, 1], 1) == 0, "1 of 2 vault")
     w3.vault["lamports"] = 10**9

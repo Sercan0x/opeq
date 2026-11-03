@@ -56,14 +56,30 @@ async function loadVault(addr) {
   return { ms, vault, info, balance, msLamports: BigInt(a.lamports) };
 }
 
-async function loadProposal(v, id) {
-  const key = V.proposalPda(v.ms, id, prog()).key;
+async function loadProposal(v, key) {
   const a = await readAccount(key);
-  if (!a || !eq(a.owner, prog())) return null;
+  if (!a || !eq(a.owner, prog()) || !a.data || a.data.length < 8) return null;
   const p = V.unpackProposal(a.data);
-  if (!eq(p.ms, v.ms) || p.id !== id) throw new Error("malformed proposal account");
-  const ixs = V.decodeStored(p.data, v.vault);
+  if (!eq(p.ms, v.ms)) throw new Error("malformed proposal account");
+  const ixs = V.decodeStored(p.data, v.vault, v.ms);
   return { ...p, key, ixs, lamports: a.lamports };
+}
+
+const mineKey = (ms) => `opeq:sol-msp:${x.session().id}:${b58encode(ms)}`;
+
+async function mineList(ms) {
+  const v = await x.kv.get(mineKey(ms));
+  return (Array.isArray(v) ? v : []).filter((a) => typeof a === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a)).slice(0, 50);
+}
+
+async function rememberMine(ms, key, add) {
+  const list = (await mineList(ms)).filter((k) => k !== key);
+  await x.kv.set(mineKey(ms), add ? [key, ...list].slice(0, 50) : list);
+}
+
+function myNext(v) {
+  const idx = v.info.owners.findIndex((o) => eq(o, x.session().wallet));
+  return V.proposalPda(v.ms, x.session().wallet, v.info.config, v.info.seqs[idx], prog()).key;
 }
 
 async function nowOnChain() {
@@ -87,8 +103,10 @@ async function words(ix, v) {
   if (d.kind === "pay") return { title: `Send ${sol(d.lamports)} SOL`, rows: [["To", b58encode(d.to), true]], check: [b58encode(d.to)], payee: d.to };
   if (d.kind === "token") {
     const notes = d.mayHaveFee ? ["This token program can take a transfer fee, so the receiver may get less."] : [];
-    const acc = await x.rpc().account(d.dest).catch(() => null);
-    const holder = acc && acc.data && acc.data.length >= 64 ? b58encode(acc.data.slice(32, 64)) : "unknown";
+    const acc = await readAccount(d.dest).catch(() => null);
+    const real = acc && (eq(acc.owner, d.program)) && acc.data && acc.data.length >= 165 && eq(acc.data.slice(0, 32), d.mint);
+    const holder = real ? b58encode(acc.data.slice(32, 64)) : "unknown";
+    if (!real) notes.push("The receiving token account does not exist yet or is not an account of this token. Do not approve unless you know why.");
     return { title: `Send ${d.amount} token units (${d.decimals} decimals)`, rows: [["Token account", b58encode(d.dest), true], ["Held by", holder, true], ["Mint", b58encode(d.mint), true]], notes, risky: true, check: [b58encode(d.dest), ...(holder !== "unknown" ? [holder] : [])] };
   }
   if (d.kind === "owners") {
@@ -108,7 +126,7 @@ async function words(ix, v) {
     return { title: `Change approvals needed from ${v.info.threshold} to ${d.threshold}`, rows: [], notes, risky: d.threshold < v.info.threshold };
   }
   const metaRows = d.metas.map((m, i) => [`Account ${i + 1}${eq(m.key, v.vault) ? " (the vault)" : ""}${m.signer ? ", signs" : ""}${m.writable ? ", writable" : ""}`, b58encode(m.key), true]);
-  return { title: "Program call that cannot be shown in plain words", rows: [["Program", b58encode(d.program), true], ...metaRows, ["Data", Array.from(d.data, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 600) || "(empty)", true]], risky: true, check: [b58encode(d.program), ...d.metas.filter((m) => !eq(m.key, v.vault)).map((m) => b58encode(m.key))] };
+  return { title: "Program call that cannot be shown in plain words", rows: [["Program", b58encode(d.program), true], ...metaRows, ["Data", d.data.length ? `${Array.from(d.data.slice(0, 300), (b) => b.toString(16).padStart(2, "0")).join("")}${d.data.length > 300 ? `… (first 300 of ${d.data.length} bytes shown)` : ""}` : "(empty)", true]], risky: true, check: [b58encode(d.program), ...d.metas.filter((m) => !eq(m.key, v.vault)).map((m) => b58encode(m.key))] };
 }
 
 export function hide() {
@@ -163,31 +181,44 @@ async function showVault(addr) {
   x.$("sv-bal").textContent = `${sol(v.balance)} SOL`;
   x.$("sv-thr").textContent = `${v.info.threshold} of ${v.info.n}`;
   const stuck = v.msLamports - BigInt(await x.rpc().rent(V.MS_LEN)) - 2n;
-  x.$("sv-stuck").classList.toggle("hidden", stuck <= 0n);
+  x.$("sv-stuck").classList.toggle("hidden", stuck < 1000000n);
   if (stuck > 0n) x.$("sv-stuck-text").textContent = `${sol(stuck)} SOL was sent to the multisig ID instead of the deposit address. Anyone can move it into the vault.`;
   const ob = x.$("sv-owners");
   ob.textContent = "";
   for (const o of v.info.owners) ob.append(el("p", "mono ms-owner" + (eq(o, me) ? " me" : ""), eq(o, me) ? `${b58encode(o)} (you)` : b58encode(o)));
   const box = x.$("sv-props");
   box.textContent = "";
-  if (!v.info.next) { box.append(el("p", "hint", "No proposals yet.")); return; }
-  const now = await nowOnChain();
-  const from = Math.max(0, v.info.next - shown);
-  for (let id = v.info.next - 1; id >= from; id--) {
-    try { const c = await card(v, id, now); if (c) box.append(c); }
-    catch (e) { box.append(el("p", "err", `Proposal #${id} could not be shown: ${e.message}`)); }
+  const keys = new Map();
+  let more = false;
+  v.info.owners.forEach((o, i) => {
+    const s = v.info.seqs[i];
+    if (s > shown) more = true;
+    for (let k = s - 1; k >= Math.max(0, s - shown); k--) { const key = V.proposalPda(v.ms, o, v.info.config, k, prog()).key; keys.set(b58encode(key), key); }
+  });
+  for (const k of await mineList(v.ms)) if (!keys.has(k)) keys.set(k, pubkey(k));
+  const found = [];
+  for (const [name, key] of keys) {
+    try { const p = await loadProposal(v, key); if (p) found.push(p); else if ((await mineList(v.ms)).includes(name)) await rememberMine(v.ms, name, false); }
+    catch (e) { box.append(el("p", "err", `Proposal ${short(name)} could not be shown: ${e.message}`)); }
   }
+  if (!found.length) { box.append(el("p", "hint", "No proposals yet.")); return; }
+  found.sort((a, b) => b.id - a.id);
+  const now = await nowOnChain();
+  for (const p of found) {
+    try { box.append(await card(v, p, now)); }
+    catch (e) { box.append(el("p", "err", `Proposal #${p.id} could not be shown: ${e.message}`)); }
+  }
+  const from = more ? 1 : 0;
   if (from > 0) {
-    const more = el("button", "btn btn-line btn-sm", `Show ${Math.min(SHOW, from)} older proposals`);
-    more.type = "button";
-    more.addEventListener("click", () => x.guard(async () => { shown += SHOW; await showVault(addr); }));
-    box.append(more);
+    const older = el("button", "btn btn-line btn-sm", "Show older proposals");
+    older.type = "button";
+    older.addEventListener("click", () => x.guard(async () => { shown += SHOW; await showVault(addr); }));
+    box.append(older);
   }
 }
 
-async function card(v, id, now) {
-  const p = await loadProposal(v, id);
-  if (!p) return null;
+async function card(v, p, now) {
+  const id = p.id;
   const me = x.session().wallet;
   const idx = v.info.owners.findIndex((o) => eq(o, me));
   const mine = idx >= 0 && !!(p.approvals & (1 << idx));
@@ -218,10 +249,14 @@ async function later(fn) {
 async function act(v0, p0, kind) {
   if (open !== b58encode(v0.ms)) throw new Error("the vault on screen changed. Refresh and try again");
   const v = await loadVault(b58encode(v0.ms));
-  const p = await loadProposal(v, p0.id);
+  const p = await loadProposal(v, p0.key);
   if (!p || !eq(p.hash, p0.hash)) throw new Error("the proposal changed since it was shown. Refresh and check it again");
   const now = await nowOnChain();
   if (kind !== "close" && !liveOf(p, v.info, now)) throw new Error("this proposal is no longer open. Refresh to see its state");
+  const myIdx = v.info.owners.findIndex((o) => eq(o, x.session().wallet));
+  const iApproved = myIdx >= 0 && !!(p.approvals & (1 << myIdx));
+  if (kind === "approve" && iApproved) throw new Error("you already approved this proposal");
+  if (kind === "revoke" && !iApproved) throw new Error("you have not approved this proposal");
   const w = await Promise.all(p.ixs.map((ix) => words(ix, v)));
   if (kind === "approve" || kind === "execute") for (const a of new Set(w.flatMap((t) => t.check || []))) await x.lookalike(a);
   const me = x.session().wallet;
@@ -251,12 +286,13 @@ async function act(v0, p0, kind) {
   if (!(await x.ask({ ...x.tag(), title: `${label}: proposal #${p.id}`, rows: [["Vault", open, true], ...rows, ["Network fee", await x.fee(CU_VAULT)]], notes: [...notes, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, label))) return;
   const sig = await x.run(`${label.toLowerCase()}, grinding the signature`, [ix], plan, { cu: CU_VAULT });
   x.log(`vault ${short(open)}: ${label.toLowerCase()} #${p.id}: ${sig}`, "ok");
+  if (kind === "close") await rememberMine(v.ms, b58encode(p.key), false);
   x.ok(`${label.toLowerCase()} done`);
   await showVault(open);
 }
 
 async function fits(v, prop, stored) {
-  const ixs = V.decodeStored(stored, v.vault);
+  const ixs = V.decodeStored(stored, v.vault, v.ms);
   const size = await x.execSize([V.executeIx(prog(), x.session().wallet, v.ms, prop, v.vault, v.info.next, ixs)]);
   if (size > 1232) throw new Error(`this proposal could never be executed: the transaction would be ${size} bytes, over Solana's 1232 byte limit`);
 }
@@ -307,7 +343,7 @@ export function init(ctx) {
     const rent = await x.rpc().rent(V.MS_LEN);
     const plan = await x.planTopup([ix], [], BigInt(rent));
     if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} multisig`,
-      rows: [["Multisig ID", b58encode(ms), true], ["Deposit address", b58encode(vault), true], ...owners.map((o, i) => [`Owner ${i + 1}${i === 0 ? " (you)" : ""}`, b58encode(o.wallet), true]), ["Account rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]],
+      rows: [["Multisig ID", b58encode(ms), true], ["Deposit address", b58encode(vault), true], ...owners.map((o, i) => [`Owner ${i + 1}${i === 0 ? " (you)" : ""}`, `${b58encode(o.wallet)} (owner ID ${short(o.aid)})`, true]), ["Account rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]],
       notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each from their own OPEQ wallet.` }, { text: "Funds go to the deposit address only. Share the multisig ID with the other owners so they can add it; never send funds to the multisig ID." }, { text: "Beta: the multisig program has had internal reviews only. Start with small amounts.", warn: true }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Create"))) return;
     const sig = await x.run("creating the vault, grinding the signature", [ix], plan, { cu: CU_VAULT, spend: BigInt(rent) });
     x.log(`multisig ${short(ms)} created: ${sig}`, "ok");
@@ -342,9 +378,12 @@ export function init(ctx) {
     const warn = eq(to, x.session().wallet) ? "" : await x.checkRecipient(to);
     const lamports = x.parseSol(x.$("sv-amt").value);
     if (BigInt(lamports) > v.balance) throw new Error(`the vault holds only ${sol(v.balance)} SOL`);
+    const floor = BigInt(await x.rpc().rent(0));
+    const left = v.balance - BigInt(lamports);
+    if (left > 0n && left < floor) throw new Error(`this would leave ${sol(left)} SOL in the vault, below Solana's ${sol(floor)} SOL minimum, so it could never execute. Send all of it or leave at least ${sol(floor)} SOL`);
     if (lamports < 890880 && !(await x.rpc().account(to))) throw new Error("the receiving address is empty, so Solana needs at least 0.00089 SOL to create it");
     const stored = V.encodeStored([[SYSTEM, [[v.vault, V.M_SIGNER | V.M_WRITABLE], [to, V.M_WRITABLE]], concat(u32(2), u64(lamports))]]);
-    const prop = V.proposalPda(v.ms, v.info.next, prog()).key;
+    const prop = myNext(v);
     const expires = (await nowOnChain()) + V.DEFAULT_LIFETIME;
     const ix = V.proposeIx(prog(), x.session().wallet, v.ms, prop, expires, stored);
     await fits(v, prop, stored);
@@ -355,6 +394,7 @@ export function init(ctx) {
     if (plan.note) notes.push({ text: plan.note.trim() });
     if (!(await x.ask({ ...x.tag(), title: `Propose sending ${sol(lamports)} SOL`, rows: [["Vault", open, true], ["To", b58encode(to), true], ["Proposal rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]], notes }, "Propose"))) return;
     const sig = await x.run("proposing, grinding the signature", [ix], plan, { cu: CU_VAULT, spend: BigInt(rent) });
+    await rememberMine(v.ms, b58encode(prop), true);
     x.log(`vault ${short(open)}: proposed ${sol(lamports)} SOL to ${short(to)}: ${sig}`, "ok");
     await x.remember(b58encode(to));
     x.$("sv-to").value = x.$("sv-amt").value = "";
@@ -388,7 +428,7 @@ export function init(ctx) {
       ixs = [[prog(), [], V.setOwnersData(threshold, owners)]];
     }
     const stored = V.encodeStored(ixs);
-    const prop = V.proposalPda(v.ms, v.info.next, prog()).key;
+    const prop = myNext(v);
     await fits(v, prop, stored);
     const w = await Promise.all(ixs.map((ix) => words(ix, v)));
     const expires = (await nowOnChain()) + V.DEFAULT_LIFETIME;
@@ -400,6 +440,7 @@ export function init(ctx) {
     if (plan.note) notes.push({ text: plan.note.trim() });
     if (!(await x.ask({ ...x.tag(), title: w[0].title, rows: [["Vault", open, true], ...w[0].rows, ["Proposal rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]], notes }, "Propose"))) return;
     const sig = await x.run("proposing, grinding the signature", [ix], plan, { cu: CU_VAULT, spend: BigInt(rent) });
+    await rememberMine(v.ms, b58encode(prop), true);
     x.log(`vault ${short(open)}: proposed ${w[0].title.toLowerCase()}: ${sig}`, "ok");
     x.$("sv-new-owners").value = x.$("sv-new-thr").value = "";
     x.ok("change proposed; the other owners can approve it in their wallets");

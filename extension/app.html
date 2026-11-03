@@ -350,7 +350,7 @@
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-vaults" aria-labelledby="tab-vaults">
           <h2 class="silk"><span>PCIE_3</span><b>multisig</b></h2>
-          <p class="hint">Optional. A multisig moves funds only after several OPEQ wallets approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature.</p>
+          <p class="hint">Optional. A multisig moves funds only after several OPEQ wallets approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature. Beta: until the external audit, the OPEQ admin vault can still upgrade the multisig program; after the audit it will be locked for good.</p>
           <div class="addr-row"><p class="mono addr"><span class="hint">Your owner ID </span><span id="sv-id"></span></p><button class="icon-btn small" id="sv-id-copy" type="button" title="Copy your owner ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy your owner ID</span></button></div>
           <p class="hint">Give this ID to whoever creates a multisig with you. It is public and cannot move funds.</p>
           <div id="sv-list-box">
@@ -369,7 +369,7 @@
           <div class="hidden" id="sv-view">
             <div class="addr-row"><p class="mono addr"><span class="hint">Multisig ID </span><span id="sv-addr"></span></p><button class="icon-btn small" id="sv-copy" type="button" title="Copy multisig ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy multisig ID</span></button></div>
             <div class="addr-row"><p class="mono addr"><span class="hint">Deposit to </span><span id="sv-deposit"></span></p><button class="icon-btn small" id="sv-dep-copy" type="button" title="Copy deposit address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy deposit address</span></button></div>
-            <p class="hint">Send funds only to the deposit address. The multisig ID is for sharing with co-owners, never for payments.</p>
+            <p class="hint">Send SOL only to the deposit address. The multisig ID is for sharing with co-owners, never for payments. Tokens sent to the deposit address can only be moved by a custom token proposal for now.</p>
     <div class="rw hidden" id="sv-stuck" role="status"><p id="sv-stuck-text"></p><button class="btn btn-sm rw-go" id="sv-sweep" type="button">Move to deposit address</button></div>
             <dl class="kv"><div><dt>Balance</dt><dd id="sv-bal">–</dd></div><div><dt>Approvals needed</dt><dd id="sv-thr">–</dd></div></dl>
             <div class="ms-owners" id="sv-owners"></div>

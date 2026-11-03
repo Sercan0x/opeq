@@ -871,7 +871,7 @@ function initUnlock() {
     if (!(await ask("Remove this wallet from this browser? Its funds stay on chain, but you can only get it back with your 24 recovery words. Make sure you have them written down.", "Remove"))) return;
     await engine.remove(current);
     try { await evm.forget(current); } catch {}
-    try { await chrome.storage.local.remove(`opeq:sol-ms:${current}`); } catch {}
+    try { const all = Object.keys(await chrome.storage.local.get(null)).filter((k) => k === `opeq:sol-ms:${current}` || k.startsWith(`opeq:sol-msp:${current}:`)); if (all.length) await chrome.storage.local.remove(all); } catch {}
     try { await chrome.storage.local.remove(`opeq:log:${current}`); } catch {}
     try { if (localStorage.getItem("opeq:last") === current) localStorage.removeItem("opeq:last"); } catch {}
     current = null; session = null;

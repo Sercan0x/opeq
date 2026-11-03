@@ -9,8 +9,8 @@ export const MS_MAGIC = "OPEQMS01", PR_MAGIC = "OPEQPR01";
 export const MAX_OWNERS = 8, MAX_IXS = 8, MAX_METAS = 16, MAX_DATA = 900;
 export const MAX_LIFETIME = 30 * 24 * 3600, DEFAULT_LIFETIME = 7 * 24 * 3600;
 export const M_SIGNER = 1, M_WRITABLE = 2;
-export const MS_LEN = 88 + 32 * MAX_OWNERS;
-export const PR_OFF_DATA = 132;
+export const MS_LEN = 88 + 36 * MAX_OWNERS;
+export const PR_OFF_DATA = 136;
 export const ERRORS = {
   1: "bad instruction", 2: "too many accounts", 3: "account index out of range", 4: "caller must sign",
   5: "bad system program", 6: "bad owner list", 7: "bad threshold", 8: "owner is not an OPEQ wallet",
@@ -34,7 +34,7 @@ export function createProgramAddress(seeds, program) {
 
 export const msPda = (creator, nonce, prog) => findPda([enc.encode("m"), creator, nonce], prog);
 export const vaultPda = (ms, prog) => findPda([enc.encode("v"), ms], prog);
-export const proposalPda = (ms, id, prog) => findPda([enc.encode("p"), ms, u64(id)], prog);
+export const proposalPda = (ms, proposer, config, seq, prog) => findPda([enc.encode("p"), ms, proposer, u32(config), u32(seq)], prog);
 
 export function ownerFromId(aid, opeqProgram) {
   if (!(aid instanceof Uint8Array) || aid.length !== 32) throw new Error("an owner ID is 32 bytes");
@@ -56,7 +56,7 @@ export function encodeStored(ixs) {
   return concat(...parts);
 }
 
-export function decodeStored(buf, vault) {
+export function decodeStored(buf, vault, ms = null) {
   const bad = (code) => { const e = new Error(`the proposal is malformed (${ERRORS[code]})`); e.code = code; return e; };
   if (buf.length < 1 || buf.length > MAX_DATA) throw bad(18);
   const n = buf[0];
@@ -73,7 +73,7 @@ export function decodeStored(buf, vault) {
       if (pos + 33 > buf.length) throw bad(18);
       const key = buf.slice(pos, pos + 32), fl = buf[pos + 32];
       if (fl & 0xfc) throw bad(18);
-      if (fl & M_SIGNER && !eq(key, vault)) throw bad(19);
+      if (fl & M_SIGNER && !eq(key, vault) && !(ms && eq(key, ms))) throw bad(19);
       metas.push([key, fl]);
       pos += 33;
     }
@@ -149,19 +149,20 @@ export function unpackMs(data) {
     creator: data.slice(8, 40), nonce: data.slice(40, 72), config: d.getUint32(72, true), threshold: data[76], n,
     mbump: data[78], vbump: data[79], next: Number(d.getBigUint64(80, true)),
     owners: Array.from({ length: n }, (_, i) => data.slice(88 + 32 * i, 120 + 32 * i)),
+    seqs: Array.from({ length: MAX_OWNERS }, (_, i) => d.getUint32(88 + 32 * MAX_OWNERS + 4 * i, true)),
   };
 }
 
 export function unpackProposal(data) {
   if (data.length < PR_OFF_DATA || magic(data) !== PR_MAGIC) throw new Error("that account is not an OPEQ vault proposal");
   const d = dv(data);
-  const dl = d.getUint32(128, true);
+  const dl = d.getUint32(132, true);
   if (data.length !== PR_OFF_DATA + dl) throw new Error("malformed proposal account");
   const body = data.slice(PR_OFF_DATA);
   if (!eq(sha256(body), data.slice(96, 128))) throw new Error("the proposal does not match its hash");
   return {
     ms: data.slice(8, 40), id: Number(d.getBigUint64(40, true)), config: d.getUint32(48, true), flags: data[52], pbump: data[53],
-    approvals: d.getUint16(54, true), expires: Number(d.getBigInt64(56, true)), proposer: data.slice(64, 96), hash: data.slice(96, 128), data: body,
+    approvals: d.getUint16(54, true), expires: Number(d.getBigInt64(56, true)), proposer: data.slice(64, 96), hash: data.slice(96, 128), seq: d.getUint32(128, true), data: body,
   };
 }
 
