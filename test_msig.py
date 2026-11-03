@@ -248,6 +248,18 @@ def scenario(backend):
     ok(rc in (8,), f"owner with a non-canonical wallet bump refused ({rc})")
     w2.people[1]["wbump"] = (w2.people[1]["wbump"] - 1) % 256
 
+    w4 = World(backend)
+    ok(w4.create(0, [0, 1], 1) == 0, "vault for sweep")
+    keep = w4.ms["lamports"]
+    ok(w4.run([w4.ms, w4.vault], M.build_sweep()) == 31, "nothing to sweep at exact rent")
+    w4.ms["lamports"] += 777
+    ok(w4.run([w4.ms, w4.vault], M.build_sweep()) == 0 and w4.ms["lamports"] == keep and w4.vault["lamports"] == 777, "SOL sent to the vault ID by mistake is swept to the deposit address by anyone")
+    fake = acct(writable=True)
+    w4.ms["lamports"] += 5
+    ok(w4.run([w4.ms, fake], M.build_sweep()) == 27, "sweep only pays the vault's own deposit address")
+    ok(World(backend).create(0, [0, 1, 2, 3], 2) == 0, "4 owners")
+    w9 = World(backend, n_people=9)
+    ok(w9.create(0, list(range(9)), 2) == 6, "at most 8 owners")
     w3 = World(backend)
     ok(w3.create(0, [0, 1], 1) == 0, "1 of 2 vault")
     w3.vault["lamports"] = 10**9
@@ -375,6 +387,9 @@ def fuzz(elf, trials):
             elif op < 0.6:
                 pid = rng.choice(list(w.props))
                 w.cancel(who, pid)
+            elif op < 0.63:
+                w.ms["lamports"] += rng.choice([0, 0, 1, 10**6])
+                w.run([w.ms, w.vault] if rng.random() < 0.9 else [w.ms, w.bob], M.build_sweep())
             elif op < 0.65:
                 pid = rng.choice(list(w.props))
                 p = w.people[who]["acc"]

@@ -10,13 +10,14 @@ IX_REVOKE = 3
 IX_CANCEL = 4
 IX_EXECUTE = 5
 IX_CLOSE = 6
+IX_SWEEP = 7
 
 INNER_SET_OWNERS = 0x80
 INNER_SET_THRESHOLD = 0x81
 
 MS_MAGIC = b"OPEQMS01"
 PR_MAGIC = b"OPEQPR01"
-MAX_OWNERS = 10
+MAX_OWNERS = 8
 MAX_IXS = 8
 MAX_METAS = 16
 MAX_DATA = 900
@@ -60,7 +61,7 @@ ERRORS = {
     17: "bad expiry", 18: "malformed proposal", 19: "signer escalation", 20: "bad proposal account",
     21: "proposal not live", 22: "content mismatch", 23: "already approved", 24: "not approved", 25: "not the proposer",
     26: "not enough approvals", 27: "vault address mismatch", 28: "missing account for a stored instruction",
-    29: "not writable", 30: "proposal still live",
+    29: "not writable", 30: "proposal still live", 31: "nothing to sweep",
 }
 
 
@@ -175,6 +176,10 @@ def build_execute(pid):
 
 def build_close(pid):
     return struct.pack("<BQ", IX_CLOSE, pid)
+
+
+def build_sweep():
+    return bytes([IX_SWEEP])
 
 
 def set_owners_data(threshold, owners):

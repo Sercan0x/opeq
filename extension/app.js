@@ -304,6 +304,10 @@ async function checkRecipient(to, token) {
   if (acc && (acc.executable || LOADERS.includes(b58encode(acc.owner)))) throw new Error("that address is a program, not a wallet");
   if (acc && (eq(acc.owner, T.TOKEN) || eq(acc.owner, T.TOKEN22))) throw new Error("that address is a token account or a token mint, not a wallet. Ask for the owner's wallet address");
   if (acc && eq(acc.owner, engine.program) && acc.data && acc.data.length) throw new Error("that is the internal state account of an opeq wallet, not a wallet address");
+  if (acc && NET.vault && eq(acc.owner, pubkey(NET.vault))) {
+    const isMs = acc.data && acc.data.length >= 8 && new TextDecoder().decode(acc.data.slice(0, 8)) === "OPEQMS01";
+    throw new Error(isMs ? `that is a shared vault ID, not its deposit address. Funds sent there are stuck until someone sweeps them. Send to the vault's deposit address instead (Vaults tab)` : "that is a shared vault proposal account, not a wallet");
+  }
   if (acc && !eq(acc.owner, SYSTEM) && !eq(acc.owner, engine.program)) return `\nWarning: this address is owned by another program (${short(b58encode(acc.owner))}). Funds sent there may be lost.`;
   if (!isOnCurve(to) && !acc) return `\nWarning: this address has no private key and has never held anything on ${NET.mainnet ? "mainnet" : "devnet"}. If it is an opeq address from the ${NET.mainnet ? "devnet" : "mainnet"} app, funds sent here are lost.`;
   if (!isOnCurve(to)) return "\nNote: this address has no private key (a program address). That is normal for opeq wallets, but double check it.";
@@ -436,6 +440,7 @@ function initTabs() {
 async function showWallet() {
   show("v-wallet");
   setDrive("on", `wallet unlocked, ${NET.name}`);
+  if (NET.vault && $("pane-vaults")) { SV.hide(); if (!$("pane-vaults").classList.contains("hidden")) SV.refresh().catch((e) => { $("sv-err").textContent = e.message; }); }
   await refreshWallet();
   refreshPorts();
 }
@@ -1277,6 +1282,7 @@ async function init() {
       fee: async (cu) => `about ${sol(await networkFee(cu))} SOL`,
       copy: (b, t, n) => copyTo(b, t, n),
       remember: (a) => rememberTo(a),
+      execSize: (inner) => session.execSize(inner),
       kv: {
         get: async (k) => { try { return (await chrome.storage.local.get(k))[k]; } catch { return null; } },
         set: async (k, v) => { try { await chrome.storage.local.set({ [k]: v }); } catch {} },

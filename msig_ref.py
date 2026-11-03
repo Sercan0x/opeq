@@ -148,7 +148,7 @@ def process(program, opeq, accounts, data, now, handler, lpby=3480, threshold=2.
     if not data:
         raise Reject(1)
     tag = data[0]
-    fn = {M.IX_CREATE: create, M.IX_PROPOSE: propose, M.IX_APPROVE: vote, M.IX_REVOKE: vote, M.IX_CANCEL: cancel, M.IX_EXECUTE: execute, M.IX_CLOSE: close}.get(tag)
+    fn = {M.IX_CREATE: create, M.IX_PROPOSE: propose, M.IX_APPROVE: vote, M.IX_REVOKE: vote, M.IX_CANCEL: cancel, M.IX_EXECUTE: execute, M.IX_CLOSE: close, M.IX_SWEEP: sweep}.get(tag)
     if fn is None:
         raise Reject(1)
     return fn(r, tag)
@@ -362,3 +362,20 @@ def close(r, tag):
     proposer["lamports"] = proposer.get("lamports", 0) + prop.get("lamports", 0)
     prop["lamports"] = 0
     prop["data"][0:8] = bytes(8)
+
+
+def sweep(r, tag):
+    if len(r.data) != 1:
+        raise Reject(1)
+    r.need(2)
+    ms_acc, vault = r.accounts[:2]
+    if not ms_acc.get("writable") or not vault.get("writable"):
+        raise Reject(29)
+    ms = r.load_ms(ms_acc)
+    if vault["key"] != r.vault_key(ms_acc["key"], ms):
+        raise Reject(27)
+    excess = ms_acc.get("lamports", 0) - M.rent(M.MS_LEN, r.lpby, r.threshold)
+    if excess <= 0:
+        raise Reject(31)
+    ms_acc["lamports"] -= excess
+    vault["lamports"] = vault.get("lamports", 0) + excess

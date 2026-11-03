@@ -53,7 +53,7 @@ async function loadVault(addr) {
   const vault = V.vaultPda(ms, prog()).key;
   if (!eq(V.createProgramAddress([new TextEncoder().encode("v"), ms, Uint8Array.of(info.vbump)], prog()), vault)) throw new Error("malformed shared vault account");
   const balance = BigInt(await x.rpc().balance(vault));
-  return { ms, vault, info, balance };
+  return { ms, vault, info, balance, msLamports: BigInt(a.lamports) };
 }
 
 async function loadProposal(v, id) {
@@ -84,10 +84,12 @@ function liveOf(p, info, now) {
 
 async function words(ix, v) {
   const d = V.describe(ix, { program: prog(), opeqProgram: opeq(), vault: v.vault });
-  if (d.kind === "pay") return { title: `Send ${sol(d.lamports)} SOL`, rows: [["To", b58encode(d.to), true]], check: [b58encode(d.to)] };
+  if (d.kind === "pay") return { title: `Send ${sol(d.lamports)} SOL`, rows: [["To", b58encode(d.to), true]], check: [b58encode(d.to)], payee: d.to };
   if (d.kind === "token") {
     const notes = d.mayHaveFee ? ["This token program can take a transfer fee, so the receiver may get less."] : [];
-    return { title: `Send ${d.amount} token units (${d.decimals} decimals)`, rows: [["Token account", b58encode(d.dest), true], ["Mint", b58encode(d.mint), true]], notes, risky: true };
+    const acc = await x.rpc().account(d.dest).catch(() => null);
+    const holder = acc && acc.data && acc.data.length >= 64 ? b58encode(acc.data.slice(32, 64)) : "unknown";
+    return { title: `Send ${d.amount} token units (${d.decimals} decimals)`, rows: [["Token account", b58encode(d.dest), true], ["Held by", holder, true], ["Mint", b58encode(d.mint), true]], notes, risky: true, check: [b58encode(d.dest), ...(holder !== "unknown" ? [holder] : [])] };
   }
   if (d.kind === "owners") {
     const me = x.session().wallet, cur = new Set(v.info.owners.map(b58encode));
@@ -105,7 +107,8 @@ async function words(ix, v) {
     const notes = d.threshold < v.info.threshold ? [`Approvals needed would drop from ${v.info.threshold} to ${d.threshold}.`] : [];
     return { title: `Change approvals needed from ${v.info.threshold} to ${d.threshold}`, rows: [], notes, risky: d.threshold < v.info.threshold };
   }
-  return { title: "Program call that cannot be shown in plain words", rows: [["Program", b58encode(d.program), true], ["Accounts", String(d.metas.length)], ["Data", Array.from(d.data, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 600) || "(empty)", true]], risky: true, check: [b58encode(d.program)] };
+  const metaRows = d.metas.map((m, i) => [`Account ${i + 1}${eq(m.key, v.vault) ? " (the vault)" : ""}${m.signer ? ", signs" : ""}${m.writable ? ", writable" : ""}`, b58encode(m.key), true]);
+  return { title: "Program call that cannot be shown in plain words", rows: [["Program", b58encode(d.program), true], ...metaRows, ["Data", Array.from(d.data, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 600) || "(empty)", true]], risky: true, check: [b58encode(d.program), ...d.metas.filter((m) => !eq(m.key, v.vault)).map((m) => b58encode(m.key))] };
 }
 
 export function hide() {
@@ -113,13 +116,16 @@ export function hide() {
   open = null;
   x.$("sv-list-box").classList.remove("hidden");
   x.$("sv-view").classList.add("hidden");
+  for (const id of ["sv-id", "sv-list", "sv-addr", "sv-deposit", "sv-owners", "sv-props", "sv-ok", "sv-err"]) x.$(id).textContent = "";
+  x.$("sv-stuck").classList.add("hidden");
 }
 
 export async function refresh() {
   if (!x || !x.session()) return;
-  x.$("sv-id").textContent = b58encode(await myAid());
-  if (open) return showVault(open);
+  const id = b58encode(await myAid());
+  if (open) { x.$("sv-id").textContent = id; return showVault(open); }
   hide();
+  x.$("sv-id").textContent = id;
   const box = x.$("sv-list");
   box.textContent = "";
   const list = await loadList();
@@ -156,6 +162,9 @@ async function showVault(addr) {
   x.$("sv-deposit").textContent = b58encode(v.vault);
   x.$("sv-bal").textContent = `${sol(v.balance)} SOL`;
   x.$("sv-thr").textContent = `${v.info.threshold} of ${v.info.n}`;
+  const stuck = v.msLamports - BigInt(await x.rpc().rent(V.MS_LEN)) - 2n;
+  x.$("sv-stuck").classList.toggle("hidden", stuck <= 0n);
+  if (stuck > 0n) x.$("sv-stuck-text").textContent = `${sol(stuck)} SOL was sent to the vault ID instead of the deposit address. Anyone can move it into the vault.`;
   const ob = x.$("sv-owners");
   ob.textContent = "";
   for (const o of v.info.owners) ob.append(el("p", "mono ms-owner" + (eq(o, me) ? " me" : ""), eq(o, me) ? `${b58encode(o)} (you)` : b58encode(o)));
@@ -207,7 +216,8 @@ async function later(fn) {
 }
 
 async function act(v0, p0, kind) {
-  const v = await loadVault(open);
+  if (open !== b58encode(v0.ms)) throw new Error("the vault on screen changed. Refresh and try again");
+  const v = await loadVault(b58encode(v0.ms));
   const p = await loadProposal(v, p0.id);
   if (!p || !eq(p.hash, p0.hash)) throw new Error("the proposal changed since it was shown. Refresh and check it again");
   const now = await nowOnChain();
@@ -227,6 +237,16 @@ async function act(v0, p0, kind) {
   if (kind === "approve" || kind === "execute") for (const t of w) for (const n of t.notes || []) notes.push({ text: n, warn: true });
   if (w.some((t) => t.risky)) notes.push({ text: "This proposal does something OPEQ marks as risky. Approve only if you know exactly what it does.", warn: true });
   const rows = kind === "close" ? [] : w.flatMap((t) => [["Action", t.title], ...t.rows]);
+  if (kind === "approve" || kind === "execute") {
+    for (const t of w) {
+      if (!t.payee) continue;
+      if (eq(t.payee, v.vault) || eq(t.payee, v.ms)) { notes.push({ text: "The payment goes back to this vault itself.", warn: true }); continue; }
+      try { const warn = await x.checkRecipient(t.payee); if (warn) notes.push({ text: warn.trim(), warn: true }); }
+      catch (e) { notes.push({ text: `Do not approve: ${e.message}.`, warn: true }); }
+    }
+    const size = await x.execSize([V.executeIx(prog(), me, v.ms, p.key, v.vault, p.id, p.ixs)]).catch(() => 0);
+    if (size > 1232) notes.push({ text: `This proposal can never be executed: the transaction would be ${size} bytes, over Solana's 1232 byte limit. Cancel it and propose something smaller.`, warn: true });
+  }
   const plan = await x.planTopup([ix], [], 0n);
   if (!(await x.ask({ ...x.tag(), title: `${label}: proposal #${p.id}`, rows: [["Vault", open, true], ...rows, ["Network fee", await x.fee(CU_VAULT)]], notes: [...notes, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, label))) return;
   const sig = await x.run(`${label.toLowerCase()}, grinding the signature`, [ix], plan, { cu: CU_VAULT });
@@ -235,10 +255,26 @@ async function act(v0, p0, kind) {
   await showVault(open);
 }
 
+async function fits(v, prop, stored) {
+  const ixs = V.decodeStored(stored, v.vault);
+  const size = await x.execSize([V.executeIx(prog(), x.session().wallet, v.ms, prop, v.vault, v.info.next, ixs)]);
+  if (size > 1232) throw new Error(`this proposal could never be executed: the transaction would be ${size} bytes, over Solana's 1232 byte limit`);
+}
+
 export function init(ctx) {
   x = ctx;
   x.$("sv-id-copy").addEventListener("click", (e) => x.guard(async () => x.copy(e.currentTarget, b58encode(await myAid()), "owner ID copied")));
-  x.$("sv-copy").addEventListener("click", (e) => x.copy(e.currentTarget, open, "vault address copied"));
+  x.$("sv-copy").addEventListener("click", (e) => x.copy(e.currentTarget, open, "vault ID copied"));
+  x.$("sv-sweep").addEventListener("click", () => x.guard(async () => {
+    const v = await loadVault(open);
+    const ix = V.sweepIx(prog(), v.ms, v.vault);
+    const plan = await x.planTopup([ix], [], 0n);
+    if (!(await x.ask({ ...x.tag(), title: "Move stuck SOL into the vault", rows: [["From vault ID", open, true], ["To deposit address", b58encode(v.vault), true], ["Network fee", await x.fee(CU_VAULT)]], notes: [{ text: "This only moves SOL above the account's own rent into the vault. It needs no approvals and anyone can do it." }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Move"))) return;
+    const sig = await x.run("moving stuck SOL, grinding the signature", [ix], plan, { cu: CU_VAULT });
+    x.log(`vault ${short(open)}: stuck SOL moved to the deposit address: ${sig}`, "ok");
+    x.ok("moved into the vault");
+    await showVault(open);
+  }));
   x.$("sv-dep-copy").addEventListener("click", (e) => x.copy(e.currentTarget, x.$("sv-deposit").textContent, "deposit address copied"));
   x.$("sv-back").addEventListener("click", () => x.guard(async () => { open = null; await refresh(); }));
   x.$("sv-refresh").addEventListener("click", () => x.guard(() => showVault(open)));
@@ -271,8 +307,8 @@ export function init(ctx) {
     const rent = await x.rpc().rent(V.MS_LEN);
     const plan = await x.planTopup([ix], [], BigInt(rent));
     if (!(await x.ask({ ...x.tag(), title: `Create a ${threshold} of ${owners.length} shared vault`,
-      rows: [["Vault address", b58encode(ms), true], ["Deposit address", b58encode(vault), true], ...owners.map((o, i) => [`Owner ${i + 1}${i === 0 ? " (you)" : ""}`, b58encode(o.wallet), true]), ["Account rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]],
-      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each from their own OPEQ wallet.` }, { text: "Funds go to the deposit address. Share the vault address with the other owners so they can add it." }, { text: "Beta: the shared vault program has had internal reviews only. Start with small amounts.", warn: true }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Create"))) return;
+      rows: [["Vault ID", b58encode(ms), true], ["Deposit address", b58encode(vault), true], ...owners.map((o, i) => [`Owner ${i + 1}${i === 0 ? " (you)" : ""}`, b58encode(o.wallet), true]), ["Account rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]],
+      notes: [{ text: `Moving funds will need ${threshold} of these ${owners.length} owners to approve, each from their own OPEQ wallet.` }, { text: "Funds go to the deposit address only. Share the vault ID with the other owners so they can add it; never send funds to the vault ID." }, { text: "Beta: the shared vault program has had internal reviews only. Start with small amounts.", warn: true }, ...(plan.note ? [{ text: plan.note.trim() }] : [])] }, "Create"))) return;
     const sig = await x.run("creating the vault, grinding the signature", [ix], plan, { cu: CU_VAULT, spend: BigInt(rent) });
     x.log(`shared vault ${short(ms)} created: ${sig}`, "ok");
     await saveList([b58encode(ms), ...(await loadList()).filter((a) => a !== b58encode(ms))]);
@@ -286,6 +322,7 @@ export function init(ctx) {
     const a = x.$("sv-add-in").value.trim();
     const v = await loadVault(a);
     if (!v.info.owners.some((o) => eq(o, x.session().wallet))) throw new Error("this wallet is not an owner of that vault");
+    if (v.info.threshold <= v.info.n - 1 && !(await x.ask({ ...x.tag(), title: "Add this shared vault?", rows: [["Vault ID", b58encode(v.ms), true], ["Created by", b58encode(v.info.creator), true], ["Approvals needed", `${v.info.threshold} of ${v.info.n}`]], notes: [{ text: `The other owners can move this vault's funds without your approval: they need ${v.info.threshold} and there are ${v.info.n - 1} of them.`, warn: true }] }, "Add"))) return;
     const list = await loadList();
     if (!list.includes(b58encode(v.ms))) {
       if (list.length >= LIST_MAX) throw new Error(`at most ${LIST_MAX} shared vaults`);
@@ -310,6 +347,7 @@ export function init(ctx) {
     const prop = V.proposalPda(v.ms, v.info.next, prog()).key;
     const expires = (await nowOnChain()) + V.DEFAULT_LIFETIME;
     const ix = V.proposeIx(prog(), x.session().wallet, v.ms, prop, expires, stored);
+    await fits(v, prop, stored);
     const rent = await x.rpc().rent(V.PR_OFF_DATA + stored.length);
     const plan = await x.planTopup([ix], [], BigInt(rent));
     const notes = [{ text: `This only proposes the payment. It moves funds after ${v.info.threshold} of ${v.info.n} owners approve; your proposal counts as your approval. It stays open for 7 days.` }, { text: "The rent comes back to you when you close the proposal after it is done." }];
@@ -321,6 +359,50 @@ export function init(ctx) {
     await x.remember(b58encode(to));
     x.$("sv-to").value = x.$("sv-amt").value = "";
     x.ok("proposed; the other owners can approve it in their wallets");
+    await showVault(open);
+  }));
+
+  x.$("sv-change").addEventListener("click", () => x.guard(async () => {
+    const v = await loadVault(open);
+    const t = x.$("sv-new-thr").value.trim();
+    const threshold = /^\d+$/.test(t) ? Number(t) : NaN;
+    const text = x.$("sv-new-owners").value.split(/[\s,]+/).filter(Boolean);
+    let ixs;
+    if (!text.length) {
+      if (!(threshold >= 1 && threshold <= v.info.n)) throw new Error(`the number of approvals must be between 1 and ${v.info.n}`);
+      if (threshold === v.info.threshold) throw new Error("that is already the number of approvals needed");
+      ixs = [[prog(), [], V.setThresholdData(threshold)]];
+    } else {
+      const owners = [];
+      for (const t of text) {
+        let aid;
+        try { aid = b58decode(t); } catch { aid = null; }
+        if (!aid || aid.length !== 32) throw new Error(`${t.slice(0, 12)}… is not an owner ID`);
+        if (owners.some((o) => eq(o.aid, aid))) continue;
+        const st = await x.rpc().account(P.statePda(aid, opeq()).key);
+        if (!st || !eq(st.owner, opeq())) throw new Error(`the wallet with owner ID ${short(t)} is not active on this network`);
+        owners.push(V.ownerFromId(aid, opeq()));
+      }
+      if (owners.length > V.MAX_OWNERS) throw new Error(`a shared vault holds at most ${V.MAX_OWNERS} owners`);
+      if (!(threshold >= 1 && threshold <= owners.length)) throw new Error(`the number of approvals must be between 1 and ${owners.length}`);
+      ixs = [[prog(), [], V.setOwnersData(threshold, owners)]];
+    }
+    const stored = V.encodeStored(ixs);
+    const prop = V.proposalPda(v.ms, v.info.next, prog()).key;
+    await fits(v, prop, stored);
+    const w = await Promise.all(ixs.map((ix) => words(ix, v)));
+    const expires = (await nowOnChain()) + V.DEFAULT_LIFETIME;
+    const ix = V.proposeIx(prog(), x.session().wallet, v.ms, prop, expires, stored);
+    const rent = await x.rpc().rent(V.PR_OFF_DATA + stored.length);
+    const plan = await x.planTopup([ix], [], BigInt(rent));
+    const notes = [{ text: `This only proposes the change. It applies after ${v.info.threshold} of ${v.info.n} owners approve. Changing owners or approvals cancels every other open proposal.` }];
+    for (const t of w) for (const n of t.notes || []) notes.push({ text: n, warn: true });
+    if (plan.note) notes.push({ text: plan.note.trim() });
+    if (!(await x.ask({ ...x.tag(), title: w[0].title, rows: [["Vault", open, true], ...w[0].rows, ["Proposal rent", `${sol(rent)} SOL from your wallet`], ["Network fee", await x.fee(CU_VAULT)]], notes }, "Propose"))) return;
+    const sig = await x.run("proposing, grinding the signature", [ix], plan, { cu: CU_VAULT, spend: BigInt(rent) });
+    x.log(`vault ${short(open)}: proposed ${w[0].title.toLowerCase()}: ${sig}`, "ok");
+    x.$("sv-new-owners").value = x.$("sv-new-thr").value = "";
+    x.ok("change proposed; the other owners can approve it in their wallets");
     await showVault(open);
   }));
 }
