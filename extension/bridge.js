@@ -63,7 +63,8 @@ function reviewRows(from, to, kind, p) {
   ];
   if (p.c.feeUsd !== null) rows.push(["Relay fee", `about $${p.c.feeUsd.toFixed(2)}`]);
   if (p.c.appFee > 0n) rows.push(["OPEQ fee", `${fmt(p.c.appFee, a.decimals)} ${a.symbol}`]);
-  if (p.c.seconds) rows.push(["Time", `about ${p.c.seconds < 60 ? `${p.c.seconds} seconds` : `${Math.round(p.c.seconds / 60)} minutes`}`]);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  if (p.c.seconds) rows.push(["Time", `about ${p.c.seconds < 60 ? plural(p.c.seconds, "second") : plural(Math.round(p.c.seconds / 60), "minute")}`]);
   return rows;
 }
 
