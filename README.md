@@ -154,6 +154,17 @@ A multisig is optional. A normal wallet works exactly as before; a multisig is a
 
 The Solana multisig program stays upgradeable by the admin opeq wallet during the beta and will be made immutable after the external audit. Its code is reproducible: `python3 msig_program.py --opeq HL598vrersxS5AUUV6NyzHgpSyK31xAmqMsqUhxzeKm8 --out vault.elf` prints the hash above. The multisig has had internal reviews only; start with small amounts.
 
+## Bridge (beta)
+
+The wallet can move funds between Solana and the four EVM networks through [Relay](https://relay.link). OPEQ takes no fee; Relay's own fee is shown before you sign.
+
+- **Assets:** the native coin on every network (SOL, ETH), and USDC between Solana, Ethereum, Base and Arbitrum. Robinhood Chain bridges ETH only.
+- **Only to yourself:** funds always go to your own OPEQ address on the other network. That account must exist there first (activated on Solana, Set up on EVM).
+- **The wallet builds the deposit itself.** It sends to Relay's fixed deposit contract (EVM `0x4cd00e387622c35bddb9b4c962c136462338bc31` on all four networks, non-upgradable; Solana program `99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2`) with you as the depositor, and requires the deposit Relay suggests to match its own byte for byte.
+- **The order is checked before signing:** receiver, refund addresses, assets, amounts, slippage (at most 3%), deadline, no extra fees and no extra calls on the destination. Anything else is refused and nothing is signed.
+- **Trust:** the deposit is signed with a quantum-resistant one-time key. Delivery on the other network is done by Relay and is not quantum-resistant; until Relay delivers, usually within seconds, you rely on Relay. Relay has committed to refund bridges that do not complete.
+- Source: `web/lib/relay.js` (quote checks and deposit building), `web/test/t_relay.mjs` (live checks, including tampered quotes), `extension/bridge.js` (UI).
+
 ## Mainnet deployment
 
 | | Address |
