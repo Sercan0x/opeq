@@ -189,7 +189,7 @@ The wallet can move funds between Solana and the four EVM networks through [Rela
 
 ## EVM swap (beta)
 
-The Swap card on each EVM network swaps ETH, USDC and tokens you added through Uniswap v3. OPEQ takes no fee.
+The Swap tab on each EVM network swaps ETH, a pinned dollar stablecoin (USDC on Ethereum, Base and Arbitrum; USDG on Robinhood Chain) and tokens you added through Uniswap v3. OPEQ takes no fee.
 
 - **Pinned contracts:** SwapRouter02 and QuoterV2 addresses and keccak code hashes are fixed per network in `web/lib/uniswap.js`, checked on both RPC sources before every swap, together with the router's WETH9. The Robinhood Chain deployment was compared byte for byte with Arbitrum's: only the immutables differ.
 - **Two-source price:** both sources quote every route (four fee tiers, plus two hops through WETH) at the same block. Any route where they disagree by more than 0.5%, or that only one of them answers, makes the swap refuse, so one lying source can't lower the minimum or steer the route.
