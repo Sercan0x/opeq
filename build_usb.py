@@ -19,7 +19,7 @@ REWORD = {
         ("const store = new IdbStore();", "const store = globalThis.OPEQ_USB.store;", 1),
         ("chrome.storage.local.", "OPEQ_USB.local.", None),
         ("localStorage.", "OPEQ_USB.ls.", None),
-        ("const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000;", "const IDLE_MS = 3 * 60 * 1000, HIDDEN_MS = 2 * 60 * 1000;", 1),
+        ("const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000, OK_MS = 20000;", "const IDLE_MS = 3 * 60 * 1000, HIDDEN_MS = 2 * 60 * 1000, OK_MS = 20000;", 1),
         ("Locked after 10 minutes without activity.", "Locked after 3 minutes without activity.", None),
         ("in the background for more than 5 minutes.", "in the background for more than 2 minutes.", 1),
         ("that RPC could not be reached from the extension", "that RPC could not be reached from OPEQ", 1),

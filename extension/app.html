@@ -142,21 +142,19 @@
           <div id="e-load" class="hidden"><p class="hint">Building your EVM identity from your words, about 15 seconds, once per browser.</p><div class="progress"><div id="e-load-bar"></div></div></div>
           <div id="e-main" class="hidden">
             <div class="addr-row"><p class="mono addr" id="e-addr"></p><button class="icon-btn small" id="e-copy" type="button" title="Copy EVM address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy EVM address</span></button></div>
-            <dl class="kv">
-              <div><dt>Key tree</dt><dd id="e-tree">–</dd></div>
-              <div><dt>Signatures left</dt><dd id="e-left">–</dd></div>
-            </dl>
-            <p class="hint ev-note" id="e-note"></p><p class="ev-beta">Beta. The EVM contracts have had four internal security reviews but no external audit yet. Start with small amounts.</p>
-            <div class="row tight"><a class="btn btn-line btn-sm" id="e-explorer" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="e-refresh" type="button">Refresh</button><button class="btn btn-danger btn-sm" id="e-lock" type="button">Lock</button></div>
+            
+            
+            
           </div>
         </div>
       </div>
-      <div class="gasline hidden" id="e-gas">
+      
+      <div id="e-gas-top"><div class="gasline hidden" id="e-gas">
         <span class="gas-k" title="Pays network fees only. Do not deposit here.">Gas key, fees only</span>
         <span class="mono gas-addr" id="e-gas-addr"></span>
         <button class="icon-btn small" id="e-gas-copy" type="button" title="Copy gas key address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy gas key address</span></button>
         <span class="gas-bal mono" id="e-gas-bal"></span><button class="fe-go hidden" id="e-unstick" type="button" title="Replace a gas-key transaction that is stuck in the network">Unstick</button><button class="fe-go hidden" id="e-sweep" type="button" title="Move ETH the gas key does not need to your account">Move to account</button>
-      </div>
+      </div></div>
       <div class="rw urgent hidden" id="e-pend" role="status"><p id="e-pend-text"></p><button class="btn btn-sm rw-go" id="e-pend-go" type="button">Cancel it</button></div>
       <div class="rw hidden" id="e-rw" role="status"><p id="e-rw-text"></p><button class="btn btn-sm rw-go" id="e-rw-go" type="button">Rekey now</button></div>
       <p class="ok" id="e-ok"></p><p class="err" id="e-err" role="alert"></p>
@@ -175,13 +173,7 @@
         <div class="progress hidden" id="e-take-prog"><div></div></div>
       </div>
       <section class="dock hidden" id="e-dock">
-        <div class="tabs" role="tablist" aria-label="EVM actions">
-          <button class="tab" role="tab" id="etab-send" aria-controls="e-send" aria-selected="true" type="button">Send</button>
-          <button class="tab" role="tab" id="etab-swap" aria-controls="e-sw" aria-selected="false" type="button">Swap</button>
-          <button class="tab" role="tab" id="etab-bridge" aria-controls="e-br" aria-selected="false" type="button">Bridge</button>
-          <button class="tab" role="tab" id="etab-ms" aria-controls="e-mspane" aria-selected="false" type="button">Multisig</button>
-          <button class="tab" role="tab" id="etab-keys" aria-controls="e-rekey" aria-selected="false" type="button">Keys</button>
-        </div>
+        <div class="tabs" role="tablist" aria-label="EVM actions"><button class="tab" role="tab" id="etab-send" aria-controls="e-send" aria-selected="true" type="button">Send</button><button class="tab" role="tab" id="etab-toks" aria-controls="e-tokpane" aria-selected="false" type="button">Tokens</button><button class="tab" role="tab" id="etab-swap" aria-controls="e-sw" aria-selected="false" type="button">Swap</button><button class="tab" role="tab" id="etab-bridge" aria-controls="e-br" aria-selected="false" type="button">Bridge</button><button class="tab" role="tab" id="etab-recv" aria-controls="e-recv" aria-selected="false" type="button">Receive</button><button class="tab" role="tab" id="etab-keys" aria-controls="e-keys" aria-selected="false" type="button">Keys</button><button class="tab" role="tab" id="etab-ms" aria-controls="e-mspane" aria-selected="false" type="button">Multisig</button></div>
       <div class="card hidden" id="e-send">
         <h2 class="silk"><span>PCIE_2</span><b>send</b></h2>
         <label class="f" for="e-asset">Asset</label><select id="e-asset"></select>
@@ -189,13 +181,11 @@
         <label class="f" for="e-amt">Amount</label><input type="text" id="e-amt" inputmode="decimal" autocomplete="off" placeholder="0.01">
         <div class="row"><button class="btn btn-solid" id="e-send-go" type="button">Send</button></div>
         <div class="progress hidden" id="e-send-prog"><div></div></div>
-        <div class="toks ev-toks" id="e-toks"></div>
-        <details class="ev-more"><summary>Add a token</summary>
-          <label class="f" for="e-tok">Token contract address</label><input type="text" id="e-tok" spellcheck="false" autocomplete="off" placeholder="0x…">
-          <div class="row"><button class="btn btn-line btn-sm" id="e-tok-go" type="button">Add token</button></div>
-        </details>
+        
+        
       </div>
-      <div class="card hidden" id="e-sw">
+      <div class="card" id="e-recv"><p class="hint" id="e-note"></p><p class="mono addr boxed" id="e-raddr"></p><div class="row"><button class="btn btn-line btn-sm" id="e-rcopy" type="button">Copy address</button><a class="btn btn-quiet btn-sm" id="e-explorer" rel="noopener noreferrer" target="_blank">Explorer</a></div><p class="ev-beta">Beta. The EVM contracts have had four internal security reviews but no external audit yet. Start with small amounts.</p></div>
+          <div class="card hidden" id="e-sw">
         <h2 class="silk"><span>PCIE_5</span><b>swap</b></h2>
         <p class="hint">Swap on Uniswap. The wallet builds the swap itself and the tokens come back to this account.</p>
         <p class="hint hidden" id="es-none"></p><div id="es-form"><label class="f" for="es-in">You pay</label><select id="es-in"></select>
@@ -216,7 +206,20 @@
         <div class="row"><button class="btn btn-solid" id="eb-go" type="button">Review bridge</button></div>
         <p class="hint" id="eb-st" role="status"></p>
       </div>
-      <div id="e-mspane">
+      <div class="card hidden" id="e-tokpane"><div class="toks ev-toks" id="e-toks"></div><details class="ev-more"><summary>Add a token</summary>
+          <label class="f" for="e-tok">Token contract address</label><input type="text" id="e-tok" spellcheck="false" autocomplete="off" placeholder="0x…">
+          <div class="row"><button class="btn btn-line btn-sm" id="e-tok-go" type="button">Add token</button></div>
+        </details></div>
+          <div class="card hidden" id="e-keys"><dl class="kv">
+              <div><dt>Key tree</dt><dd id="e-tree">–</dd></div>
+              <div><dt>Signatures left</dt><dd id="e-left">–</dd></div>
+            </dl><div class="sub"><h3 class="silk"><span>POWER</span><b>gas key</b></h3><div id="e-gas-home"></div><p class="hint">Pays network fees only and comes from your 24 words. Never keep savings on it: it uses a normal key.</p></div><div class="sub hidden" id="e-rekey">
+        <h3 class="silk"><span>CMOS</span><b>rekey</b></h3>
+        <p class="hint">Moves this network to a fresh key tree. Your address stays the same.</p>
+        <div class="row"><button class="btn btn-line btn-sm" id="e-rekey-go" type="button">Rekey now</button></div>
+        <div class="progress hidden" id="e-rekey-prog"><div></div></div>
+      </div><div class="row"><button class="btn btn-line btn-sm" id="e-refresh" type="button">Refresh</button></div></div>
+          <div id="e-mspane">
       <div class="card hidden" id="e-ms">
         <h2 class="silk"><span>PCIE_3</span><b>multisig</b></h2>
         <p class="hint">Optional. A multisig moves funds only after several OPEQ accounts approve, for example 2 of 3. Every approval is a one-time, quantum-resistant signature.</p>
@@ -250,13 +253,9 @@
         <div class="row tight"><a class="btn btn-line btn-sm" id="ms-v-exp" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="ms-v-refresh" type="button">Refresh</button><button class="btn btn-line btn-sm" id="ms-v-close" type="button">All vaults</button></div>
       </div>
       </div>
-      <div class="card hidden" id="e-rekey">
-        <h2 class="silk"><span>CMOS</span><b>rekey</b></h2>
-        <p class="hint">Moves this network to a fresh key tree. Your address stays the same.</p>
-        <div class="row"><button class="btn btn-line btn-sm" id="e-rekey-go" type="button">Rekey now</button></div>
-        <div class="progress hidden" id="e-rekey-prog"><div></div></div>
-      </div>
+      
       </section>
+      <div class="row e-lockrow"><button class="btn btn-danger btn-sm" id="e-lock" type="button">Lock</button></div>
     </section>
       <div class="cpu" id="cpu">
         <div class="cpu-pins" aria-hidden="true"></div>

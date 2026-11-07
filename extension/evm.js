@@ -124,11 +124,11 @@ export async function accountOn(chainId) {
 }
 
 function clearCard() {
-  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw", ...($("e-dock") ? ["e-dock"] : []), ...($("e-br") ? ["e-br"] : []), ...($("e-sw") ? ["e-sw"] : [])]) hide(id, true);
+  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw", ...["e-dock", "e-tokpane", "e-keys", "e-mspane"].filter((x) => $(x)), ...($("e-br") ? ["e-br"] : []), ...($("e-sw") ? ["e-sw"] : [])]) hide(id, true);
   if ($("es-st")) { $("es-st").textContent = ""; $("es-amt").value = ""; }
   $("e-bal").textContent = $("e-state").textContent = "…";
   $("e-ok").textContent = $("e-err").textContent = "";
-  for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset"]) $(id).textContent = "";
+  for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset", ...($("e-raddr") ? ["e-raddr"] : [])]) $(id).textContent = "";
   for (const id of ["e-to", "e-amt", "e-tok"]) $(id).value = "";
   MSV.hideAll();
   BR.stopEvm();
@@ -172,11 +172,13 @@ async function open() {
       await chain.loadIdentity((p) => { $("e-load-bar").style.width = `${Math.round(p * 100)}%`; });
     } finally { hide("e-load", true); }
     $("e-addr").textContent = chain.account;
+    if ($("e-raddr")) $("e-raddr").textContent = chain.account;
     $("e-gas-addr").textContent = chain.feeAddress;
     $("e-explorer").href = explorer("address", chain.account);
     $("e-note").textContent = `Receive only on ${NETS.map((x) => x.name).join(", ").replace(/, ([^,]*)$/, " or $1")}. Funds sent to this address on any other network cannot be used. Before a large deposit, send a small test amount: some exchanges cannot withdraw to smart-account addresses like this one.`;
     hide("e-main", false);
     hide("e-gas", false);
+    if ($("e-dock")) hide("e-dock", false);
     await refresh();
   })();
   try { await loading; } finally { loading = null; }
@@ -203,11 +205,14 @@ async function refresh() {
   $("e-setup-go").textContent = s.state === "finish" ? "Finish setup" : "Set up";
   hide("e-take", s.state !== "other");
   hide("e-send", s.state !== "ready");
-  if ($("e-dock")) hide("e-dock", s.state !== "ready");
+  for (const id of ["e-tokpane", "e-keys", "e-mspane"]) if ($(id)) hide(id, s.state !== "ready");
+  const gas = $("e-gas"), home = $(s.state !== "ready" || s.feeBal === 0n ? "e-gas-top" : "e-gas-home");
+  if (home && gas.parentNode !== home) home.append(gas);
   hide("e-rekey", s.state !== "ready");
   if ($("e-br")) { hide("e-br", s.state !== "ready"); if (bridgePaint) bridgePaint(); }
   if ($("e-sw")) { hide("e-sw", s.state !== "ready"); if (swapPaint && s.state === "ready") swapPaint(); }
   hide("e-rw", !(s.state === "ready" && s.left <= REKEY_SOON));
+  syncDock();
   const p = s.state === "ready" && s.r && s.r.pending;
   hide("e-pend", !p);
   if (p) $("e-pend-text").textContent = `A transfer you signed may still go through until ${new Date(p.deadline * 1000).toLocaleTimeString()}. New sends wait until it confirms, that time passes, or you cancel it.`;
@@ -346,7 +351,8 @@ function bind() {
   document.addEventListener("opeq:view", (e) => { showBar(); if (e.detail !== "v-wallet") close(false); else setTimeout(tryOpen, 0); });
   btn.title = "Switch network";
   $("e-refresh").addEventListener("click", () => ui.guard("e-err", null, refresh));
-  $("e-lock").addEventListener("click", () => { if (!ui.busy()) ui.lock(); });
+  if ($("e-lock")) $("e-lock").addEventListener("click", () => { if (!ui.busy()) ui.lock(); });
+  if ($("e-rcopy")) $("e-rcopy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.account, "EVM address copied"));
   $("e-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.account, "EVM address copied"));
   $("e-gas-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.feeAddress, "gas key address copied"));
 
@@ -535,29 +541,42 @@ export function init(api) {
   initDock();
 }
 
+let dockTabs = [], dockPick = null;
+
 function initDock() {
   const dock = $("e-dock");
   if (!dock) return;
-  const tabs = [...dock.querySelectorAll(".tab")].filter((t) => {
+  dockTabs = [...dock.querySelectorAll(".tab")].filter((t) => {
     if ($(t.getAttribute("aria-controls"))) return true;
     t.remove();
     return false;
   });
-  const pick = (t) => {
-    for (const x of tabs) {
+  dockPick = (t) => {
+    for (const x of dockTabs) {
       const on = x === t;
       x.setAttribute("aria-selected", String(on));
       x.tabIndex = on ? 0 : -1;
       $(x.getAttribute("aria-controls")).classList.toggle("ev-off", !on);
     }
   };
-  tabs.forEach((t, i) => {
-    t.addEventListener("click", () => pick(t));
+  const shown = () => dockTabs.filter((t) => !t.hidden);
+  for (const t of dockTabs) {
+    t.addEventListener("click", () => dockPick(t));
     t.addEventListener("keydown", (e) => {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
-      pick(n); n.focus();
+      const list = shown(), i = list.indexOf(t);
+      const n = list[(i + (e.key === "ArrowRight" ? 1 : list.length - 1)) % list.length];
+      dockPick(n); n.focus();
     });
-  });
-  if (tabs.length) pick(tabs[0]);
+  }
+  syncDock();
+}
+
+function syncDock() {
+  if (!dockPick) return;
+  for (const t of dockTabs) t.hidden = $(t.getAttribute("aria-controls")).classList.contains("hidden");
+  const cur = dockTabs.find((t) => t.getAttribute("aria-selected") === "true");
+  if (cur && !cur.hidden) { dockPick(cur); return; }
+  const first = dockTabs.find((t) => !t.hidden);
+  if (first) dockPick(first);
 }
