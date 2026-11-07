@@ -3,6 +3,7 @@ import { Engine, Session, Inactive, EXEC_LIMIT } from "./lib/engine.js";
 import { IdbStore, macKeyFrom } from "./lib/vaultstore.js";
 import { Rpc, pubkey, b58encode, SYSTEM, concat, u32, u64, eq, isOnCurve, unhex } from "./lib/solana.js";
 import * as T from "./lib/tokens.js";
+import { balRow, held, repaint } from "./balrow.js";
 import * as J from "./lib/jupiter.js";
 import { feePayer } from "./feekey.js";
 import * as keep from "./keep.js";
@@ -24,6 +25,7 @@ const TX_LIMIT = 1232;
 const CU_SEND = 260000, CU_TOKEN = 400000, CU_SWAP = 600000;
 const REKEY_SOON = 100, REKEY_NOW = 20;
 const RENT_FLOOR = 890880n;
+const SOL_RESERVE = 10000000n;
 const FEE_SURPLUS = 30000000;
 const LOADERS = ["BPFLoaderUpgradeab1e11111111111111111111111", "BPFLoader2111111111111111111111111111111111", "BPFLoader1111111111111111111111111111111111", "NativeLoader1111111111111111111111111111111"];
 const $ = (id) => document.getElementById(id);
@@ -481,6 +483,7 @@ async function refreshWallet() {
   $("w-take-box").classList.toggle("hidden", !inactive);
   $("dock").classList.toggle("hidden", inactive);
   $("w-bal").textContent = (bal / 1e9).toLocaleString("en-US", { maximumFractionDigits: 9 });
+  repaint();
   if (r.inflight && !inactive) {
     const note = await session.ackInflight(st);
     if (note.message) log(note.message, note.state === "pending" ? "err" : "ok", note.state !== "pending");
@@ -548,6 +551,7 @@ async function refreshTokens() {
     labels.set(t.mint, await T.tokenLabel(rpc, pubkey(t.mint), pubkey(t.program)).catch(() => ""));
   }
   tokens = fresh.filter((t) => t.amount > 0n || (NET.swap && t.mint === b58encode(T.DEMO.mint)));
+  queueMicrotask(repaint);
   const list = $("t-list"), sel = $("t-sel"), chosen = sel.value;
   list.textContent = ""; sel.textContent = "";
   if (!tokens.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = NET.swap ? "No tokens yet. Try a swap." : "No tokens yet. Anyone can send tokens to your address."; list.append(p); }
@@ -958,6 +962,11 @@ function initWallet() {
   $("v-copy").addEventListener("click", (e) => copyTo(e.currentTarget, session.id, "address copied"));
   const copyFee = (e) => copyTo(e.currentTarget, engine.payer.address, "fee key address copied");
   $("fee-copy").addEventListener("click", copyFee);
+  balRow($("s-amt"), () => session ? held(balanceOf(SOL_MINT).amount, 9, "SOL", SOL_RESERVE) : null);
+  balRow($("t-amt"), () => {
+    const t = session && tokens.find((x) => x.mint === $("t-sel").value);
+    return t ? held(t.amount, t.decimals, tokenName(t.mint) || "tokens") : null;
+  }, [$("t-sel")]);
   $("t-fee-copy").addEventListener("click", copyFee);
   $("w-fe-copy").addEventListener("click", copyFee);
   $("i-copy").addEventListener("click", (e) => copyTo(e.currentTarget, engine.payer.address, "activation address copied"));
@@ -1061,7 +1070,7 @@ function initWallet() {
     });
     $("j-max").addEventListener("click", () => {
       const from = $("j-from").value, b = balanceOf(from);
-      let amt = from === SOL_MINT ? b.amount - 10000000n : b.amount;
+      let amt = from === SOL_MINT ? b.amount - SOL_RESERVE : b.amount;
       if (amt < 0n) amt = 0n;
       $("j-amt").value = T.formatAmount(amt, b.decimals);
       scheduleJup();
@@ -1335,6 +1344,8 @@ async function init() {
       fee: async (cu) => `about ${sol(await networkFee(cu))} SOL`,
       done: () => { refreshWallet().catch(() => {}); },
       owner: () => session,
+      held: (asset) => balanceOf(asset.symbol === "SOL" ? SOL_MINT : asset.address).amount,
+      reserve: SOL_RESERVE,
       myAddress: async (to) => {
         const a = await evm.accountOn(to);
         return { address: a.address, note: evm.notReady(a) };

@@ -6,6 +6,8 @@ import { sha256 } from "./lib/sha256.js";
 import * as MSV from "./evmvault.js";
 import * as BR from "./bridge.js";
 import * as SW from "./evmswap.js";
+import { UNI } from "./lib/uniswap.js";
+import { balRow, held, repaint } from "./balrow.js";
 import { b58encode } from "./lib/solana.js";
 import { factoryAddress as msFactoryAddress } from "./lib/evmmultisig.js";
 
@@ -225,7 +227,8 @@ const tokMeta = new Map();
 
 async function refreshTokens() {
   const c = chain;
-  const list = await loadTokens();
+  const pin = UNI[c.id] ? UNI[c.id].stable : null;
+  const list = [...(pin ? [pin] : []), ...(await loadTokens()).filter((a) => a !== pin)];
   const found = [];
   for (const a of list) {
     const key = `${c.id}:${a}`;
@@ -247,14 +250,16 @@ async function refreshTokens() {
     const amt = t.balance === null ? "?" : formatUnits(t.balance, t.decimals, t.decimals);
     const row = document.createElement("div"); row.className = "tok";
     const left = document.createElement("div");
-    const nm = document.createElement("b"); nm.textContent = `${t.symbol} (unverified)`;
+    const pinned = t.address === pin;
+    const nm = document.createElement("b"); nm.textContent = pinned ? UNI[c.id].stableSymbol : `${t.symbol} (unverified)`;
     const m = document.createElement("span"); m.className = "mint mono"; m.textContent = t.stale ? `${t.address} (balance not refreshed, try again in a minute)` : t.address;
     left.append(nm, m);
     const right = document.createElement("div"); right.className = "mono amt"; right.textContent = amt;
     row.append(left, right); box.append(row);
-    opt(t.address, `${t.symbol} ${t.address.slice(0, 6)}…${t.address.slice(-4)} (${amt})`);
+    opt(t.address, pinned ? `${UNI[c.id].stableSymbol} (${amt})` : `${t.symbol} ${t.address.slice(0, 6)}…${t.address.slice(-4)} (${amt})`);
   }
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  repaint();
 }
 
 function progressTo(id) {
@@ -352,6 +357,14 @@ function bind() {
   btn.title = "Switch network";
   $("e-refresh").addEventListener("click", () => ui.guard("e-err", null, refresh));
   if ($("e-lock")) $("e-lock").addEventListener("click", () => { if (!ui.busy()) ui.lock(); });
+  balRow($("e-amt"), () => {
+    if (!chain || !status) return null;
+    const a = $("e-asset").value;
+    if (a === "native") return held(status.bal, 18, chain.chain.symbol);
+    const t = tokens.find((x) => x.address === a);
+    const pin = UNI[chain.id] && UNI[chain.id].stable === a;
+    return t && t.balance !== null ? held(t.balance, t.decimals, pin ? UNI[chain.id].stableSymbol : t.symbol) : null;
+  }, [$("e-asset")]);
   if ($("e-rcopy")) $("e-rcopy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.account, "EVM address copied"));
   $("e-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.account, "EVM address copied"));
   $("e-gas-copy").addEventListener("click", (e) => ui.copyTo(e.currentTarget, chain.feeAddress, "gas key address copied"));

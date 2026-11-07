@@ -2,6 +2,7 @@ import * as R from "./lib/relay.js";
 import { pubkey, b58encode } from "./lib/solana.js";
 import * as T from "./lib/tokens.js";
 import { formatUnits, EXEC_GAS } from "./lib/evmwallet.js";
+import { balRow, held } from "./balrow.js";
 
 const CU_BRIDGE = 400000;
 const SOL_KEEP = 2000000n;
@@ -129,6 +130,11 @@ export function initSol(ctx) {
   };
   paint();
   $("b-to").addEventListener("change", paint);
+  balRow($("b-amt"), () => {
+    if (!ctx.owner()) return null;
+    const kind = $("b-kind").value, asset = R.ASSETS[from][kind];
+    return asset ? held(ctx.held(asset), asset.decimals, asset.symbol, kind === "native" ? ctx.reserve : 0n) : null;
+  }, [$("b-to"), $("b-kind")]);
   $("b-go").addEventListener("click", () => ctx.guard(async () => {
     solCard.gen++;
     $("b-st").textContent = "";
@@ -181,7 +187,15 @@ export function initEvm(ctx) {
     const to = Number($("eb-to").value);
     fill($("eb-kind"), R.kinds(from, to).map((k) => [k, k === "native" ? `ETH to ${R.ASSETS[to].native.symbol}` : "USDC to USDC"]));
   };
-  ctx.onChain(paint);
+  const bal = balRow($("eb-amt"), async () => {
+    const c = ctx.chain();
+    if (!c || !ctx.owner()) return null;
+    const kind = $("eb-kind").value, asset = R.ASSETS[c.id] && R.ASSETS[c.id][kind];
+    if (!asset) return null;
+    const amount = kind === "native" ? (await c.status()).bal : await c.tokenBalance(asset.address);
+    return c === ctx.chain() ? held(amount, asset.decimals, asset.symbol) : null;
+  }, [$("eb-to"), $("eb-kind")]);
+  ctx.onChain(() => { paint(); bal(); });
   $("eb-to").addEventListener("change", paint);
   $("eb-go").addEventListener("click", () => ctx.guard(async () => {
     evmCard.gen++;

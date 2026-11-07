@@ -1,6 +1,7 @@
 import * as U from "./lib/uniswap.js";
 import { bytesToHex } from "./lib/evmtx.js";
 import { formatUnits as fu, EXEC_GAS } from "./lib/evmwallet.js";
+import { balRow, held } from "./balrow.js";
 
 const formatUnits = (v, d) => fu(v, d, Math.min(d, 8));
 
@@ -68,10 +69,18 @@ export function initEvmSwap(ctx) {
     fill($("es-in"), items, U.ETH);
     fill($("es-out"), items, items[1][0]);
     if ($("es-in").value === $("es-out").value) $("es-out").value = items.find(([v]) => v !== $("es-in").value)[0];
+    await showBal();
   };
+
+  const showBal = balRow($("es-amt"), async () => {
+    const c = ctx.chain(), tin = $("es-in").value;
+    if (!c || !tin) return null;
+    const a = await info(c, tin);
+    return c === ctx.chain() && tin === $("es-in").value ? held(a.balance, a.decimals, a.symbol) : null;
+  }, [$("es-in")]);
   ctx.onChain(() => { paint().catch(() => {}); });
   $("es-slip").addEventListener("change", () => { $("es-slip").dataset.touched = "1"; });
-  $("es-flip").addEventListener("click", () => { const a = $("es-in").value; $("es-in").value = $("es-out").value; $("es-out").value = a; });
+  $("es-flip").addEventListener("click", () => { const a = $("es-in").value; $("es-in").value = $("es-out").value; $("es-out").value = a; showBal(); });
 
   const sources = (c) => [c.rpc, c.check];
   const caller = (src, block = "latest") => async (to, data) => await src.ethCall(to, bytesToHex(data), block);
