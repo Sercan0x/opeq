@@ -1,6 +1,8 @@
 import * as U from "./lib/uniswap.js";
 import { bytesToHex } from "./lib/evmtx.js";
-import { formatUnits, EXEC_GAS } from "./lib/evmwallet.js";
+import { formatUnits as fu, EXEC_GAS } from "./lib/evmwallet.js";
+
+const formatUnits = (v, d) => fu(v, d, Math.min(d, 8));
 
 const FRESH_S = 60;
 const LOOKS_PINNED = ["ETH", "WETH", "USDC", "USDT", "DAI", "WBTC"];
@@ -93,7 +95,7 @@ export function initEvmSwap(ctx) {
     if ((tin === U.ETH && tout === cfg.weth) || (tout === U.ETH && tin === cfg.weth)) throw new Error("ETH and WETH are the same coin; wrapping and unwrapping is not a swap");
     const [a, b] = await Promise.all([info(c, tin), info(c, tout)]);
     const amount = amountOf($("es-amt").value, a.decimals);
-    if (a.balance === null || a.balance < amount) throw new Error(`not enough ${a.symbol}: the account holds ${a.balance === null ? "an unknown amount" : formatUnits(a.balance, a.decimals, a.decimals)}`);
+    if (a.balance === null || a.balance < amount) throw new Error(`not enough ${a.symbol}: the account holds ${a.balance === null ? "an unknown amount" : formatUnits(a.balance, a.decimals)}`);
     const slip = slipOf($("es-slip"));
     $("es-st").textContent = "Getting a price from Uniswap and testing the swap…";
     let best, min, calls, test, deadline;
@@ -111,9 +113,9 @@ export function initEvmSwap(ctx) {
     const top = await c.topupPlan(tin === U.ETH ? amount : 0n);
     const sym = (t) => t === cfg.weth ? (tin === U.ETH || tout === U.ETH ? c.chain.symbol : "WETH") : t === tin ? a.symbol : t === tout ? b.symbol : `${t.slice(0, 6)}…`;
     const rows = [
-      ["You pay", `${formatUnits(amount, a.decimals, a.decimals)} ${a.symbol}`],
-      ["You receive, about", `${formatUnits(best.out, b.decimals, b.decimals)} ${b.symbol}`],
-      ["At least", `${formatUnits(min, b.decimals, b.decimals)} ${b.symbol}`],
+      ["You pay", `${formatUnits(amount, a.decimals)} ${a.symbol}`],
+      ["You receive, about", `${formatUnits(best.out, b.decimals)} ${b.symbol}`],
+      ["At least", `${formatUnits(min, b.decimals)} ${b.symbol}`],
       ["Route", `Uniswap: ${U.routeText(best.route, sym)}`],
     ];
     if (!a.pinned) rows.push([`${a.symbol} contract`, a.address, true]);
@@ -122,13 +124,13 @@ export function initEvmSwap(ctx) {
     const notes = [
       { text: "Signed with one quantum-resistant one-time key. The wallet builds the swap itself and tested it on both network sources just now: the tokens come back to this account, and if less than the minimum would arrive, the whole swap is undone." },
     ];
-    if (tin !== U.ETH) notes.push({ text: `This lets Uniswap's router take exactly ${formatUnits(amount, a.decimals, a.decimals)} ${a.symbol} for this swap and sets that permission back to zero in the same transaction.` });
+    if (tin !== U.ETH) notes.push({ text: `This lets Uniswap's router take exactly ${formatUnits(amount, a.decimals)} ${a.symbol} for this swap and sets that permission back to zero in the same transaction.` });
     for (const t of [a, b]) if (!t.pinned) {
       if (LOOKS_PINNED.includes(t.symbol.toUpperCase()) || t.symbol.toUpperCase() === c.chain.symbol.toUpperCase()) notes.push({ text: `This token calls itself ${t.symbol} but it is not the ${t.symbol} this wallet knows. Anyone can create a token with any name. Do not swap unless you are sure of the contract address.`, warn: true });
       else notes.push({ text: `${t.symbol} is a token you added. Anyone can create a token with any name, and some tokens take a fee or can't be sold later. Check the contract address.`, warn: true });
     }
-    if (top) notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18, 8)} ETH from your account to it for future network fees.` });
-    if (!(await ctx.ask({ ...ctx.tag(), title: `Swap ${formatUnits(amount, a.decimals, a.decimals)} ${a.symbol} for ${b.symbol}`, rows, notes }, "Swap"))) return;
+    if (top) notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18)} ETH from your account to it for future network fees.` });
+    if (!(await ctx.ask({ ...ctx.tag(), title: `Swap ${formatUnits(amount, a.decimals)} ${a.symbol} for ${b.symbol}`, rows, notes }, "Swap"))) return;
     if (ctx.chain() !== c) throw new Error("the network changed. Nothing was signed");
     if (Date.now() - quotedAt > FRESH_S * 1000) throw new Error("this price is more than a minute old. Nothing was signed; review the swap again");
     const now = await info(c, tin);
@@ -136,7 +138,7 @@ export function initEvmSwap(ctx) {
     $("es-st").textContent = "Testing the swap again…";
     try { await simulate(c, calls, tout, min); } finally { $("es-st").textContent = ""; }
     if (top) calls.push({ to: c.feeAddress, value: top, data: new Uint8Array(0) });
-    ctx.log(`swap ${formatUnits(amount, a.decimals, a.decimals)} ${a.symbol} for at least ${formatUnits(min, b.decimals, b.decimals)} ${b.symbol} on Uniswap`);
+    ctx.log(`swap ${formatUnits(amount, a.decimals)} ${a.symbol} for at least ${formatUnits(min, b.decimals)} ${b.symbol} on Uniswap`);
     const res = await c.execute(calls, (h) => ctx.last("Swap sent.", h), false, {
       maxInner: inner + 30000n, inner,
       settled: async () => BigInt(await c.clock()) > deadline,
