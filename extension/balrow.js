@@ -34,6 +34,8 @@ export function balRow(input, read, watch = []) {
   let cur = null, gen = 0;
   const paint = async () => {
     const g = ++gen;
+    cur = null;
+    btn.hidden = true;
     let r = null;
     try { r = await read(); } catch { r = null; }
     if (g !== gen) return;

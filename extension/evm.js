@@ -134,6 +134,7 @@ function clearCard() {
   for (const id of ["e-to", "e-amt", "e-tok"]) $(id).value = "";
   MSV.hideAll();
   BR.stopEvm();
+  queueMicrotask(repaint);
   if ($("eb-st")) $("eb-st").textContent = "";
 }
 
@@ -183,7 +184,7 @@ async function open() {
     if ($("e-dock")) hide("e-dock", false);
     await refresh();
   })();
-  try { await loading; } finally { loading = null; }
+  try { await loading; } finally { loading = null; syncDock(); }
 }
 
 async function refresh() {
@@ -198,7 +199,11 @@ async function refresh() {
   $("e-sym").textContent = sym;
   $("e-gas-bal").textContent = `${formatUnits(s.feeBal, 18)} ${sym}`;
   c.gasSurplus().then((x) => { if (c === chain) hide("e-sweep", !(x > 0n && s.state === "ready")); }).catch(() => hide("e-sweep", true));
-  c.waiting().then((x) => { if (c === chain) hide("e-unstick", !x); }).catch(() => hide("e-unstick", true));
+  c.waiting().then((x) => {
+    if (c !== chain) return;
+    hide("e-unstick", !x);
+    if (x && $("e-gas-top") && $("e-gas").parentNode !== $("e-gas-top")) $("e-gas-top").append($("e-gas"));
+  }).catch(() => hide("e-unstick", true));
   $("e-gas").classList.toggle("low", s.feeBal === 0n);
   $("e-state").textContent = { setup: s.st.deployed ? "needs setup" : "not set up", finish: "setup not finished", ready: "active", adopt: "finishing a rekey", other: "other device" }[s.state];
   $("e-tree").textContent = s.state === "ready" ? `tree ${s.st.epoch}` : "–";

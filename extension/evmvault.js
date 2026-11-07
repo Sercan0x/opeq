@@ -67,7 +67,10 @@ export function hideAll() {
 export async function refresh(ready) {
   if (!x) return;
   if (!ready) { hideAll(); return; }
-  if (open) { x.hide("e-ms", true); await showVault(open); return; }
+  if (open) {
+    try { x.hide("e-ms", true); await showVault(open); return; }
+    catch { open = null; view = null; x.hide("ms-v", true); }
+  }
   x.hide("ms-v", true);
   x.hide("e-ms", false);
   const box = x.$("ms-list");

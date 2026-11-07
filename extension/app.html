@@ -109,7 +109,7 @@
         <h2 class="silk"><span>RESTORE</span><b>insert an existing wallet</b></h2>
         <p class="hint">Use your words in one place at a time. If the wallet is already active elsewhere, this copy asks you to choose Use on this device, and the other copy stops signing.</p>
         <label class="f" for="r-words">24 words, separated by spaces. The first 4 letters of each word are enough.</label>
-        <textarea id="r-words" spellcheck="false" autocomplete="off"></textarea>
+        <textarea id="r-words" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off"></textarea>
         <label class="f" for="r-pw">New password for this browser</label><input type="password" id="r-pw" autocomplete="new-password">
         <label class="f" for="r-pw2">Repeat password</label><input type="password" id="r-pw2" autocomplete="new-password">
         <div class="row"><button class="btn btn-solid" id="r-go" type="button">Recover</button></div>
@@ -184,7 +184,7 @@
         
         
       </div>
-      <div class="card" id="e-recv"><p class="hint" id="e-note"></p><p class="mono addr boxed" id="e-raddr"></p><div class="row"><button class="btn btn-line btn-sm" id="e-rcopy" type="button">Copy address</button><a class="btn btn-quiet btn-sm" id="e-explorer" rel="noopener noreferrer" target="_blank">Explorer</a></div><p class="ev-beta">Beta. The EVM contracts have had four internal security reviews but no external audit yet. Start with small amounts.</p></div>
+      <div class="card" id="e-recv"><p class="hint" id="e-note"></p><p class="mono addr boxed" id="e-raddr"></p><div class="row"><button class="btn btn-line btn-sm" id="e-rcopy" type="button">Copy address</button><a class="btn btn-quiet btn-sm" id="e-explorer" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-quiet btn-sm" id="e-refresh" type="button">Refresh</button></div><p class="ev-beta">Beta. The EVM contracts have had four internal security reviews but no external audit yet. Start with small amounts.</p></div>
           <div class="card hidden" id="e-sw">
         <h2 class="silk"><span>PCIE_5</span><b>swap</b></h2>
         <p class="hint">Swap on Uniswap. The wallet builds the swap itself and the tokens come back to this account.</p>
@@ -218,7 +218,7 @@
         <p class="hint">Moves this network to a fresh key tree. Your address stays the same.</p>
         <div class="row"><button class="btn btn-line btn-sm" id="e-rekey-go" type="button">Rekey now</button></div>
         <div class="progress hidden" id="e-rekey-prog"><div></div></div>
-      </div><div class="row"><button class="btn btn-line btn-sm" id="e-refresh" type="button">Refresh</button></div></div>
+      </div></div>
           <div id="e-mspane">
       <div class="card hidden" id="e-ms">
         <h2 class="silk"><span>PCIE_3</span><b>multisig</b></h2>

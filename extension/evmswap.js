@@ -62,7 +62,7 @@ export function initEvmSwap(ctx) {
     ctx.hide("es-none", !none);
     ctx.hide("es-form", none);
     if (none) {
-      $("es-none").textContent = `There is no token to swap ${c.chain.symbol} for on ${c.chain.name} yet. Add a token's contract under Send, Add a token, and it shows up here.`;
+      $("es-none").textContent = `There is no token to swap ${c.chain.symbol} for on ${c.chain.name} yet. Add a token's contract under Tokens, Add a token, and it shows up here.`;
       return;
     }
     if (!$("es-slip").dataset.touched) $("es-slip").value = c.id === 1 ? "50" : "100";

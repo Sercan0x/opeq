@@ -8,6 +8,7 @@ ATTR = {
     "minSdkVersion": 0x0101020c, "versionCode": 0x0101021b, "versionName": 0x0101021c,
     "windowSoftInputMode": 0x0101022b, "targetSdkVersion": 0x01010270, "allowBackup": 0x01010280,
     "usesCleartextTraffic": 0x010104ec, "drawable": 0x01010199,
+    "taskAffinity": 0x01010012, "launchMode": 0x0101001d, "dataExtractionRules": 0x0101063e,
 }
 
 TYPE_REFERENCE = 0x01

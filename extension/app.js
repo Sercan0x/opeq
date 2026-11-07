@@ -732,6 +732,7 @@ function wipeInputs() {
 
 function lockVault(reason) {
   wipeInputs();
+  queueMicrotask(repaint);
   if (!session) return;
   loadLog(null);
   if (session.master) session.master.fill(0);
@@ -763,7 +764,10 @@ function initAutoLock() {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       hiddenAt = Date.now();
-      if (LOCK_ON_HIDE && session) { if (busy) lockDue = true; else lockVault(HIDE_REASON); }
+      if (LOCK_ON_HIDE && session) {
+        if ($("ask").open && $("ask-no").onclick) $("ask-no").onclick();
+        if (busy) lockDue = true; else lockVault(HIDE_REASON);
+      }
       return;
     }
     if (LOCK_ON_HIDE && hiddenAt && session) { if (busy) lockDue = true; else lockVault(HIDE_REASON); }
@@ -831,7 +835,7 @@ function initCreate() {
     q.textContent = "";
     for (const i of picks) {
       const lab = document.createElement("label"); lab.className = "f"; lab.textContent = `Word #${i + 1}`;
-      const inp = document.createElement("input"); inp.type = "text"; inp.autocomplete = "off"; inp.spellcheck = false; inp.dataset.idx = i;
+      const inp = document.createElement("input"); inp.type = "text"; inp.autocomplete = "off"; inp.spellcheck = false; inp.setAttribute("autocapitalize", "off"); inp.setAttribute("autocorrect", "off"); inp.dataset.idx = i;
       q.append(lab, inp);
     }
     $("c-err").textContent = "";

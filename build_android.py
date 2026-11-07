@@ -41,6 +41,11 @@ WINDOW = "Landroid/view/Window;"
 FRAME = "Landroid/widget/FrameLayout;"
 GROUP = "Landroid/view/ViewGroup;"
 TARGET_SDK = 36
+PROD_KEY = os.path.expanduser("~/.opeq-android-key.pem")
+RULES_ID = 0x7f020000
+LAUNCH_SINGLE_TASK = 2
+AUTOFILL_NO_EXCLUDE_DESCENDANTS = 8
+DATA_DOMAINS = ["root", "file", "database", "sharedpref", "external", "device_root", "device_file", "device_database", "device_sharedpref"]
 FLAG_SECURE = 0x2000
 FEATURE_NO_TITLE = 1
 BACKGROUND = 0xff070b11
@@ -159,6 +164,14 @@ def shell(secure=True):
 
     main = d.add(Class(MAIN, ACTIVITY))
     web = main.field("web", WEBVIEW)
+    main.method("onDestroy", "V", [], ACC_PUBLIC, Code(2, 1, [
+        ("iget-object", 0, 1, web),
+        ("if-eqz", 0, "done"),
+        ("invoke-virtual", [0], Method(WEBVIEW, "destroy", "V")),
+        ("label", "done"),
+        ("invoke-super", [1], Method(ACTIVITY, "onDestroy", "V")),
+        ("return-void",),
+    ]))
     for name in ("onPause", "onResume"):
         main.method(name, "V", [], ACC_PUBLIC, Code(2, 1, [
             ("invoke-super", [1], Method(ACTIVITY, name, "V")),
@@ -187,6 +200,10 @@ def shell(secure=True):
         ("new-instance", 0, WEBVIEW),
         ("invoke-direct", [0, 5], Method(WEBVIEW, "<init>", "V", [CONTEXT])),
         ("iput-object", 0, 5, web),
+        ("const/4", 2, 1),
+        ("invoke-virtual", [0, 2], Method(VIEW, "setFilterTouchesWhenObscured", "V", ["Z"])),
+        ("const/16", 2, AUTOFILL_NO_EXCLUDE_DESCENDANTS),
+        ("invoke-virtual", [0, 2], Method(VIEW, "setImportantForAutofill", "V", ["I"])),
         ("invoke-virtual", [0, 1], Method(WEBVIEW, "setBackgroundColor", "V", ["I"])),
         ("invoke-virtual", [0], Method(WEBVIEW, "getSettings", SETTINGS)),
         ("move-result-object", 1),
@@ -235,10 +252,13 @@ def manifest_tree(version_code, version_name, label, icon):
             ("android:icon", Ref(icon)),
             ("android:allowBackup", False),
             ("android:usesCleartextTraffic", False),
+            ("android:dataExtractionRules", Ref(RULES_ID)),
         ], [
             Element("activity", [
                 ("android:name", MAIN[1:-1].replace("/", ".")),
                 ("android:exported", True),
+                ("android:taskAffinity", ""),
+                ("android:launchMode", LAUNCH_SINGLE_TASK),
                 ("android:configChanges", Hex(0x4a0)),
                 ("android:windowSoftInputMode", Hex(0x10)),
             ], [
@@ -306,7 +326,13 @@ def mark_icon(size, mark_width, ss=4):
     return png(size, size, bytes(out))
 
 
-ICON_ENTRIES = [("drawable", [("bg", "res/drawable/bg.png"), ("fg", "res/drawable/fg.png"), ("ic", "res/drawable/ic.xml")])]
+ICON_ENTRIES = [("drawable", [("bg", "res/drawable/bg.png"), ("fg", "res/drawable/fg.png"), ("ic", "res/drawable/ic.xml")]),
+                ("xml", [("data_rules", "res/xml/data_rules.xml")])]
+
+
+def data_rules():
+    none = lambda: [Element("exclude", [("domain", d), ("path", ".")]) for d in DATA_DOMAINS]
+    return Element("data-extraction-rules", [], [Element("cloud-backup", [], none()), Element("device-transfer", [], none())])
 
 
 def icon_parts():
@@ -317,7 +343,9 @@ def icon_parts():
         Element("background", [("android:drawable", Ref(ids["drawable/bg"]))]),
         Element("foreground", [("android:drawable", Ref(ids["drawable/fg"]))]),
     ])
-    return table, ids, {"res/drawable/bg.png": bg, "res/drawable/fg.png": fg}, {"res/drawable/ic.xml": adaptive}
+    if ids["xml/data_rules"] != RULES_ID:
+        raise SystemExit("the data extraction rules moved in the resource table")
+    return table, ids, {"res/drawable/bg.png": bg, "res/drawable/fg.png": fg}, {"res/drawable/ic.xml": adaptive, "res/xml/data_rules.xml": data_rules()}
 
 
 def icon_resources():
@@ -398,7 +426,7 @@ def main():
     g.add_argument("--assets")
     g.add_argument("--wallet", nargs="?", const=os.path.join(ROOT, "build", "extension-mainnet"))
     p.add_argument("--out", default="build/opeq.apk")
-    p.add_argument("--key", default=os.path.expanduser("~/.opeq-android-key.pem"))
+    p.add_argument("--key", default=PROD_KEY)
     p.add_argument("--new-key", action="store_true")
     p.add_argument("--version-code", type=int, default=1)
     p.add_argument("--version-name", default="1.0.0")
@@ -416,6 +444,8 @@ def main():
         apk.new_key(a.key, "OPEQ")
     if not os.path.exists(a.key):
         raise SystemExit(f"no signing key at {a.key}; pass --new-key once to create it")
+    if (a.allow_screenshots or a.assets) and os.path.realpath(a.key) == os.path.realpath(PROD_KEY):
+        raise SystemExit("test builds (--allow-screenshots or --assets) must not be signed with the release key")
     key, cert = apk.load_key(a.key)
     assets = wallet(a.wallet) if a.wallet else collect(a.assets)
     if not any(n == "assets/app.html" for n, _ in assets):

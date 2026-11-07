@@ -86,9 +86,10 @@ function follow(ctx, card, requestId, from, to, stEl, okEl) {
   const live = () => card.gen === gen && ctx.owner() === who;
   const say = (t) => { if (live()) stEl.textContent = t; };
   const ref = `Relay request ${requestId.length > 20 ? `${requestId.slice(0, 10)}…${requestId.slice(-6)}` : requestId}`;
+  const full = `Relay request ${requestId} (also in Activity)`;
   const settle = (t) => {
     say(t);
-    if (live()) ctx.done();
+    if (live()) { ctx.log(`${t} ${full}`, "ok"); ctx.done(); }
     setTimeout(() => {
       if (!live() || stEl.textContent !== t) return;
       stEl.textContent = "";
@@ -104,11 +105,11 @@ function follow(ctx, card, requestId, from, to, stEl, okEl) {
       try { s = await R.status(requestId, { api: (ctx.NET.bridge && ctx.NET.bridge.api) || R.API }); } catch { continue; }
       if (s.status === "success") { settle(`Bridge done: the funds arrived on ${NAME[to]}.`); return; }
       if (s.status === "refund") { settle(`Bridge refunded: Relay sent the funds back to your own address on ${NAME[from]} or ${NAME[to]}.`); return; }
-      if (s.status === "failure") { say(`Bridge failed on Relay's side. Relay has committed to refund failed bridges; look up the request on relay.link if nothing arrives. ${ref}`); return; }
+      if (s.status === "failure") { say(`Bridge failed on Relay's side. Relay has committed to refund failed bridges; look up the request on relay.link if nothing arrives. ${full}`); return; }
       const word = { waiting: "waiting for Relay to see the deposit", pending: `sending on ${NAME[to]}`, submitted: `sending on ${NAME[to]}`, delayed: "delayed at Relay, still in progress" }[s.status] || `Relay reports "${s.status}"`;
       say(`Bridge: ${word}. ${ref}`);
     }
-    say(`Bridge: still in progress. Look up the request on relay.link. ${ref}`);
+    say(`Bridge: still in progress. Look up the request on relay.link. ${full}`);
   })();
 }
 
@@ -194,9 +195,9 @@ export function initEvm(ctx) {
     if (!asset) return null;
     const amount = kind === "native" ? (await c.status()).bal : await c.tokenBalance(asset.address);
     return c === ctx.chain() ? held(amount, asset.decimals, asset.symbol) : null;
-  }, [$("eb-to"), $("eb-kind")]);
+  }, [$("eb-kind")]);
   ctx.onChain(() => { paint(); bal(); });
-  $("eb-to").addEventListener("change", paint);
+  $("eb-to").addEventListener("change", () => { paint(); bal(); });
   $("eb-go").addEventListener("click", () => ctx.guard(async () => {
     evmCard.gen++;
     $("eb-st").textContent = "";

@@ -132,6 +132,8 @@ for secure in (True, False):
     flags = walk(meths, code[(B.MAIN, "onCreate")])[1]
     check(f"{label} dex: FLAG_SECURE {'set' if secure else 'off'}", (B.FLAG_SECURE in flags) == secure)
     check(f"{label} dex: no JavaScript interface", "addJavascriptInterface" not in strs)
+    check(f"{label} dex: touches through overlays and autofill are refused", "setFilterTouchesWhenObscured" in strs and "setImportantForAutofill" in strs)
+    check(f"{label} dex: the WebView is destroyed with the activity", "onDestroy" in strs and "destroy" in strs)
     check(f"{label} dex: WebView pauses and resumes with the app", "onPause" in strs and "onResume" in strs)
     check(f"{label} dex: content sits inside the system bars", "setFitsSystemWindows" in strs and "Landroid/widget/FrameLayout;" in strs)
     check(f"{label} dex: asset paths with '..' are refused", ".." in strs and "contains" in strs)
@@ -172,6 +174,11 @@ first = dict(tags)
 check("manifest: package, sdk levels and a single INTERNET permission",
       first["manifest"]["package"] == B.PACKAGE and first["uses-sdk"]["minSdkVersion"] == 26
       and [a["name"] for t, a in tags if t == "uses-permission"] == ["android.permission.INTERNET"])
+check("manifest: no backup or device transfer of app data", first["application"]["dataExtractionRules"] == B.RULES_ID
+      and B.data_rules().children[1].tag == "device-transfer"
+      and {a[1] for e in B.data_rules().children for c in e.children for a in c.attrs if a[0] == "domain"} >= {"root", "device_root"})
+check("manifest: activity is single-task with no task affinity",
+      first["activity"]["launchMode"] == B.LAUNCH_SINGLE_TASK and first["activity"]["taskAffinity"] == "")
 check("manifest: targets API 36 for Google Play", first["uses-sdk"]["targetSdkVersion"] == B.TARGET_SDK == 36)
 check("manifest: no backup, no cleartext, icon points into the resource table",
       first["application"]["allowBackup"] == 0 and first["application"]["usesCleartextTraffic"] == 0
