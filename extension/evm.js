@@ -5,6 +5,7 @@ import { NET } from "./net.js";
 import { sha256 } from "./lib/sha256.js";
 import * as MSV from "./evmvault.js";
 import * as BR from "./bridge.js";
+import * as SW from "./evmswap.js";
 import { b58encode } from "./lib/solana.js";
 import { factoryAddress as msFactoryAddress } from "./lib/evmmultisig.js";
 
@@ -102,6 +103,7 @@ async function saveTokens(list) {
 }
 
 let bridgePaint = null;
+let swapPaint = null;
 
 export function notReady(a) {
   if (a.ready) return "";
@@ -202,6 +204,7 @@ async function refresh() {
   hide("e-send", s.state !== "ready");
   hide("e-rekey", s.state !== "ready");
   if ($("e-br")) { hide("e-br", s.state !== "ready"); if (bridgePaint) bridgePaint(); }
+  if ($("e-sw")) { hide("e-sw", s.state !== "ready"); if (swapPaint && s.state === "ready") swapPaint(); }
   hide("e-rw", !(s.state === "ready" && s.left <= REKEY_SOON));
   const p = s.state === "ready" && s.r && s.r.pending;
   hide("e-pend", !p);
@@ -500,6 +503,18 @@ export function init(api) {
       },
     });
   } else if ($("e-br")) $("e-br").remove();
+  if ($("e-sw")) {
+    SW.initEvmSwap({
+      $, hide, chain: () => chain, tag, feeText, last,
+      ask: (m, y) => ui.ask(m, y),
+      guard: (fn) => ui.guard("e-err", "e-ok", fn),
+      ok: (t) => { $("e-ok").textContent = t; },
+      refreshMain: () => refresh(),
+      log: (t, k) => ui.log(t, k),
+      tokens: () => loadTokens(),
+      onChain: (f) => { swapPaint = f; },
+    });
+  }
   MSV.init({
     $, hide, chain: () => chain, tag, feeText, last, explorer, lookalike, recipient, remember,
     ask: (m, y) => ui.ask(m, y),
