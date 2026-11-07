@@ -5,7 +5,7 @@ import { formatUnits as fu, EXEC_GAS } from "./lib/evmwallet.js";
 const formatUnits = (v, d) => fu(v, d, Math.min(d, 8));
 
 const FRESH_S = 60;
-const LOOKS_PINNED = ["ETH", "WETH", "USDC", "USDT", "DAI", "WBTC"];
+const LOOKS_PINNED = ["ETH", "WETH", "USDC", "USDG", "USDT", "DAI", "WBTC"];
 
 function amountOf(text, decimals) {
   const t = String(text).trim();
@@ -30,14 +30,14 @@ export function initEvmSwap(ctx) {
     if (t === U.ETH) return { address: U.ETH, symbol: c.chain.symbol, decimals: 18, balance: (await c.status()).bal, pinned: true };
     const m = await c.token(t);
     names.set(`${c.id}:${t}`, m.symbol);
-    const pinned = t === U.UNI[c.id].usdc;
-    return { address: m.address, symbol: pinned ? "USDC" : m.symbol, decimals: m.decimals, balance: await c.tokenBalance(t), pinned };
+    const pinned = t === U.UNI[c.id].stable;
+    return { address: m.address, symbol: pinned ? U.UNI[c.id].stableSymbol : m.symbol, decimals: m.decimals, balance: await c.tokenBalance(t), pinned };
   }
 
   async function choices(c) {
     const out = [[U.ETH, c.chain.symbol]];
-    const u = U.UNI[c.id].usdc;
-    if (u) out.push([u, "USDC"]);
+    const u = U.UNI[c.id].stable;
+    if (u) out.push([u, U.UNI[c.id].stableSymbol]);
     for (const a of await ctx.tokens()) if (a !== u && a !== U.UNI[c.id].weth) {
       const n = names.get(`${c.id}:${a}`);
       out.push([a, `${n ? n + " " : ""}${a.slice(0, 6)}…${a.slice(-4)} (unverified)`]);

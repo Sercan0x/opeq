@@ -4,7 +4,7 @@ import { bytesToHex } from "../lib/evmtx.js";
 const RPC = process.argv[2] || "http://127.0.0.1:8551";
 const CHAIN = 8453;
 const ME = "0x00000000000000000000000000000000000a11ce";
-const USDC = U.UNI[CHAIN].usdc;
+const USDC = U.UNI[CHAIN].stable;
 const CBBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log("PASS", m); } else { fail++; console.log("FAIL", m); } };
