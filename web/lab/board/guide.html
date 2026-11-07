@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>How to use OPEQ</title>
+<meta name="description" content="A step-by-step guide to the OPEQ wallet: install, create, activate, send, swap, EVM networks, bridge and multisig, with real screenshots.">
+<meta name="theme-color" content="#070b11">
+<link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="docs.css">
+<link rel="stylesheet" href="guide.css">
+<script type="module" src="docs.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html"><img src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <a class="back" href="index.html">Back to the board</a>
+</header>
+<div class="docs">
+<nav class="toc" aria-label="Guide">
+  <p class="toc-h">Start here</p>
+  <ul>
+    <li><a href="#two-keys">The one thing to know</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#create">Create a wallet</a></li>
+    <li><a href="#activate">Activate on Solana</a></li>
+  </ul>
+  <p class="toc-h">Everyday</p>
+  <ul>
+    <li><a href="#receive">Receive</a></li>
+    <li><a href="#send">Send</a></li>
+    <li><a href="#swap">Swap</a></li>
+  </ul>
+  <p class="toc-h">More networks</p>
+  <ul>
+    <li><a href="#evm">EVM networks</a></li>
+    <li><a href="#bridge">Bridge</a></li>
+  </ul>
+  <p class="toc-h">Together</p>
+  <ul>
+    <li><a href="#multisig">Multisig</a></li>
+  </ul>
+  <p class="toc-h">Keep it safe</p>
+  <ul>
+    <li><a href="#recover">Words and recovery</a></li>
+    <li><a href="#rekey">After 688 signatures</a></li>
+    <li><a href="#safety">Safety rules</a></li>
+    <li><a href="#trouble">If something looks wrong</a></li>
+  </ul>
+</nav>
+<main class="doc">
+  <h1>How to use OPEQ</h1>
+  <p class="meta">A step-by-step guide with real screens from the wallet. Beta: start with small amounts.</p>
+  <p class="intro">OPEQ looks complicated, but it's actually very simple. It works like any wallet you know: an address to receive, a Send button, swaps and tokens. There is only one new idea, and it's worth two minutes before you start.</p>
+
+  <h2 id="two-keys">The one thing to know: two keys</h2>
+  <p>Every network charges a small fee for each transaction, and that fee must be paid by a normal key: an Ed25519 key on Solana, the same kind Phantom uses. A quantum-resistant wallet cannot pay that fee by itself. So OPEQ gives you two keys, both made from your 24 words:</p>
+  <div class="keys">
+    <div class="key safe">
+      <p class="k">YOUR OPEQ WALLET</p>
+      <h3>Holds your funds</h3>
+      <p>Quantum-resistant. It has no private key at all: it only moves when the program checks your hash-based, one-time signature.</p>
+      <p class="tag">keep your SOL and tokens here</p>
+    </div>
+    <div class="key fee">
+      <p class="k">FEE KEY</p>
+      <h3>Pays the network fee</h3>
+      <p>A normal Ed25519 key, like Phantom's. It pays about 0.000005 SOL per transaction and has no power over your wallet.</p>
+      <p class="tag">holds only about 0.005 SOL</p>
+    </div>
+  </div>
+  <p>When you send from OPEQ, your wallet signs what happens to your funds, and the fee key only pays the fee. If someone ever broke the fee key, they would get the few cents on it and nothing else. You never have to manage it: <b>your wallet tops it up by itself</b> when it runs low.</p>
+  <p class="quiet">On EVM networks it is the same idea: your OPEQ account holds the funds, and a small <b>gas key</b> pays the gas.</p>
+
+  <h2 id="install">Install</h2>
+  <h3>Chrome</h3>
+  <p>Install <a href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer">OPEQ Wallet from the Chrome Web Store</a>. It opens from the toolbar or in a full tab.</p>
+  <h3>USB drive (Windows)</h3>
+  <ol class="steps">
+    <li>Download <a href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.3.0" target="_blank" rel="noopener noreferrer">OPEQ-USB.zip</a>, right-click it and choose <b>Extract All</b>.</li>
+    <li>Copy the <b>OPEQ-USB</b> folder to your USB drive.</li>
+    <li>Double-click <b>OPEQ</b> on the drive. It checks its own files and opens in its own window. Your wallet lives on the drive, not on the computer.</li>
+  </ol>
+
+  <h2 id="create">Create a wallet</h2>
+  <ol class="steps">
+    <li><b>Plug in a new wallet.</b> On the start screen, choose to create a new wallet.<figure class="shot"><img src="../../assets/guide-welcome.png" alt="The start screen with Plug in a new wallet and Insert an existing wallet" loading="lazy"></figure></li>
+    <li><b>Choose a password</b> of at least 10 characters. It unlocks the wallet on this device only.<figure class="shot"><img src="../../assets/guide-create.png" alt="The password screen" loading="lazy"></figure></li>
+    <li><b>Write the 24 words on paper, in order.</b> They are your only backup. Never take a photo of them and never type them into a website. (They are blurred in this picture.)<figure class="shot"><img src="../../assets/guide-words.png" alt="The 24 recovery words screen, blurred" loading="lazy"></figure></li>
+    <li><b>Confirm three of the words.</b> This makes sure your paper copy is right.<figure class="shot"><img src="../../assets/guide-quiz.png" alt="The word check, blurred" loading="lazy"></figure></li>
+  </ol>
+
+  <h2 id="activate">Activate on Solana</h2>
+  <p>A new wallet must be activated once. The <b>activation address</b> shown here is your fee key. Look at the left panel: it is the same address.</p>
+  <figure class="shot"><img src="../../assets/guide-activate.png" alt="The activation step, showing the activation address, which is the same as the fee key address in the left panel" loading="lazy"></figure>
+  <ol class="steps">
+    <li><b>Copy the activation address</b> and send at least <b>0.01 SOL</b> to it from Phantom, an exchange or any other Solana wallet. Send SOL only, never tokens.</li>
+    <li><b>Wait a few seconds.</b> The page checks the balance and tells you when the SOL arrived.</li>
+    <li><b>Press Activate.</b> About 0.0015 SOL pays the setup, 0.005 SOL stays on the fee key for future fees, and the rest moves into your OPEQ wallet.</li>
+  </ol>
+  <p class="warn"><b>After activation, send your funds to your OPEQ wallet address</b> (the big one at the top), not to the fee key. The fee key is only for fees.</p>
+
+  <h2 id="receive">Receive</h2>
+  <p>Your OPEQ wallet address is at the top of the wallet, with a <b>Copy address</b> button, and in the <b>Receive</b> tab. It is a normal Solana address: send SOL or any token to it from anywhere. The address never changes.</p>
+  <figure class="shot"><img src="../../assets/guide-wallet.png" alt="An active wallet: the OPEQ address at the top, the fee key on the left" loading="lazy"></figure>
+
+  <h2 id="send">Send</h2>
+  <ol class="steps">
+    <li>Open the <b>Send</b> tab, paste the address and enter the amount.</li>
+    <li>Press <b>Send</b>. A window shows exactly what will happen: amount, receiver, network fee. Read it, then confirm.</li>
+    <li>The wallet signs with one quantum-resistant one-time key. The fee key pays the fee.<figure class="shot"><img src="../../assets/guide-send.png" alt="The Send tab with an address and amount filled in" loading="lazy"></figure></li>
+  </ol>
+  <p>Tokens are in the <b>Tokens</b> tab: pick the token, paste the address, enter the amount.</p>
+  <figure class="shot"><img src="../../assets/guide-tokens.png" alt="The Tokens tab" loading="lazy"></figure>
+
+  <h2 id="swap">Swap</h2>
+  <p>Open the <b>Swap</b> tab, pick what you pay and what you receive, and enter the amount. Prices and routes come from Jupiter. Choose how much the price may move before the swap cancels, press <b>Review swap</b>, read the window and confirm. The wallet checks every instruction before it signs.</p>
+  <figure class="shot"><img src="../../assets/guide-swap.png" alt="The Swap tab with a live quote from SOL to USDC" loading="lazy"></figure>
+
+  <h2 id="evm">EVM networks</h2>
+  <p>The same 24 words also open an OPEQ account on Ethereum, Base, Arbitrum and Robinhood Chain, with the same address on all four. Pick a network in the menu at the top right.</p>
+  <figure class="shot"><img src="../../assets/guide-networks.png" alt="The network menu" loading="lazy"></figure>
+  <ol class="steps">
+    <li><b>Fund the gas key.</b> Copy the <b>gas key</b> address (the red bar) and send it a little ETH on that network, for example 0.0005 ETH on Base. Like the fee key on Solana, it only pays gas.</li>
+    <li><b>Press Set up.</b> It takes up to three transactions, once per network.</li>
+    <li><b>Receive at your account address</b> (the big one at the top), only on these four networks. Before a large deposit, send a small test amount: some exchanges cannot withdraw to smart-account addresses.<figure class="shot"><img src="../../assets/guide-evm-setup.png" alt="An EVM network before setup, with the account address, the gas key and the Set up button" loading="lazy"></figure></li>
+  </ol>
+
+  <h2 id="bridge">Bridge</h2>
+  <p>Move SOL, ETH and USDC between Solana and the EVM networks, always to your own OPEQ address on the other side. The account on the other side must exist first: activated on Solana, set up on EVM.</p>
+  <ol class="steps">
+    <li>On Solana, open the <b>Bridge</b> tab. On an EVM network, scroll to the <b>Bridge</b> card.</li>
+    <li>Pick the network, the asset and the amount, and press <b>Review bridge</b>.<figure class="shot"><img src="../../assets/guide-bridge-form.png" alt="The Bridge tab: 0.01 SOL to Base" loading="lazy"></figure></li>
+    <li>Read the window: what you send, what you receive and the minimum, <b>your own address</b> on the other network, Relay's fee and the time. Then press <b>Bridge</b>.<figure class="shot"><img src="../../assets/guide-bridge-review.png" alt="The bridge review window" loading="lazy"></figure></li>
+    <li>Wait a few seconds. The wallet follows the bridge until it says <b>Bridge done</b>.<figure class="shot"><img src="../../assets/guide-bridge-done.png" alt="Bridge done: the funds arrived on Base" loading="lazy"></figure></li>
+  </ol>
+  <p class="quiet">The bridge is run by Relay. Your deposit is signed with a quantum-resistant key; Relay's delivery on the other network is not, so you rely on Relay until it arrives. OPEQ takes no fee.</p>
+
+  <h2 id="multisig">Multisig</h2>
+  <p>A shared vault that moves funds only after several OPEQ wallets approve, for example 2 of 3. Optional: your normal wallet works exactly as before. Open the <b>Multisig</b> tab.</p>
+  <ol class="steps">
+    <li><b>Share your owner ID.</b> Each owner copies it from the Multisig tab. It is public, like an address, and cannot move funds.<figure class="shot"><img src="../../assets/guide-ms-id.png" alt="The Multisig tab with your owner ID" loading="lazy"></figure></li></li>
+    <li><b>Create.</b> One owner pastes the other owners' IDs, sets how many approvals are needed and presses <b>Create vault</b>.<figure class="shot"><img src="../../assets/guide-ms-create.png" alt="Creating a 2 of 2 multisig" loading="lazy"></figure></li></li>
+    <li><b>Fund it.</b> Send funds to the <b>Deposit to</b> address, never to the multisig ID. The other owners add the vault with <b>Add a multisig you are an owner of</b>.<figure class="shot"><img src="../../assets/guide-ms-vault.png" alt="The vault: multisig ID, deposit address, owners and approvals needed" loading="lazy"></figure></li></li>
+    <li><b>Propose.</b> Any owner proposes a payment. It already counts as their approval.</li>
+    <li><b>Approve.</b> The other owners see the full action in their wallet and press <b>Approve</b>.<figure class="shot"><img src="../../assets/guide-ms-approve.png" alt="The second owner sees the proposal with an Approve button" loading="lazy"></figure></li></li>
+    <li><b>Execute.</b> When enough owners approved, any owner presses <b>Execute</b> and the vault pays.<figure class="shot"><img src="../../assets/guide-ms-done.png" alt="The proposal marked as executed" loading="lazy"></figure></li>
+  </ol>
+  <p class="quiet">On EVM networks it works the same way in the Multisig card, with account addresses instead of owner IDs.</p>
+
+  <h2 id="recover">Words and recovery</h2>
+  <figure class="shot"><img src="../../assets/guide-keys.png" alt="The Keys tab with Show recovery words" loading="lazy"></figure>
+  <dl class="list">
+    <div><dt>See your words</dt><dd>Keys tab, <b>Show recovery words</b>. It asks for your password and hides them again after 60 seconds.</dd></div>
+    <div><dt>New computer</dt><dd>Choose <b>Insert an existing wallet</b>, type the 24 words and pick a password. Then press <b>Use on this device</b>: from then on only this device signs, and any old copy stops.</dd></div>
+    <div><dt>Forgot the password</dt><dd>Recover from the 24 words with a new password. Without the words nobody can help, including OPEQ.</dd></div>
+  </dl>
+
+  <h2 id="rekey">After 688 signatures</h2>
+  <p>Every signature uses a fresh one-time key. One key tree holds 688 of them on Solana (960 on EVM). The wallet shows how many are left. When they run low, press <b>Rekey now</b> in the Keys tab: the wallet moves to a new tree made from the same words. Your address, balances and words stay the same.</p>
+
+  <h2 id="safety">Safety rules</h2>
+  <ol class="steps">
+    <li><b>Type your 24 words only into OPEQ itself</b>, the Chrome extension or the USB app. Never into a website, never into a chat, never for "support". OPEQ will never ask for them.</li>
+    <li><b>No website can connect to OPEQ.</b> If a site says it needs to connect to your OPEQ wallet, it is a scam.</li>
+    <li><b>Read every confirmation window.</b> It shows exactly what will happen before anything is signed.</li>
+    <li><b>Keep savings in the OPEQ wallet, not on the fee key or gas key.</b></li>
+    <li><b>Use one device at a time.</b> Don't sign from two devices with the same words at once.</li>
+    <li><b>Start with small amounts.</b> OPEQ is in beta.</li>
+  </ol>
+
+  <h2 id="trouble">If something looks wrong</h2>
+  <div class="faqs">
+    <details><summary>"The fee key is empty"</summary><p>The fee key needs a little SOL to pay fees. Normally your wallet tops it up by itself; if the wallet itself is also low, send about 0.01 SOL to the fee key address in the left panel.</p></details>
+    <details><summary>I sent funds to the fee key by mistake</summary><p>They are not lost. When the fee key holds more than about 0.03 SOL, the wallet shows a <b>Move to wallet</b> button that moves the extra into your OPEQ wallet.</p></details>
+    <details><summary>"The gas key needs about … ETH"</summary><p>On EVM networks, send a little ETH on that network to the gas key address (the red bar). It only pays gas.</p></details>
+    <details><summary>"This copy of the wallet is not signing yet"</summary><p>Your words are active in another browser or device. Press <b>Use on this device</b> to make this copy the only one that signs; the other copy stops. If you never entered your words anywhere else, someone else has them: create a new wallet now and move everything to it.</p></details>
+    <details><summary>The USB app says "OPEQ stopped"</summary><p>The files on the stick don't match the official release. Don't type your password or words. Delete everything in OPEQ-USB except the <b>data</b> folder, copy a fresh OPEQ-USB from the official zip, and put the data folder back.</p></details>
+    <details><summary>More details</summary><p>The <a href="docs.html">docs</a> explain how everything works, with addresses and the full specification.</p></details>
+  </div>
+</main>
+</div>
+</body>
+</html>
