@@ -57,7 +57,13 @@ export function initEvmSwap(ctx) {
     if (!c || !U.supported(c.id)) { ctx.hide("e-sw", true); return; }
     const items = await choices(c);
     if (c !== ctx.chain()) return;
-    if (items.length < 2) { ctx.hide("e-sw", true); return; }
+    const none = items.length < 2;
+    ctx.hide("es-none", !none);
+    ctx.hide("es-form", none);
+    if (none) {
+      $("es-none").textContent = `There is no token to swap ${c.chain.symbol} for on ${c.chain.name} yet. Add a token's contract under Send, Add a token, and it shows up here.`;
+      return;
+    }
     if (!$("es-slip").dataset.touched) $("es-slip").value = c.id === 1 ? "50" : "100";
     fill($("es-in"), items, U.ETH);
     fill($("es-out"), items, items[1][0]);

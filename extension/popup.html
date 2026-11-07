@@ -166,13 +166,13 @@
     <div class="card hidden" id="e-sw">
       <h2 class="silk"><span>PCIE_5</span><b>swap</b></h2>
       <p class="hint">Swap on Uniswap. The wallet builds the swap itself and the tokens come back to this account.</p>
-      <label class="f" for="es-in">You pay</label><select id="es-in"></select>
+      <p class="hint hidden" id="es-none"></p><div id="es-form"><label class="f" for="es-in">You pay</label><select id="es-in"></select>
       <div class="row tight"><button class="btn btn-line btn-sm" id="es-flip" type="button">Flip</button></div>
       <label class="f" for="es-out">You receive</label><select id="es-out"></select>
       <label class="f" for="es-amt">Amount</label><input type="text" id="es-amt" inputmode="decimal" autocomplete="off" placeholder="0.01">
       <label class="f" for="es-slip">Cancel if the price moves more than</label><select id="es-slip"><option value="50">0.5%</option><option value="100" selected>1%</option><option value="300">3%</option></select>
       <div class="row"><button class="btn btn-solid" id="es-go" type="button">Review swap</button></div>
-      <p class="hint" id="es-st" role="status"></p>
+      <p class="hint" id="es-st" role="status"></p></div>
     </div>
     <div class="card hidden" id="e-br">
         <h2 class="silk"><span>PCIE_4</span><b>bridge</b></h2>
