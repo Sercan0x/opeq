@@ -124,7 +124,8 @@ export async function accountOn(chainId) {
 }
 
 function clearCard() {
-  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw", ...($("e-br") ? ["e-br"] : [])]) hide(id, true);
+  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw", ...($("e-br") ? ["e-br"] : []), ...($("e-sw") ? ["e-sw"] : [])]) hide(id, true);
+  if ($("es-st")) { $("es-st").textContent = ""; $("es-amt").value = ""; }
   $("e-bal").textContent = $("e-state").textContent = "…";
   $("e-ok").textContent = $("e-err").textContent = "";
   for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset"]) $(id).textContent = "";

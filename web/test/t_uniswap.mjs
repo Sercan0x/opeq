@@ -17,6 +17,7 @@ async function rpc(method, params) {
 const call = (to, data) => rpc("eth_call", [{ to, data: bytesToHex(data) }, "latest"]);
 const bal = async (t) => t === U.ETH ? BigInt(await rpc("eth_getBalance", [ME, "latest"])) : BigInt(await rpc("eth_call", [{ to: t, data: "0x70a08231" + "0".repeat(24) + ME.slice(2) }, "latest"]));
 const allowance = async (t) => BigInt(await call(t, U.allowanceData(ME, U.UNI[CHAIN].router)));
+const sim = async (calls, tout) => U.decodeSim(await rpc("eth_call", U.simParams(ME, calls, tout)));
 async function send(calls) {
   for (const c of calls) {
     const h = await rpc("eth_sendTransaction", [{ from: ME, to: c.to, value: "0x" + c.value.toString(16), data: bytesToHex(c.data), gas: "0x" + (1500000).toString(16) }]);
@@ -27,12 +28,15 @@ async function send(calls) {
   return true;
 }
 async function swap(tin, tout, amount, label, { mult = 1n } = {}) {
-  const best = await U.bestQuote(CHAIN, tin, tout, amount, call);
-  const conf = await U.confirmQuote(CHAIN, best, amount, call);
-  const min = U.minOut(conf, 100) * mult;
+  const best = U.pickBest(await U.quoteAll(CHAIN, tin, tout, amount, call), await U.quoteAll(CHAIN, tin, tout, amount, call));
+  const min = U.minOut(best.out, 100) * mult;
   const before = await bal(tout);
   const now = BigInt((await rpc("eth_getBlockByNumber", ["latest", false])).timestamp);
-  const calls = U.swapCalls({ chainId: CHAIN, account: ME, tokenIn: tin, tokenOut: tout, amountIn: amount, amountOutMin: min, route: best.route, deadline: now + 600n, allowance: tin === U.ETH ? 0n : await allowance(tin) });
+  const calls = U.swapCalls({ chainId: CHAIN, account: ME, tokenIn: tin, tokenOut: tout, amountIn: amount, amountOutMin: min, route: best.route, deadline: now + 600n });
+  const sm = await sim(calls, tout);
+  console.log(`  sim: ok ${sm.ok}, gas ${sm.gas}, received ${sm.after - sm.before}`);
+  if (mult === 1n) ok(sm.ok && sm.after - sm.before >= min, `${label}: the test run passes and shows at least the minimum arriving`);
+  else ok(!sm.ok, `${label}: the test run fails before anything is signed`);
   const okSent = await send(calls);
   const got = (await bal(tout)) - before;
   console.log(`  ${label}: route ${best.route.tokens.length - 1} hop(s) fees ${best.route.fees.join("/")}, quote ${best.out}, min ${min}, got ${got}, mined ${okSent}`);
@@ -41,7 +45,7 @@ async function swap(tin, tout, amount, label, { mult = 1n } = {}) {
 
 await rpc("anvil_impersonateAccount", [ME]);
 await rpc("anvil_setBalance", [ME, "0x" + (10n ** 18n).toString(16)]);
-await U.checkContracts(CHAIN, (a) => rpc("eth_getCode", [a, "latest"]));
+await U.checkContracts(CHAIN, (a) => rpc("eth_getCode", [a, "latest"]), (to, data) => call(to, data));
 ok(true, "pinned router and quoter code match on the fork");
 let r = await swap(U.ETH, USDC, 10n ** 16n, "ETH to USDC");
 ok(r.okSent && r.got >= r.min && r.got > 0n, "ETH to USDC delivers at least the minimum");
@@ -54,12 +58,14 @@ ok(r.okSent && r.got >= r.min && r.got > 0n, `USDC to cbBTC works (${r.best.rout
 {
   const amt = usdc / 8n;
   const two = U.routes(CHAIN, USDC, CBBTC).filter((x) => x.fees.length === 2);
+  try { U.swapCalls({ chainId: CHAIN, account: ME, tokenIn: USDC, tokenOut: CBBTC, amountIn: 1n, amountOutMin: 1n, route: { tokens: [U.UNI[CHAIN].weth, CBBTC], fees: [500] }, deadline: 1n }); ok(false, "mismatched route refused"); } catch { ok(true, "a route that does not start with the token paid is refused"); }
   const qs = (await Promise.all(two.map(async (route) => { try { return { route, out: BigInt((await call(U.UNI[CHAIN].quoter, U.quoteData(route, amt))).slice(0, 66)) }; } catch { return null; } }))).filter(Boolean).sort((a, b) => (b.out > a.out ? 1 : -1));
   const best = qs[0];
   const min = U.minOut(best.out, 100);
   const before = await bal(CBBTC);
   const now = BigInt((await rpc("eth_getBlockByNumber", ["latest", false])).timestamp);
-  const sent = await send(U.swapCalls({ chainId: CHAIN, account: ME, tokenIn: USDC, tokenOut: CBBTC, amountIn: amt, amountOutMin: min, route: best.route, deadline: now + 600n, allowance: await allowance(USDC) }));
+  const sent = await send(U.swapCalls({ chainId: CHAIN, account: ME, tokenIn: USDC, tokenOut: CBBTC, amountIn: amt, amountOutMin: min, route: best.route, deadline: now + 600n }));
+  ok(BigInt(await rpc("eth_call", [{ to: U.UNI[CHAIN].weth, data: "0x70a08231" + "0".repeat(24) + U.UNI[CHAIN].router.slice(2) }, "latest"])) === 0n, "no WETH is left in the router after a 2-hop swap");
   const got = (await bal(CBBTC)) - before;
   console.log(`  forced 2-hop USDC to WETH to cbBTC fees ${best.route.fees.join("/")}: quote ${best.out}, min ${min}, got ${got}`);
   ok(sent && got >= min && got > 0n, "a 2-hop route through WETH delivers at least the minimum");
