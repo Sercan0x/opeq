@@ -124,7 +124,7 @@ export async function accountOn(chainId) {
 }
 
 function clearCard() {
-  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw", ...($("e-br") ? ["e-br"] : []), ...($("e-sw") ? ["e-sw"] : [])]) hide(id, true);
+  for (const id of ["e-main", "e-gas", "e-setup", "e-take", "e-send", "e-rekey", "e-last", "e-load", "e-rw", ...($("e-dock") ? ["e-dock"] : []), ...($("e-br") ? ["e-br"] : []), ...($("e-sw") ? ["e-sw"] : [])]) hide(id, true);
   if ($("es-st")) { $("es-st").textContent = ""; $("es-amt").value = ""; }
   $("e-bal").textContent = $("e-state").textContent = "…";
   $("e-ok").textContent = $("e-err").textContent = "";
@@ -203,6 +203,7 @@ async function refresh() {
   $("e-setup-go").textContent = s.state === "finish" ? "Finish setup" : "Set up";
   hide("e-take", s.state !== "other");
   hide("e-send", s.state !== "ready");
+  if ($("e-dock")) hide("e-dock", s.state !== "ready");
   hide("e-rekey", s.state !== "ready");
   if ($("e-br")) { hide("e-br", s.state !== "ready"); if (bridgePaint) bridgePaint(); }
   if ($("e-sw")) { hide("e-sw", s.state !== "ready"); if (swapPaint && s.state === "ready") swapPaint(); }
@@ -531,4 +532,32 @@ export function init(api) {
       set: async (k, v) => { try { await chrome.storage.local.set({ [k]: v }); } catch {} },
     },
   });
+  initDock();
+}
+
+function initDock() {
+  const dock = $("e-dock");
+  if (!dock) return;
+  const tabs = [...dock.querySelectorAll(".tab")].filter((t) => {
+    if ($(t.getAttribute("aria-controls"))) return true;
+    t.remove();
+    return false;
+  });
+  const pick = (t) => {
+    for (const x of tabs) {
+      const on = x === t;
+      x.setAttribute("aria-selected", String(on));
+      x.tabIndex = on ? 0 : -1;
+      $(x.getAttribute("aria-controls")).classList.toggle("ev-off", !on);
+    }
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => pick(t));
+    t.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      pick(n); n.focus();
+    });
+  });
+  if (tabs.length) pick(tabs[0]);
 }

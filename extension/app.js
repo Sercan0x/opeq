@@ -440,7 +440,7 @@ function renderDimms(left) {
 }
 
 function initTabs() {
-  const tabs = [...document.querySelectorAll(".tab")];
+  const tabs = [...document.querySelectorAll("#dock .tab")];
   const pick = (t) => {
     for (const x of tabs) {
       const on = x === t;

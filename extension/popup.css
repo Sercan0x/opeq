@@ -64,3 +64,5 @@ body[data-mode="popup"] .warn { font-size: 12.5px; padding: 10px 12px; }
 #w-take-box .addr-row { margin: 2px 0 4px; }
 #w-take-box .addr { white-space: normal; word-break: break-all; }
 body[data-mode="popup"] .log { max-height: 240px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #2e3c50 transparent; }
+.ev-off { display: none !important; }
+#e-dock .card { border: 0; border-radius: 0; background: none; box-shadow: none; padding: 4px 14px 14px; margin: 0; }
