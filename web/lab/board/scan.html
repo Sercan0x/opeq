@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://rpc.opeq.io https://lite-api.jup.ag; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>OPEQ Scan</title>
-<meta name="description" content="Paste a Solana address and see how much sits behind a public key that a large quantum computer could break.">
+<meta name="description" content="Paste a Solana or EVM address and see how much sits behind a public key that a large quantum computer could break.">
 <meta name="theme-color" content="#070b11">
 <link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="app.css">
@@ -20,12 +20,12 @@
 </header>
 
 <main class="scan">
-  <h1>Is your Solana wallet quantum-safe?</h1>
-  <p class="lede">A normal Solana address is an Ed25519 public key. It has been public since the day the wallet was made, and a large enough quantum computer could work out its private key from it. Paste an address to see what sits behind it.</p>
+  <h1>Is your wallet quantum-safe?</h1>
+  <p class="lede">A normal Solana address is an Ed25519 public key, public since the day the wallet was made. A normal EVM address reveals its public key with the first transaction it sends. A large enough quantum computer could work out the private key from either. Paste a Solana or EVM address to see what sits behind it.</p>
 
   <form class="probe" id="probe" autocomplete="off">
-    <label class="sr" for="addr">Solana address</label>
-    <input id="addr" type="text" spellcheck="false" placeholder="Paste a Solana address" inputmode="text">
+    <label class="sr" for="addr">Solana or EVM address</label>
+    <input id="addr" type="text" spellcheck="false" placeholder="Paste a Solana or EVM (0x…) address" inputmode="text">
     <button class="btn btn-solid" id="go" type="submit">Check</button>
   </form>
   <p class="err" id="err" role="alert"></p>
@@ -47,7 +47,8 @@
   <section class="notes">
     <h2>How this check works</h2>
     <p>The page decodes the address and tests whether it is a point on the Ed25519 curve. A point on the curve is a public key, so a private key exists behind it. An address off the curve belongs to a program and has no private key of its own.</p>
-    <p>Balances come from Solana mainnet through rpc.opeq.io, and dollar values from Jupiter's price API. The address you paste is sent to them to look up the balance. OPEQ does not store it, and it never leaves this page in any other way.</p>
+    <p>For an EVM address, the page asks Ethereum, Base, Arbitrum and Robinhood Chain whether the address has ever sent a transaction and whether it holds contract code. A signed transaction reveals the public key; a smart contract has no private key of its own. Only native ETH is counted.</p>
+    <p>Balances come from Solana mainnet and the four EVM networks through rpc.opeq.io, and dollar values from Jupiter's price API. The address you paste is sent to them to look up the balance. OPEQ does not store it, and it never leaves this page in any other way.</p>
     <p>Nothing here means a quantum computer can do this today. It means the key is already public, so the coins are waiting for the day one can.</p>
     <p>OPEQ never asks for your recovery words or seed phrase, and has no migration or claim tool. Anyone who does is a scammer.</p>
   </section>

@@ -6,6 +6,8 @@ const RPC = "https://rpc.opeq.io";
 const PRICE = "https://lite-api.jup.ag/price/v3?ids=";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SYSTEM = "11111111111111111111111111111111";
+const ETH_MINT = "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs";
+const EVM = [[1, "Ethereum"], [8453, "Base"], [42161, "Arbitrum"], [4663, "Robinhood Chain"]];
 const SHOWN = 6;
 const LABELS = 10;
 
@@ -15,7 +17,8 @@ let last = null;
 
 function parse(text) {
   const s = text.trim();
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) throw new Error("That does not look like a Solana address.");
+  if (/^0x[0-9a-fA-F]{40}$/.test(s)) return { evm: s.toLowerCase(), text: s };
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) throw new Error("That does not look like a Solana or EVM address.");
   let b;
   try { b = b58decode(s); } catch { throw new Error("That does not look like a Solana address."); }
   if (b.length !== 32) throw new Error("That does not look like a Solana address.");
@@ -69,11 +72,35 @@ async function holdings(addr) {
   return { rows, total, unpriced };
 }
 
+async function evmCall(chain, method, params) {
+  const r = await fetch(`${RPC}/evm/${chain}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(12000) });
+  const j = await r.json();
+  if (j.error || typeof j.result !== "string") throw new Error("rpc");
+  return j.result;
+}
+
+async function evmState(addr) {
+  const out = await Promise.all(EVM.map(async ([id, name]) => {
+    try {
+      const [nonce, bal, code] = await Promise.all([evmCall(id, "eth_getTransactionCount", [addr, "latest"]), evmCall(id, "eth_getBalance", [addr, "latest"]), evmCall(id, "eth_getCode", [addr, "latest"])]);
+      return { id, name, ok: true, nonce: Number(BigInt(nonce)), wei: BigInt(bal), code: code.toLowerCase() };
+    } catch { return { id, name, ok: false }; }
+  }));
+  if (!out.some((c) => c.ok)) throw new Error("rpc");
+  const px = (await prices([ETH_MINT])).get(ETH_MINT);
+  const rows = out.filter((c) => c.ok && c.wei > 0n).map((c) => ({ sym: `ETH on ${c.name}`, amount: units(c.wei, 18), usd: px ? (Number(c.wei) / 1e18) * px : null }));
+  rows.sort((a, b) => (b.usd ?? -1) - (a.usd ?? -1));
+  const total = rows.reduce((s, r) => s + (r.usd || 0), 0);
+  const unpriced = rows.filter((r) => r.usd === null).length;
+  const failed = out.filter((c) => !c.ok).map((c) => c.name);
+  return { chains: out, h: { rows, total, unpriced, evm: true, failed } };
+}
+
 function render(kind, title, say, h) {
   const box = $("result");
-  box.classList.remove("hidden", "risk", "safe", "plain");
+  box.classList.remove("hidden", "risk", "safe", "plain", "wait");
   box.classList.add(kind);
-  $("r-tag").textContent = kind === "risk" ? "PUBLIC KEY EXPOSED" : kind === "safe" ? "NO PUBLIC KEY BEHIND THIS ADDRESS" : "TOKEN ACCOUNT";
+  $("r-tag").textContent = kind === "risk" ? "PUBLIC KEY EXPOSED" : kind === "safe" ? "NO PUBLIC KEY BEHIND THIS ADDRESS" : kind === "wait" ? "PUBLIC KEY NOT REVEALED YET" : "TOKEN ACCOUNT";
   $("r-title").textContent = title;
   $("r-say").textContent = say;
   const list = $("r-assets");
@@ -96,6 +123,8 @@ function render(kind, title, say, h) {
   const rest = h.rows.length - SHOWN;
   const notes = [];
   if (rest > 0) notes.push(`and ${rest} more token${rest === 1 ? "" : "s"}`);
+  if (h.evm) notes.push("Native ETH only, on Ethereum, Base, Arbitrum and Robinhood Chain; ERC-20 tokens and other networks are not counted");
+  if (h.failed && h.failed.length) notes.push(`could not reach ${h.failed.join(", ")}`);
   if (h.unpriced) notes.push(`${h.unpriced} without a market price, not counted in the total`);
   if (!h.rows.length) notes.push("This address holds nothing right now.");
   $("r-more").textContent = notes.join(". ").replace(/^and/, "And");
@@ -109,6 +138,27 @@ async function check(e) {
   const go = $("go");
   go.disabled = true; go.textContent = "Checking";
   try {
+    if (a.evm) {
+      const { chains, h } = await evmState(a.evm);
+      const ok = chains.filter((c) => c.ok);
+      const contract = ok.filter((c) => c.code !== "0x" && !c.code.startsWith("0xef0100"));
+      const delegated = ok.some((c) => c.code.startsWith("0xef0100"));
+      const sent = ok.filter((c) => c.nonce > 0).map((c) => c.name);
+      if (contract.length && !delegated) {
+        render("safe", "There is no private key behind this address.",
+          `It is a smart contract on ${contract.map((c) => c.name).join(", ")}. It moves funds only when its code says so, so how safe it is depends on that code and on whoever it accepts signatures from. This check does not show who that is, or that it is an OPEQ account. Never send funds because this page found no key.`, h);
+        last = { kind: "safe", total: h.total, evm: true };
+      } else if (sent.length) {
+        render("risk", "This address has revealed its public key.",
+          `It has sent transactions on ${sent.join(", ")}. Every signed transaction lets anyone recover its public key, and a large enough quantum computer could work out the private key from it, then move everything below on every network without your seed phrase.${delegated ? " It also uses an EIP-7702 delegation, but its own private key still works." : ""}`, h);
+        last = { kind: "risk", total: h.total, evm: true };
+      } else {
+        render("wait", "Its public key is not public yet. It will be.",
+          "An EVM address is a hash of its public key, so the key stays hidden until the address sends its first transaction. The first time you send from it, the key becomes public and stays public on every network. (An OPEQ account that has not been set up yet also looks like this; it has no private key at all.)", h);
+        last = { kind: "wait", total: h.total, evm: true };
+      }
+      return;
+    }
     if (isOnCurve(a.bytes)) {
       const h = await holdings(a.bytes);
       render("risk", "This address is a public key.",
@@ -130,7 +180,7 @@ async function check(e) {
       }
     }
   } catch (x) {
-    $("err").textContent = "Could not reach Solana right now. Try again in a moment.";
+    $("err").textContent = "Could not reach the network right now. Try again in a moment.";
     $("result").classList.add("hidden");
   } finally {
     go.disabled = false; go.textContent = "Check";
@@ -139,9 +189,10 @@ async function check(e) {
 
 async function copy() {
   if (!last) return;
+  const chain = last.evm ? "EVM" : "Solana";
   const text = last.kind === "risk"
-    ? `My Solana wallet sits behind a public key that a large quantum computer could break. Check yours: https://opeq.io/scan`
-    : `I checked a Solana address for quantum exposure. Check yours: https://opeq.io/scan`;
+    ? `My ${chain} wallet sits behind a public key that a large quantum computer could break. Check yours: https://opeq.io/scan`
+    : `I checked a ${chain} address for quantum exposure. Check yours: https://opeq.io/scan`;
   try { await navigator.clipboard.writeText(text); $("r-copy").textContent = "Copied"; setTimeout(() => { $("r-copy").textContent = "Copy result"; }, 1600); } catch {}
 }
 

@@ -43,3 +43,5 @@
   .result { padding: 20px 18px; }
   .assets li { flex-direction: column; gap: 2px; }
 }
+.result.wait { border-color: rgba(255, 201, 74, 0.45); }
+.wait .tag { color: var(--gold); }
