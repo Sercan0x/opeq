@@ -716,7 +716,7 @@ function hideWords() {
 
 const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000, OK_MS = 20000;
 const LOCK_ON_HIDE = globalThis.OPEQ_LOCK_ON_HIDE === true;
-const HIDE_REASON = "Locked because the app went to the background.";
+const HIDE_REASON = "";
 let lockDue = false;
 let lastActive = Date.now(), hiddenAt = null, lastRefresh = Date.now();
 
