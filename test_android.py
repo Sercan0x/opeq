@@ -214,6 +214,8 @@ if os.path.exists(os.path.join(src, "manifest.json")):
     html = assets["assets/app.html"].decode()
     check("wallet: shim loads before app.js", html.index("android.js") < html.index("app.js"))
     check("wallet: no extension-only files", not any(n[7:] in B.SKIP for n in assets))
+    check("wallet: phone page has a viewport tag", "name=\"viewport\"" in html)
+    check("wallet: phone page is the popup layout", 'data-mode="popup"' in html and "assets/popup.html" not in assets)
     check("wallet: phone wording applied", "this browser" not in html and "this computer" not in html)
 else:
     print("SKIP wallet assets: build/extension-mainnet is missing, run build_extension.py first")

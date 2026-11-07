@@ -305,16 +305,16 @@ def collect(root):
 
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-SKIP = {"manifest.json", "bg.js", "popup.html", "popup.js", "popup.css"}
+SKIP = {"manifest.json", "bg.js"}
+PAGE = "assets/popup.html"
+TAB_PAGE = "assets/app.html"
 MODULE_TAG = '<script type="module" src="app.js"></script>'
 REWORD = {
     "assets/app.html": [
-        ("wallets in this browser", "wallets on this phone"),
-        ("Plug in a new wallet on the left,", "Plug in a new wallet below,"),
-        ("Your keys are made in this browser and never leave it.", "Your keys are made on this phone and never leave it."),
+        ("Wallets in this browser", "Wallets on this phone"),
+        ("Keys are made in this browser and never leave it.", "Keys are made on this phone and never leave it."),
         ("New password for this browser", "New password for this phone"),
         ("Remove from this browser", "Remove from this phone"),
-        ("Don't take a photo or store them on this computer.", "Don't take a screenshot or store them on this phone."),
         ("Your words may be active in another browser or device.", "Your words may be active on another device."),
         ("about 15 seconds, once per browser.", "about 15 seconds, once per phone."),
     ],
@@ -330,7 +330,10 @@ REWORD = {
 def wallet(src):
     if not os.path.exists(os.path.join(src, "manifest.json")):
         raise SystemExit(f"{src} is not a built extension; run build_extension.py first")
-    files = [(n, d) for n, d in collect(src) if n[len("assets/"):] not in SKIP]
+    files = [(n, d) for n, d in collect(src) if n[len("assets/"):] not in SKIP and n != TAB_PAGE]
+    if not any(n == PAGE for n, _ in files):
+        raise SystemExit(f"{src} has no popup.html")
+    files = [(TAB_PAGE if n == PAGE else n, d) for n, d in files]
     out = []
     for n, d in files:
         for old, new in REWORD.get(n, []):
@@ -341,7 +344,11 @@ def wallet(src):
         if n == "assets/app.html":
             html = d.decode()
             if html.count(MODULE_TAG) != 1:
-                raise SystemExit("app.html does not load app.js the way this build expects")
+                raise SystemExit("popup.html does not load app.js the way this build expects")
+            if "name=\"viewport\"" not in html:
+                html = html.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">', 1)
+            if "name=\"viewport\"" not in html:
+                raise SystemExit("could not add the viewport tag")
             html = html.replace(MODULE_TAG, '<link rel="stylesheet" href="android.css">\n<script src="android.js"></script>\n' + MODULE_TAG)
             d = html.encode()
         out.append((n, d))

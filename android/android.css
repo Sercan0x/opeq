@@ -2,13 +2,11 @@
 .android-block h2 { margin: 0; font-size: 24px; }
 .android-block p { margin: 0; line-height: 1.5; color: var(--text-2, #b4bdc9); }
 .android-block .btn { align-self: flex-start; }
-.rig { grid-template-columns: minmax(0, 1fr); padding: 12px 12px 28px; }
-.rig > .io { order: 2; }
-.bar .back { display: none; }
-.rig > *, #v-wallet, #v-wallet > *, #v-wallet .card, .evm-view, .evm-view > * { min-width: 0; max-width: 100%; }
-.keys-line { flex-wrap: wrap; row-gap: 6px; }
-.keys-line > * { min-width: 0; }
-.mono, .addr, #w-addr, #i-addr, #t-fee-addr, #e-addr, #e-gas-addr { overflow-wrap: anywhere; }
-.tpm .chip-art { display: none; }
-.tabs { flex-wrap: wrap; overflow: visible; padding: 0 8px; row-gap: 0; }
-.tab { padding: 12px 10px; }
+html, body { width: 100%; max-width: 100%; height: 100%; overflow: hidden; }
+body[data-mode="popup"] { height: 100vh; height: 100dvh; font-size: 14px; }
+#p-expand { display: none; }
+.pbar .icon-btn:first-of-type { margin-left: auto; }
+.pbar, .pnet, .panel, .pmain { max-width: 100%; }
+.pmain { padding: 14px; overscroll-behavior: contain; }
+.panel { max-height: 45vh; }
+.mono, .addr { overflow-wrap: anywhere; }
