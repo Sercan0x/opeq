@@ -176,3 +176,4 @@
 .ms-rm:hover { border-color: var(--red); color: var(--red); }
 #pane-vaults .addr-row { display: flex; align-items: center; gap: 8px; }
 #pane-vaults .addr-row .addr { flex: 1; min-width: 0; margin: 0; word-break: break-all; }
+.hint, .ok, .err, .warn, .log, .say, [role="status"], [role="alert"] { overflow-wrap: anywhere; }

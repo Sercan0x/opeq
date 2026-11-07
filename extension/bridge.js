@@ -6,7 +6,7 @@ import { formatUnits, EXEC_GAS } from "./lib/evmwallet.js";
 const CU_BRIDGE = 400000;
 const SOL_KEEP = 2000000n;
 const ERC20_DEPOSIT_GAS = 150000n;
-const POLL_MS = 4000, POLL_MAX = 75;
+const POLL_MS = 4000, POLL_MAX = 75, CLEAR_MS = 20000;
 const NAME = { 1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 4663: "Robinhood Chain", [R.SOLANA_ID]: "Solana" };
 
 
@@ -79,12 +79,21 @@ function reviewNotes(ctx, from, to, p) {
   return notes;
 }
 
-function follow(ctx, card, requestId, from, to, stEl) {
+function follow(ctx, card, requestId, from, to, stEl, okEl) {
   if (!requestId) return;
   const gen = card.gen, who = ctx.owner();
   const live = () => card.gen === gen && ctx.owner() === who;
   const say = (t) => { if (live()) stEl.textContent = t; };
-  const ref = `Relay request ${requestId}`;
+  const ref = `Relay request ${requestId.length > 20 ? `${requestId.slice(0, 10)}…${requestId.slice(-6)}` : requestId}`;
+  const settle = (t) => {
+    say(t);
+    if (live()) ctx.done();
+    setTimeout(() => {
+      if (!live() || stEl.textContent !== t) return;
+      stEl.textContent = "";
+      if (okEl && okEl.textContent.startsWith("deposit sent to Relay")) okEl.textContent = "";
+    }, CLEAR_MS);
+  };
   (async () => {
     say(`Bridge: waiting for Relay to see the deposit. ${ref}`);
     for (let i = 0; i < POLL_MAX; i++) {
@@ -92,8 +101,8 @@ function follow(ctx, card, requestId, from, to, stEl) {
       if (!live()) return;
       let s;
       try { s = await R.status(requestId, { api: (ctx.NET.bridge && ctx.NET.bridge.api) || R.API }); } catch { continue; }
-      if (s.status === "success") { say(`Bridge done: the funds arrived on ${NAME[to]}. ${ref}`); if (live()) ctx.done(); return; }
-      if (s.status === "refund") { say(`Bridge refunded: Relay sent the funds back to your own address on ${NAME[from]} or ${NAME[to]}. ${ref}`); if (live()) ctx.done(); return; }
+      if (s.status === "success") { settle(`Bridge done: the funds arrived on ${NAME[to]}.`); return; }
+      if (s.status === "refund") { settle(`Bridge refunded: Relay sent the funds back to your own address on ${NAME[from]} or ${NAME[to]}.`); return; }
       if (s.status === "failure") { say(`Bridge failed on Relay's side. Relay has committed to refund failed bridges; look up the request on relay.link if nothing arrives. ${ref}`); return; }
       const word = { waiting: "waiting for Relay to see the deposit", pending: `sending on ${NAME[to]}`, submitted: `sending on ${NAME[to]}`, delayed: "delayed at Relay, still in progress" }[s.status] || `Relay reports "${s.status}"`;
       say(`Bridge: ${word}. ${ref}`);
@@ -153,11 +162,11 @@ export function initSol(ctx) {
     ctx.log(`bridge ${fmt(amount, asset.decimals)} ${asset.symbol} to ${NAME[to]}: Relay request ${p.c.requestId}`);
     let sig;
     try { sig = await ctx.run("bridging, grinding the signature", [ix], plan, { cu: CU_BRIDGE, spend }); }
-    catch (e) { if (sent(e)) follow(ctx, solCard, p.c.requestId, from, to, $("b-st")); throw e; }
+    catch (e) { if (sent(e)) follow(ctx, solCard, p.c.requestId, from, to, $("b-st"), $("b-ok")); throw e; }
     ctx.log(`bridge deposit to Relay: ${sig}`, "ok");
     ctx.ok(`deposit sent to Relay: ${sig.slice(0, 12)}…`);
     $("b-amt").value = "";
-    follow(ctx, solCard, p.c.requestId, from, to, $("b-st"));
+    follow(ctx, solCard, p.c.requestId, from, to, $("b-st"), $("b-ok"));
   }));
 }
 
@@ -209,11 +218,11 @@ export function initEvm(ctx) {
     ctx.log(`bridge ${fmt(amount, asset.decimals)} ${asset.symbol} from ${NAME[from]} to ${NAME[to]}: Relay request ${p.c.requestId}`);
     let res;
     try { res = await c.execute(calls, (h) => ctx.last("Bridge deposit sent.", h), false, { maxInner: (inner * 12n) / 10n + 20000n, inner }); }
-    catch (e) { if (sent(e)) follow(ctx, evmCard, p.c.requestId, from, to, $("eb-st")); throw e; }
+    catch (e) { if (sent(e)) follow(ctx, evmCard, p.c.requestId, from, to, $("eb-st"), $("e-ok")); throw e; }
     ctx.last("Bridge deposit confirmed.", res.hash);
     ctx.ok("deposit sent to Relay");
     $("eb-amt").value = "";
-    follow(ctx, evmCard, p.c.requestId, from, to, $("eb-st"));
+    follow(ctx, evmCard, p.c.requestId, from, to, $("eb-st"), $("e-ok"));
     await ctx.refreshMain();
   }));
 }
