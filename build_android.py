@@ -316,11 +316,13 @@ REWORD = {
         ("Remove from this browser", "Remove from this phone"),
         ("Don't take a photo or store them on this computer.", "Don't take a screenshot or store them on this phone."),
         ("Your words may be active in another browser or device.", "Your words may be active on another device."),
+        ("about 15 seconds, once per browser.", "about 15 seconds, once per phone."),
     ],
     "assets/app.js": [
         ("This wallet already exists in this browser.", "This wallet already exists on this phone."),
         ("Remove this wallet from this browser?", "Remove this wallet from this phone?"),
         ("that RPC could not be reached from the extension", "that RPC could not be reached from the app"),
+        ("any other browser or device that has these words", "any other device that has these words"),
     ],
 }
 

@@ -5,3 +5,10 @@
 .rig { grid-template-columns: minmax(0, 1fr); padding: 12px 12px 28px; }
 .rig > .io { order: 2; }
 .bar .back { display: none; }
+.rig > *, #v-wallet, #v-wallet > *, #v-wallet .card, .evm-view, .evm-view > * { min-width: 0; max-width: 100%; }
+.keys-line { flex-wrap: wrap; row-gap: 6px; }
+.keys-line > * { min-width: 0; }
+.mono, .addr, #w-addr, #i-addr, #t-fee-addr, #e-addr, #e-gas-addr { overflow-wrap: anywhere; }
+.tpm .chip-art { display: none; }
+.tabs { flex-wrap: wrap; overflow: visible; padding: 0 8px; row-gap: 0; }
+.tab { padding: 12px 10px; }
