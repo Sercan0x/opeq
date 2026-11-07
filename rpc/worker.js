@@ -53,8 +53,18 @@ function evmUpstreams(env, chain) {
   return list.length ? list : EVM_DEFAULT[chain] || [];
 }
 
+function codeOverrideOk(o) {
+  if (!o || typeof o !== "object" || Array.isArray(o)) return false;
+  const keys = Object.keys(o);
+  if (keys.length !== 1 || !/^0x[0-9a-fA-F]{40}$/.test(keys[0])) return false;
+  const v = o[keys[0]];
+  if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).length !== 1 || !Object.prototype.hasOwnProperty.call(v, "code")) return false;
+  return typeof v.code === "string" && v.code.length <= 2 + 8192 && /^0x(?:[0-9a-fA-F]{2})*$/.test(v.code);
+}
+
 function evmParamsOk(method, p) {
   if (method === "eth_getBlockByNumber") return p.length === 2 && typeof p[0] === "string" && p[1] === false;
+  if (method === "eth_call" && p.length === 3) return p[0] && typeof p[0] === "object" && !Array.isArray(p[0]) && typeof p[1] === "string" && codeOverrideOk(p[2]);
   if (method === "eth_call" || method === "eth_estimateGas") return p.length >= 1 && p.length <= 2 && p[0] && typeof p[0] === "object" && !Array.isArray(p[0]) && (p.length === 1 || typeof p[1] === "string");
   if (method === "eth_sendRawTransaction" || method === "eth_getTransactionReceipt") return p.length === 1 && typeof p[0] === "string";
   if (method === "eth_getBalance" || method === "eth_getCode" || method === "eth_getTransactionCount") return p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string";
