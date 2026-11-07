@@ -361,7 +361,29 @@ async function guard(errId, okId, fn) {
   if (okId) $(okId).textContent = "";
   try { await fn(); }
   catch (e) { if (errId) $(errId).textContent = friendly(e); log(friendly(e), "err", !!(e.sent || e.maybeLanded)); }
-  finally { busy = false; buttons.forEach((b) => (b.disabled = false)); if (NET.jupiter && $("j-flip")) flipState(); }
+  finally {
+    busy = false;
+    buttons.forEach((b) => (b.disabled = false));
+    if (NET.jupiter && $("j-flip")) flipState();
+    if (lockDue) { lockDue = false; if (session) lockVault(HIDE_REASON); }
+  }
+}
+
+function fadeOk() {
+  const timers = new WeakMap();
+  const arm = (el) => {
+    clearTimeout(timers.get(el));
+    const t = el.textContent;
+    if (!t) return;
+    timers.set(el, setTimeout(() => { if (el.textContent === t) el.textContent = ""; }, OK_MS));
+  };
+  new MutationObserver((list) => {
+    for (const m of list) {
+      const el = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      const ok = el && el.closest("p.ok");
+      if (ok) arm(ok);
+    }
+  }).observe(document.body, { subtree: true, childList: true, characterData: true });
 }
 
 function setDrive(state, text) {
@@ -692,7 +714,10 @@ function hideWords() {
   $("k-pw").value = "";
 }
 
-const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000;
+const IDLE_MS = 10 * 60 * 1000, HIDDEN_MS = 5 * 60 * 1000, OK_MS = 20000;
+const LOCK_ON_HIDE = globalThis.OPEQ_LOCK_ON_HIDE === true;
+const HIDE_REASON = "Locked because the app went to the background.";
+let lockDue = false;
 let lastActive = Date.now(), hiddenAt = null, lastRefresh = Date.now();
 
 function wipeInputs() {
@@ -732,8 +757,13 @@ function initAutoLock() {
   };
   for (const ev of ["pointerdown", "keydown", "wheel", "touchstart"]) window.addEventListener(ev, touch, { passive: true });
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { hiddenAt = Date.now(); return; }
-    if (hiddenAt && Date.now() - hiddenAt > HIDDEN_MS && session && !busy) lockVault("Locked because the tab was in the background for more than 5 minutes.");
+    if (document.hidden) {
+      hiddenAt = Date.now();
+      if (LOCK_ON_HIDE && session) { if (busy) lockDue = true; else lockVault(HIDE_REASON); }
+      return;
+    }
+    if (LOCK_ON_HIDE && hiddenAt && session) { if (busy) lockDue = true; else lockVault(HIDE_REASON); }
+    else if (hiddenAt && Date.now() - hiddenAt > HIDDEN_MS && session && !busy) lockVault("Locked because the tab was in the background for more than 5 minutes.");
     hiddenAt = null;
     touch();
   });
@@ -1314,7 +1344,7 @@ async function init() {
     if ($("tab-bridge")) $("tab-bridge").remove();
     if ($("pane-bridge")) $("pane-bridge").remove();
   }
-  initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs();
+  initCreate(); initRecover(); initUnlock(); initWallet(); initAutoLock(); initTabs(); fadeOk();
   const kept = await keep.load(IDLE_MS);
   if (kept) {
     const r = await store.get(kept.id);

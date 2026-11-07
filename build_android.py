@@ -158,6 +158,16 @@ def shell(secure=True):
     ]))
 
     main = d.add(Class(MAIN, ACTIVITY))
+    web = main.field("web", WEBVIEW)
+    for name in ("onPause", "onResume"):
+        main.method(name, "V", [], ACC_PUBLIC, Code(2, 1, [
+            ("invoke-super", [1], Method(ACTIVITY, name, "V")),
+            ("iget-object", 0, 1, web),
+            ("if-eqz", 0, "done"),
+            ("invoke-virtual", [0], Method(WEBVIEW, name, "V")),
+            ("label", "done"),
+            ("return-void",),
+        ]))
     main.method("<init>", "V", [], ACC_PUBLIC | ACC_CONSTRUCTOR, Code(1, 1, [
         ("invoke-direct", [0], Method(ACTIVITY, "<init>", "V")),
         ("return-void",),
@@ -176,6 +186,7 @@ def shell(secure=True):
         ("invoke-virtual", [0, 1], Method(WINDOW, "setNavigationBarColor", "V", ["I"])),
         ("new-instance", 0, WEBVIEW),
         ("invoke-direct", [0, 5], Method(WEBVIEW, "<init>", "V", [CONTEXT])),
+        ("iput-object", 0, 5, web),
         ("invoke-virtual", [0, 1], Method(WEBVIEW, "setBackgroundColor", "V", ["I"])),
         ("invoke-virtual", [0], Method(WEBVIEW, "getSettings", SETTINGS)),
         ("move-result-object", 1),

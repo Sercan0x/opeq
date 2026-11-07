@@ -54,6 +54,7 @@
     (k) => memory.delete(k),
     () => [...memory.keys()]);
 
+  Object.defineProperty(globalThis, "OPEQ_LOCK_ON_HIDE", { value: true, writable: false, configurable: false });
   globalThis.chrome = Object.freeze({
     storage: Object.freeze({ local, session, onChanged: Object.freeze({ addListener: (f) => listeners.push(f) }) }),
     alarms: Object.freeze({ create() {}, clear: async () => true }),

@@ -132,6 +132,7 @@ for secure in (True, False):
     flags = walk(meths, code[(B.MAIN, "onCreate")])[1]
     check(f"{label} dex: FLAG_SECURE {'set' if secure else 'off'}", (B.FLAG_SECURE in flags) == secure)
     check(f"{label} dex: no JavaScript interface", "addJavascriptInterface" not in strs)
+    check(f"{label} dex: WebView pauses and resumes with the app", "onPause" in strs and "onResume" in strs)
     check(f"{label} dex: content sits inside the system bars", "setFitsSystemWindows" in strs and "Landroid/widget/FrameLayout;" in strs)
     check(f"{label} dex: asset paths with '..' are refused", ".." in strs and "contains" in strs)
 
@@ -304,6 +305,7 @@ src = os.path.join(B.ROOT, "build", "extension-mainnet")
 if os.path.exists(os.path.join(src, "manifest.json")):
     assets = dict(B.wallet(src))
     html = assets["assets/app.html"].decode()
+    check("wallet: phone locks when the app goes to the background", "OPEQ_LOCK_ON_HIDE" in assets["assets/android.js"].decode())
     check("wallet: shim loads before app.js", html.index("android.js") < html.index("app.js"))
     check("wallet: no extension-only files", not any(n[7:] in B.SKIP for n in assets))
     check("wallet: phone page has a viewport tag", "name=\"viewport\"" in html)
