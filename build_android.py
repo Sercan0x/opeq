@@ -1,10 +1,14 @@
 import argparse
+import hashlib
 import os
 import sys
 
 import struct
 import zlib
 
+from cryptography.hazmat.primitives import serialization
+
+import aab
 import apk
 import arsc
 import axml
@@ -34,6 +38,9 @@ STREAM = "Ljava/io/InputStream;"
 INTENT = "Landroid/content/Intent;"
 CHARSEQ = "Ljava/lang/CharSequence;"
 WINDOW = "Landroid/view/Window;"
+FRAME = "Landroid/widget/FrameLayout;"
+GROUP = "Landroid/view/ViewGroup;"
+TARGET_SDK = 36
 FLAG_SECURE = 0x2000
 FEATURE_NO_TITLE = 1
 BACKGROUND = 0xff070b11
@@ -185,7 +192,14 @@ def shell(secure=True):
         ("new-instance", 3, CLIENT),
         ("invoke-direct", [3, 4], Method(CLIENT, "<init>", "V", [ASSETS])),
         ("invoke-virtual", [0, 3], Method(WEBVIEW, "setWebViewClient", "V", [WVCLIENT])),
-        ("invoke-virtual", [5, 0], Method(ACTIVITY, "setContentView", "V", [VIEW])),
+        ("new-instance", 3, FRAME),
+        ("invoke-direct", [3, 5], Method(FRAME, "<init>", "V", [CONTEXT])),
+        ("const/4", 2, 1),
+        ("invoke-virtual", [3, 2], Method(VIEW, "setFitsSystemWindows", "V", ["Z"])),
+        ("const", 2, BACKGROUND),
+        ("invoke-virtual", [3, 2], Method(VIEW, "setBackgroundColor", "V", ["I"])),
+        ("invoke-virtual", [3, 0], Method(GROUP, "addView", "V", [VIEW])),
+        ("invoke-virtual", [5, 3], Method(ACTIVITY, "setContentView", "V", [VIEW])),
         ("const-string", 4, START),
         ("invoke-virtual", [0, 4], Method(WEBVIEW, "loadUrl", "V", [STRING])),
         ("return-void",),
@@ -194,12 +208,16 @@ def shell(secure=True):
 
 
 def manifest(version_code, version_name, label, icon):
-    return axml.encode(Element("manifest", [
+    return axml.encode(manifest_tree(version_code, version_name, label, icon))
+
+
+def manifest_tree(version_code, version_name, label, icon):
+    return (Element("manifest", [
         ("android:versionCode", version_code),
         ("android:versionName", version_name),
         ("package", PACKAGE),
     ], [
-        Element("uses-sdk", [("android:minSdkVersion", 26), ("android:targetSdkVersion", 34)]),
+        Element("uses-sdk", [("android:minSdkVersion", 26), ("android:targetSdkVersion", TARGET_SDK)]),
         Element("uses-permission", [("android:name", "android.permission.INTERNET")]),
         Element("application", [
             ("android:label", label),
@@ -277,18 +295,23 @@ def mark_icon(size, mark_width, ss=4):
     return png(size, size, bytes(out))
 
 
-def icon_resources():
+ICON_ENTRIES = [("drawable", [("bg", "res/drawable/bg.png"), ("fg", "res/drawable/fg.png"), ("ic", "res/drawable/ic.xml")])]
+
+
+def icon_parts():
     bg = png(1, 1, bytes(rgb("#070b11")) + b"\xff")
     fg = mark_icon(432, 210)
-    table, ids = arsc.table(PACKAGE, 0x7f, [("drawable", [("bg", "res/drawable/bg.png"),
-                                                          ("fg", "res/drawable/fg.png"),
-                                                          ("ic", "res/drawable/ic.xml")])])
-    adaptive = axml.encode(Element("adaptive-icon", [], [
+    table, ids = arsc.table(PACKAGE, 0x7f, ICON_ENTRIES)
+    adaptive = Element("adaptive-icon", [], [
         Element("background", [("android:drawable", Ref(ids["drawable/bg"]))]),
         Element("foreground", [("android:drawable", Ref(ids["drawable/fg"]))]),
-    ]))
-    files = [("resources.arsc", table), ("res/drawable/bg.png", bg), ("res/drawable/fg.png", fg),
-             ("res/drawable/ic.xml", adaptive)]
+    ])
+    return table, ids, {"res/drawable/bg.png": bg, "res/drawable/fg.png": fg}, {"res/drawable/ic.xml": adaptive}
+
+
+def icon_resources():
+    table, ids, pngs, xmls = icon_parts()
+    files = [("resources.arsc", table)] + list(pngs.items()) + [(n, axml.encode(e)) for n, e in xmls.items()]
     return files, ids["drawable/ic"]
 
 
@@ -370,7 +393,12 @@ def main():
     p.add_argument("--version-name", default="1.0.0")
     p.add_argument("--label", default="OPEQ")
     p.add_argument("--allow-screenshots", action="store_true")
+    p.add_argument("--aab", action="store_true")
+    p.add_argument("--upload-key", default=os.path.expanduser("~/.opeq-play-upload.pem"))
+    p.add_argument("--new-upload-key", action="store_true")
     a = p.parse_args()
+    if a.aab:
+        return play_bundle(a)
     if a.new_key:
         if os.path.exists(a.key):
             raise SystemExit(f"{a.key} already exists; refusing to replace a signing key")
@@ -392,6 +420,33 @@ def main():
     with open(a.out, "wb") as f:
         f.write(out)
     print(f"{a.out}: {len(out)} bytes, {len(assets)} assets, signer sha256 {fp}")
+
+
+def play_bundle(a):
+    if a.allow_screenshots:
+        raise SystemExit("a Play bundle never allows screenshots")
+    if not a.out.endswith(".aab"):
+        raise SystemExit("the bundle file name must end in .aab")
+    if a.new_upload_key:
+        if os.path.exists(a.upload_key):
+            raise SystemExit(f"{a.upload_key} already exists; refusing to replace the upload key")
+        aab.new_key(a.upload_key, "OPEQ")
+    if not os.path.exists(a.upload_key):
+        raise SystemExit(f"no upload key at {a.upload_key}; pass --new-upload-key once to create it")
+    key, cert = aab.load_key(a.upload_key)
+    assets = wallet(a.wallet) if a.wallet else collect(a.assets)
+    if not any(n == "assets/app.html" for n, _ in assets):
+        raise SystemExit("the assets folder needs an app.html")
+    table, ids, pngs, xmls = icon_parts()
+    names = {v: k for k, v in ids.items()}
+    kinds = {n: aab.FILE_PNG for n in pngs} | {n: aab.FILE_PROTO_XML for n in xmls}
+    out = aab.build(manifest_tree(a.version_code, a.version_name, a.label, ids["drawable/ic"]), names,
+                    shell(True), ICON_ENTRIES, kinds, pngs, xmls, assets, PACKAGE, key, cert)
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    with open(a.out, "wb") as f:
+        f.write(out)
+    fp = hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).hexdigest()
+    print(f"{a.out}: {len(out)} bytes, {len(assets)} assets, upload key sha256 {fp}")
 
 
 if __name__ == "__main__":

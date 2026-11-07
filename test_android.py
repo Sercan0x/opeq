@@ -2,6 +2,7 @@ import hashlib
 import io
 import os
 import struct
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -9,6 +10,7 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import aab
 import apk
 import build_android as B
 
@@ -130,6 +132,7 @@ for secure in (True, False):
     flags = walk(meths, code[(B.MAIN, "onCreate")])[1]
     check(f"{label} dex: FLAG_SECURE {'set' if secure else 'off'}", (B.FLAG_SECURE in flags) == secure)
     check(f"{label} dex: no JavaScript interface", "addJavascriptInterface" not in strs)
+    check(f"{label} dex: content sits inside the system bars", "setFitsSystemWindows" in strs and "Landroid/widget/FrameLayout;" in strs)
     check(f"{label} dex: asset paths with '..' are refused", ".." in strs and "contains" in strs)
 
 
@@ -168,6 +171,7 @@ first = dict(tags)
 check("manifest: package, sdk levels and a single INTERNET permission",
       first["manifest"]["package"] == B.PACKAGE and first["uses-sdk"]["minSdkVersion"] == 26
       and [a["name"] for t, a in tags if t == "uses-permission"] == ["android.permission.INTERNET"])
+check("manifest: targets API 36 for Google Play", first["uses-sdk"]["targetSdkVersion"] == B.TARGET_SDK == 36)
 check("manifest: no backup, no cleartext, icon points into the resource table",
       first["application"]["allowBackup"] == 0 and first["application"]["usesCleartextTraffic"] == 0
       and first["application"]["icon"] == icon and icon >> 24 == 0x7f)
@@ -207,6 +211,94 @@ with tempfile.TemporaryDirectory() as tmp:
         check("apk: a changed byte breaks the signature", False)
     except Exception:
         check("apk: a changed byte breaks the signature", True)
+
+def pb(b):
+    out = []
+    i = 0
+    while i < len(b):
+        k, i = uleb(b, i)
+        f, w = k >> 3, k & 7
+        if w == 0:
+            v, i = uleb(b, i)
+        elif w == 2:
+            n, i = uleb(b, i)
+            v = b[i:i + n]
+            i += n
+        else:
+            raise ValueError("unexpected wire type")
+        out.append((f, v))
+    return out
+
+
+def pb_get(b, *path):
+    for f in path:
+        b = next(v for k, v in pb(b) if k == f)
+    return b
+
+
+def pb_xml(node):
+    el = pb_get(node, 1)
+    attrs = {}
+    for k, v in pb(el):
+        if k == 4:
+            fs = dict(pb(v))
+            attrs[fs[2].decode()] = fs
+    kids = [pb_xml(v) for k, v in pb(el) if k == 5]
+    return pb_get(el, 3).decode(), attrs, kids
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    kp = os.path.join(tmp, "up.pem")
+    aab.new_key(kp, "test")
+    ukey, ucert = aab.load_key(kp)
+    table_, ids_, pngs_, xmls_ = B.icon_parts()
+    names_ = {v: k for k, v in ids_.items()}
+    kinds_ = {n: aab.FILE_PNG for n in pngs_} | {n: aab.FILE_PROTO_XML for n in xmls_}
+    bundle = aab.build(B.manifest_tree(7, "1.4.0", "OPEQ", ids_["drawable/ic"]), names_, B.shell(True),
+                       B.ICON_ENTRIES, kinds_, pngs_, xmls_, [("assets/app.html", b"<!doctype html>")],
+                       B.PACKAGE, ukey, ucert)
+    z = zipfile.ZipFile(io.BytesIO(bundle))
+    ents = {n: z.read(n) for n in z.namelist()}
+    check("aab: zip reads back with the bundle layout", z.testzip() is None and {
+        "BundleConfig.pb", "base/manifest/AndroidManifest.xml", "base/dex/classes.dex", "base/resources.pb",
+        "base/res/drawable/bg.png", "base/res/drawable/fg.png", "base/res/drawable/ic.xml",
+        "base/assets/app.html"} <= set(ents))
+    check("aab: bundletool version recorded", pb_get(ents["BundleConfig.pb"], 1, 2) == aab.BUNDLETOOL_VERSION.encode())
+    tag, at, kids = pb_xml(ents["base/manifest/AndroidManifest.xml"])
+    sdk = next(a for t_, a, _ in kids if t_ == "uses-sdk")
+    appl = next((t_, a, k) for t_, a, k in kids if t_ == "application")
+    check("aab: proto manifest has package, version code and target sdk",
+          tag == "manifest" and at["package"][3] == B.PACKAGE.encode()
+          and pb_get(at["versionCode"][6], 7, 6) == 7 and at["versionCode"][5] == 0x0101021b
+          and pb_get(sdk["targetSdkVersion"][6], 7, 6) == B.TARGET_SDK == 36)
+    check("aab: icon reference resolves in resources.pb",
+          pb_get(appl[1]["icon"][6], 1, 2) == ids_["drawable/ic"]
+          and pb_get(appl[1]["allowBackup"][6], 7, 8) == 0)
+    pkg = pb_get(ents["base/resources.pb"], 2)
+    typ = pb_get(pkg, 3)
+    ent_names = [pb_get(v, 2).decode() for k, v in pb(typ) if k == 3]
+    check("aab: resource table package 0x7f with drawable bg, fg, ic",
+          pb_get(pkg, 1, 1) == 0x7f and pb_get(pkg, 2) == B.PACKAGE.encode()
+          and pb_get(typ, 1, 1) == 1 and ent_names == ["bg", "fg", "ic"])
+    check("aab: jar manifest covers every file with matching digests", aab.jar_check(ents))
+    sf = os.path.join(tmp, "s.sf"); blk = os.path.join(tmp, "s.rsa")
+    open(sf, "wb").write(ents["META-INF/UPLOAD.SF"]); open(blk, "wb").write(ents["META-INF/UPLOAD.RSA"])
+    r = subprocess.run(["openssl", "cms", "-verify", "-inform", "DER", "-in", blk, "-content", sf, "-binary",
+                        "-noverify", "-out", os.devnull], capture_output=True)
+    check("aab: PKCS#7 signature verifies with openssl", r.returncode == 0)
+    open(sf, "ab").write(b"x")
+    r = subprocess.run(["openssl", "cms", "-verify", "-inform", "DER", "-in", blk, "-content", sf, "-binary",
+                        "-noverify", "-out", os.devnull], capture_output=True)
+    check("aab: a changed signature file fails", r.returncode != 0)
+    bad = dict(ents); bad["base/assets/app.html"] = b"x"
+    try:
+        aab.jar_check(bad)
+        check("aab: a changed file fails the digest check", False)
+    except ValueError:
+        check("aab: a changed file fails the digest check", True)
+    long_name = "x" * 200
+    check("aab: long names wrap at 72 bytes", all(len(l) <= 72 for l in aab.mf_line("Name: " + long_name).split(b"\r\n")))
+
 
 src = os.path.join(B.ROOT, "build", "extension-mainnet")
 if os.path.exists(os.path.join(src, "manifest.json")):
