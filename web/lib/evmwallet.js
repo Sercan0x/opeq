@@ -501,7 +501,9 @@ export class EvmChain {
       const inner = limits.inner !== undefined ? limits.inner : await this.callsGas(calls);
       if (limits.maxInner !== undefined && inner > limits.maxInner) throw new Error("this transaction now needs more gas than the fee you confirmed. Nothing was signed; check the proposal and try again");
       await this.gasCheck(EXEC_GAS + inner);
-      const deadline = (await this.clock()) + DEADLINE_S;
+      const nowS = await this.clock();
+      const deadline = limits.deadline !== undefined ? Math.min(nowS + DEADLINE_S, Number(limits.deadline)) : nowS + DEADLINE_S;
+      if (deadline - nowS < 90) throw new Error("this transaction's time limit is about to run out. Nothing was signed; review it again");
       const leaf = Math.max(r.next_leaf, st.next);
       const prev = cancel ? r.pending : null;
       const opts = {};

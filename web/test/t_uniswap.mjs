@@ -77,6 +77,15 @@ const ethBefore = await bal(U.ETH), usdcBefore = await bal(USDC);
 r = await swap(U.ETH, USDC, 10n ** 15n, "ETH to USDC with an impossible minimum", { mult: 2n });
 ok(!r.okSent && (await bal(USDC)) === usdcBefore, "a minimum above what the pool gives reverts and moves nothing");
 try { U.routes(CHAIN, U.ETH, U.ETH); ok(false, "same token refused"); } catch { ok(true, "same token refused"); }
+{
+  const r = [{ route: { tokens: ["a", "b"], fees: [500] }, out: 1000n }, { route: { tokens: ["a", "b"], fees: [3000] }, out: 900n }];
+  const lie = r.map((x) => ({ ...x, out: (x.out * 80n) / 100n }));
+  try { U.pickBest(r, lie); ok(false, "deflated quote refused"); } catch (e) { ok(e instanceof U.Disagree, "one source quoting 20% lower is refused, not used"); }
+  try { U.pickBest(r, [{ ...r[0], out: null }, r[1]]); ok(false, "blanked route refused"); } catch (e) { ok(e instanceof U.Disagree, "one source hiding the best pool is refused, not used to change the route"); }
+  const near = U.pickBest(r, r.map((x) => ({ ...x, out: x.out - 2n })));
+  ok(near.out === 998n && near.route.fees[0] === 500, "sources within 0.5% agree and the lower of the two is used");
+  ok(U.impactBps(950n, 1000n, 100n, 100n) === 500n && U.impactBps(1000n, 1000n, 1n, 1n) === 0n, "price impact is measured against a small reference amount");
+}
 try { U.minOut(100n, 500); ok(false, "slippage cap"); } catch { ok(true, "slippage above 3% refused"); }
 try { U.swapCalls({ chainId: CHAIN, account: ME, tokenIn: USDC, tokenOut: U.ETH, amountIn: 1n, amountOutMin: 0n, route: { tokens: [USDC, U.UNI[CHAIN].weth], fees: [500] }, deadline: 1n }); ok(false, "zero minimum"); } catch { ok(true, "zero minimum refused"); }
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL ${pass} PASSED`);

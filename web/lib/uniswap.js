@@ -9,7 +9,8 @@ const sel = (sig) => keccak256(enc.encode(sig)).slice(0, 4);
 export const ETH = "eth";
 export const FEES = [100, 500, 3000, 10000];
 export const MAX_SLIPPAGE_BPS = 300;
-export const DEADLINE_S = 1200;
+export const DEADLINE_S = { 1: 300, 8453: 600, 42161: 600, 4663: 600 };
+export const AGREE_BPS = 50n;
 export const SIM_CODE = "0x608080604052600436101561001c575b50361561001a575f80fd5b005b5f3560e01c908163150b7a021461013c575063153291ab1461003e575f61000f565b346101385760407ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc3601126101385760043567ffffffffffffffff811161013857366023820112156101385780600401359067ffffffffffffffff8211610138573660248360051b830101116101385760207fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe06100eb60e093601f9560246100e4610204565b9201610399565b926040999597949992919251998a98151589528589015260408801526060870152608086015260c060a086015280519182918260c0880152018686015e5f85828601015201168101030190f35b5f80fd5b346101385760807ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc360112610138576101736101e1565b5061017c610204565b5060643567ffffffffffffffff8111610138573660238201121561013857806004013567ffffffffffffffff8111610138573691016024011161013857807f150b7a020000000000000000000000000000000000000000000000000000000060209252f35b6004359073ffffffffffffffffffffffffffffffffffffffff8216820361013857565b6024359073ffffffffffffffffffffffffffffffffffffffff8216820361013857565b91908110156102675760051b810135907fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa181360301821215610138570190565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52603260045260245ffd5b90601f7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0910116810190811067ffffffffffffffff8211176102d557604052565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b3d1561035a573d9067ffffffffffffffff82116102d5576040519161034f60207fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0601f8401160184610294565b82523d5f602084013e565b606090565b9190820391821161036c57565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b91905f926060906103a9846104b5565b925a915f5b8281106103d2575050506103c66103cc915a9061035f565b936104b5565b90600195565b6103dd818484610227565b3573ffffffffffffffffffffffffffffffffffffffff81168103610138576020610408838686610227565b013590610416838686610227565b6040810135907fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe18136030182121561013857019081359167ffffffffffffffff831161013857602001918036038313610138575f938493826040519384928337810185815203925af1610487610302565b901561049657506001016103ae565b97509794955050506104aa91505a9061035f565b5f9493909291829190565b73ffffffffffffffffffffffffffffffffffffffff811615610551575f809160405160208101907f70a0823100000000000000000000000000000000000000000000000000000000825230602482015260248152610514604482610294565b51915afa610520610302565b9080610545575b1561054057602081805181010312610138576020015190565b505f90565b50602081511015610527565b50479056fea264697066735822122090ba1ee3a4fda7ca835ea57e08eee968d479db9a2942655c1d6bf4599243459164736f6c63430008210033";
 export const ADDRESS_THIS = "0x0000000000000000000000000000000000000002";
 
@@ -105,18 +106,28 @@ export async function quoteAll(chainId, tokenIn, tokenOut, amountIn, call) {
   }));
 }
 
+export class Disagree extends Error {}
+
 export function pickBest(...sources) {
   const n = sources[0].length;
   let best = null;
   for (let i = 0; i < n; i++) {
-    const vals = sources.map((s) => s[i].out).filter((v) => v !== null);
-    if (!vals.length) continue;
-    const out = vals.reduce((m, v) => (v < m ? v : m));
+    const vals = sources.map((s) => s[i].out);
+    if (vals.every((v) => v === null)) continue;
+    if (vals.some((v) => v === null)) throw new Disagree("the two network sources do not agree on which Uniswap pools exist for this pair. Nothing was signed; try again in a moment");
+    const hi = vals.reduce((m, v) => (v > m ? v : m)), lo = vals.reduce((m, v) => (v < m ? v : m));
+    if ((hi - lo) * 10000n > hi * AGREE_BPS) throw new Disagree("the two network sources give different prices for this swap. Nothing was signed; try again in a moment");
     const route = sources[0][i].route;
-    if (!best || out > best.out || (out === best.out && route.fees.length < best.route.fees.length)) best = { route, out, sources: vals.length };
+    if (!best || lo > best.out || (lo === best.out && route.fees.length < best.route.fees.length)) best = { route, out: lo };
   }
   if (!best) throw new Error("Uniswap has no pool for this pair on this network");
   return best;
+}
+
+export function impactBps(out, amountIn, refOut, refIn) {
+  if (!refOut || !refIn || refOut <= 0n || refIn <= 0n) return null;
+  const v = 10000n - (out * refIn * 10000n) / (refOut * amountIn);
+  return v > 0n ? v : 0n;
 }
 
 export function minOut(expected, slippageBps) {
@@ -143,9 +154,8 @@ export function swapCalls({ chainId, account, tokenIn, tokenOut, amountIn, amoun
   const c = cfg(chainId);
   if (amountOutMin <= 0n) throw new Error("the minimum to receive is zero");
   if (route.tokens[0] !== token(chainId, tokenIn) || route.tokens[route.tokens.length - 1] !== token(chainId, tokenOut)) throw new Error("the route does not match the tokens");
-  const inner = [swapData({ route, recipient: ADDRESS_THIS, amountIn, amountOutMin })];
+  const inner = [swapData({ route, recipient: tokenOut === ETH ? ADDRESS_THIS : account, amountIn, amountOutMin })];
   if (tokenOut === ETH) inner.push(concat(SEL.unwrap, word(amountOutMin), addressWord(account)));
-  else inner.push(concat(SEL.sweep, addressWord(tokenOut), word(amountOutMin), addressWord(account)));
   if (route.tokens.length === 3) inner.push(concat(SEL.sweep, addressWord(c.weth), word(0), addressWord(account)));
   if (tokenIn === ETH) inner.push(SEL.refundETH);
   const swap = { to: c.router, value: tokenIn === ETH ? amountIn : 0n, data: concat(SEL.multicall, word(deadline), word(64), bytesArray(inner)) };
@@ -154,9 +164,9 @@ export function swapCalls({ chainId, account, tokenIn, tokenOut, amountIn, amoun
   return [approve(0n), approve(amountIn), swap, approve(0n)];
 }
 
-export function simParams(account, calls, tokenOut, block = "latest") {
+export function simParams(account, calls, tokenOut, block = "latest", from = undefined) {
   const data = concat(SEL.sim, word(64), tokenOut === ETH ? word(0) : addressWord(tokenOut), E.encodeCalls(calls));
-  return [{ to: account, data: bytesToHex(data) }, block, { [account]: { code: SIM_CODE } }];
+  return [{ ...(from ? { from } : {}), to: account, gas: "0x" + (8000000).toString(16), data: bytesToHex(data) }, block, { [account]: { code: SIM_CODE } }];
 }
 
 export function decodeSim(hex) {

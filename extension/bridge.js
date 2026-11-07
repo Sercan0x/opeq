@@ -205,7 +205,7 @@ export function initEvm(ctx) {
     if (Math.floor(Date.now() / 1000) > p.c.deadline - 60) throw new Error("the quote expired. Nothing was signed; review the bridge again");
     const now = await c.status();
     const left = kind === "native" ? now.bal : (await c.token(asset.address)).balance;
-    if (left < amount) throw new Error("the balance changed after you confirmed. Nothing was signed");
+    if (left < amount + (kind === "native" ? top : 0n) || (kind !== "native" && top && now.bal < top)) throw new Error("the balance changed after you confirmed. Nothing was signed");
     ctx.log(`bridge ${fmt(amount, asset.decimals)} ${asset.symbol} from ${NAME[from]} to ${NAME[to]}: Relay request ${p.c.requestId}`);
     let res;
     try { res = await c.execute(calls, (h) => ctx.last("Bridge deposit sent.", h), false, { maxInner: (inner * 12n) / 10n + 20000n, inner }); }

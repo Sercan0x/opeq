@@ -424,6 +424,7 @@ function bind() {
     $("e-tok").value = "";
     $("e-ok").textContent = `added ${t.symbol}`;
     await refreshTokens();
+    if (swapPaint && status && status.state === "ready") { hide("e-sw", false); swapPaint(); }
   }));
 
   $("e-send-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
