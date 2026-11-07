@@ -80,7 +80,7 @@
   <p>Install <a href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer">OPEQ Wallet from the Chrome Web Store</a>. It opens from the toolbar or in a full tab.</p>
   <h3>USB drive (Windows)</h3>
   <ol class="steps">
-    <li>Download <a href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.3.0" target="_blank" rel="noopener noreferrer">OPEQ-USB.zip</a>, right-click it and choose <b>Extract All</b>.</li>
+    <li>Download <a href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.4.0" target="_blank" rel="noopener noreferrer">OPEQ-USB.zip</a>, right-click it and choose <b>Extract All</b>.</li>
     <li>Copy the <b>OPEQ-USB</b> folder to your USB drive.</li>
     <li>Double-click <b>OPEQ</b> on the drive. It checks its own files and opens in its own window. Your wallet lives on the drive, not on the computer.</li>
   </ol>
@@ -119,6 +119,9 @@
   <h2 id="swap">Swap</h2>
   <p>Open the <b>Swap</b> tab, pick what you pay and what you receive, and enter the amount. Prices and routes come from Jupiter. Choose how much the price may move before the swap cancels, press <b>Review swap</b>, read the window and confirm. The wallet checks every instruction before it signs.</p>
   <figure class="shot"><img src="../../assets/guide-swap.png" alt="The Swap tab with a live quote from SOL to USDC" loading="lazy"></figure>
+  <h3>On EVM networks</h3>
+  <p>Pick the network, scroll to the <b>Swap</b> card, choose what you pay and receive and the amount, and press <b>Review swap</b>. Swaps go through Uniswap. The wallet tests the whole swap first; the review shows what you pay, what you receive and the minimum, the route and the network fee. Tokens you added show their contract address: check it.</p>
+  <figure class="shot"><img src="../../assets/guide-evm-swap.png" alt="The EVM swap review: 0.00001 ETH for USDC on Base through Uniswap" loading="lazy"></figure>
 
   <h2 id="evm">EVM networks</h2>
   <p>The same 24 words also open an OPEQ account on Ethereum, Base, Arbitrum and Robinhood Chain, with the same address on all four. Pick a network in the menu at the top right.</p>

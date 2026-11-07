@@ -165,6 +165,16 @@ The wallet can move funds between Solana and the four EVM networks through [Rela
 - **Trust:** the deposit is signed with a quantum-resistant one-time key. Delivery on the other network is done by Relay and is not quantum-resistant; until Relay delivers, usually within seconds, you rely on Relay. Relay has committed to refund bridges that do not complete.
 - Source: `web/lib/relay.js` (quote checks and deposit building), `web/test/t_relay.mjs` (live checks, including tampered quotes), `extension/bridge.js` (UI).
 
+## EVM swap (beta)
+
+The Swap card on each EVM network swaps ETH, USDC and tokens you added through Uniswap v3. OPEQ takes no fee.
+
+- **Pinned contracts:** SwapRouter02 and QuoterV2 addresses and keccak code hashes are fixed per network in `web/lib/uniswap.js`, checked on both RPC sources before every swap, together with the router's WETH9. The Robinhood Chain deployment was compared byte for byte with Arbitrum's: only the immutables differ.
+- **Two-source price:** both sources quote every route (four fee tiers, plus two hops through WETH) at the same block. Any route where they disagree by more than 0.5%, or that only one of them answers, makes the swap refuse, so one lying source can't lower the minimum or steer the route.
+- **Test run:** before signing and again after confirming, the whole batch is run as the account on both sources with `eth_call` and a code override (`evm/sim/OpeqSim.sol`, never deployed). It measures the real gas and what actually arrives, and refuses if less than the minimum would arrive. rpc.opeq.io allows exactly one code override per call for this.
+- **Built by the wallet:** approve(0), approve(exact amount), `multicall(deadline, [exactInput(Single) with amountOutMinimum, unwrapWETH9 or straight to the account, leftover WETH swept back, refundETH])`, approve(0), all in one atomic `execute`. The deadline is 5 minutes on Ethereum and 10 elsewhere, and also caps the signature's own deadline.
+- Tests: `web/test/t_uniswap.mjs` against a fork (`anvil --fork-url https://mainnet.base.org --port 8551 --chain-id 8453`).
+
 ## Mainnet deployment
 
 | | Address |
