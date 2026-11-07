@@ -190,3 +190,4 @@ body[data-mode="popup"] #e-dock .card { padding: 4px 14px 14px; }
 .e-lockrow { justify-content: center; }
 .balrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .balrow .hint { margin: 0; }
+.balrow .btn[hidden] { display: none; }
