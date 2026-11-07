@@ -50,19 +50,19 @@
     </dl>
     <p>opeq is live on mainnet in beta, in Chrome or on a USB drive for Windows. One set of 24 words opens a Solana wallet and an EVM account, and wallets can team up in an optional multisig. Start with small amounts.</p>
     <p>New to OPEQ? <a href="guide.html">Read the step-by-step guide</a>.</p>
-    <p>Not sure your current wallet is exposed? <a href="scan.html">Check any Solana address</a>.</p>
+    <p>Not sure your current wallet is exposed? <a href="scan.html">Check any Solana or EVM address</a>.</p>
     <div class="actions"><a class="btn btn-solid" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer"><svg class="ico-chrome" viewBox="-1 -1 2 2" aria-hidden="true"><path d="M0 0L.866-.5A1 1 0 0 0-.866-.5Z" fill="#db4437"/><path d="M0 0L-.866-.5A1 1 0 0 0 0 1Z" fill="#0f9d58"/><path d="M0 0L0 1A1 1 0 0 0 .866-.5Z" fill="#f4b400"/><circle r=".46" fill="#fff"/><circle r=".36" fill="#4285f4"/></svg>Add to Chrome</a><a class="btn btn-line" href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.3.0" target="_blank" rel="noopener noreferrer">Get it for a USB drive</a><a class="btn btn-line" href="app.html">Try it on devnet</a></div>
   </section>
   <section class="panel" id="p-m2" hidden aria-labelledby="h-m2">
     <p class="crumb mono" id="h-m2">M.2 / the problem</p>
     <h2>Every wallet has the same lock</h2>
-    <p class="intro">Every Solana account today is protected by one signature scheme, Ed25519. Its safety rests on one assumption: you can't work out a private key from its public key.</p>
+    <p class="intro">Every Solana and EVM account today is protected by an elliptic-curve signature: Ed25519 on Solana, secp256k1 on Ethereum, Base, Arbitrum and Robinhood Chain. Their safety rests on one assumption: you can't work out a private key from its public key.</p>
     <div class="cols">
       <div>
         <h3>Shor's algorithm</h3>
         <p>In 1994 Peter Shor showed that a large enough quantum computer solves exactly that problem. Ed25519, secp256k1 and every elliptic curve in use today fall to it.</p>
         <h3>Your address is the key</h3>
-        <p>On Solana the address <i>is</i> the public key. Every wallet that has ever received a token has already published everything a quantum attacker needs.</p>
+        <p>On Solana the address <i>is</i> the public key. Every wallet that has ever received a token has already published everything a quantum attacker needs. On EVM networks the address is a hash of the public key, but the key becomes public with the first transaction the address sends.</p>
         <h3>Migrations are slow</h3>
         <p>Nobody knows when such a machine arrives. Estimates range from five to twenty years. Moving a whole network to new signatures takes years too, so the work has to start before the threat is real.</p>
         <p class="aside">Quantum computers do not break hash functions like SHA-256 in the same way. Grover's algorithm only halves the effective strength, which a long enough hash already absorbs. opeq builds its signatures from hashes alone.</p>
@@ -82,7 +82,7 @@
       <div><dt>Works with any app</dt><dd>One signature authorizes a list of instructions to any programs. Tested with transfers, tokens, token accounts and Memo. On mainnet, swaps route through Jupiter.</dd></div>
       <div><dt>Same address forever</dt><dd>One key tree signs 688 transactions. A rekey moves to a fresh tree in one click. Your address, balances and token accounts never change.</dd></div>
       <div><dt>24 recovery words</dt><dd>Standard BIP39 words. Every key tree is derived from them, so the words stay valid after any number of rekeys.</dd></div>
-      <div><dt>No protocol change</dt><dd>Runs on Solana as it is today. No new chain, no fork, no waiting for a network upgrade.</dd></div>
+      <div><dt>No protocol change</dt><dd>Runs on Solana and the EVM networks as they are today. No new chain, no fork, no waiting for a network upgrade.</dd></div>
       <div><dt>Quantum-safe upgrades</dt><dd>The program's own upgrade key is an opeq wallet. Even the code can't be changed with a broken Ed25519 key.</dd></div>
       <div><dt>EVM accounts</dt><dd>The same 24 words open a smart-contract account on Ethereum, Base, Arbitrum and Robinhood Chain, with the same address on all four. It checks the same kind of hash-based signature, built on keccak256. Send ETH and ERC-20 tokens; a small gas key derived from your words pays the network fees and has no power over the account.</dd></div>
       <div><dt>Multisig</dt><dd>Optional. A shared vault moves funds only after several opeq wallets approve, for example 2 of 3. Every owner is an opeq wallet or account, never a plain Ed25519 or ECDSA key, so every approval is a one-time hash-based signature. On Solana and on all four EVM networks.</dd></div>
@@ -313,8 +313,8 @@ execute(id, calls)        setOwners / setThreshold
     <h2>Questions</h2>
     <div class="faqs">
       <details><summary>Is opeq live?</summary><p>Yes, as a beta on Solana mainnet and on Ethereum, Base, Arbitrum and Robinhood Chain. Start with small amounts.</p></details>
-      <details><summary>When will quantum computers break Ed25519?</summary><p>Nobody knows. Published estimates range from five to twenty years. What is certain is that network-wide migrations take years, and that on Solana every public key is already visible on chain.</p></details>
-      <details><summary>Why not wait for Solana to add post-quantum signatures?</summary><p>A Falcon verification syscall has been proposed (SIMD-0416), and a full migration plan exists on paper. Protocol migrations are slow. opeq works today, on the network as it is, and can adopt Falcon later.</p></details>
+      <details><summary>When will quantum computers break Ed25519?</summary><p>Nobody knows. Published estimates range from five to twenty years. What is certain is that network-wide migrations take years, and that on Solana every public key is already visible on chain, as is the key of every EVM address that has sent a transaction.</p></details>
+      <details><summary>Why not wait for Solana or Ethereum to add post-quantum signatures?</summary><p>A Falcon verification syscall has been proposed for Solana (SIMD-0416), and Ethereum researchers are working on post-quantum plans too. Protocol migrations are slow. opeq works today, on the networks as they are, and can adopt new signature types later.</p></details>
       <details><summary>Do I get a new address?</summary><p>Yes. Your opeq wallet is a new address. You move funds into it like into any other address. After that the address never changes.</p></details>
       <details><summary>What is the fee key?</summary><p>Solana needs an Ed25519 key to pay each transaction's fee. opeq derives a small one from your words and keeps only a few cents of SOL on it. Your funds don't live there: they live in the opeq address, which only moves with your hash-based signature. If the fee key were ever broken, the attacker would get the fee balance and nothing else.</p></details>
       <details><summary>Where are my keys stored?</summary><p>In your browser, encrypted with your password (PBKDF2 with 600,000 rounds and AES-256-GCM). They never leave your device and are never sent to any server. The site loads nothing from third parties. An open wallet locks itself after 10 minutes without activity in Chrome and after 3 minutes on the USB edition, and showing the 24 words always asks for the password again. On the USB edition the encrypted wallet lives on the stick, not on the computer.</p></details>

@@ -71,7 +71,7 @@
     <div><dt>Open source</dt><dd>Apache 2.0, at <a href="https://github.com/Sercan0x/opeq" target="_blank" rel="noopener noreferrer">github.com/Sercan0x/opeq</a>.</dd></div>
   </dl>
   <h3>Why it matters</h3>
-  <p class="intro">Every Solana account today is protected by one signature scheme, Ed25519. Its safety rests on one assumption: you can't work out a private key from its public key.</p>
+  <p class="intro">Every Solana and EVM account today is protected by an elliptic-curve signature: Ed25519 on Solana, secp256k1 on Ethereum, Base, Arbitrum and Robinhood Chain. Their safety rests on one assumption: you can't work out a private key from its public key.</p>
         <h4>Shor's algorithm</h4>
         <p>In 1994 Peter Shor showed that a large enough quantum computer solves exactly that problem. Ed25519, secp256k1 and every elliptic curve in use today fall to it.</p>
         <h4>Your address is the key</h4>
@@ -394,8 +394,8 @@ execute(id, calls)        setOwners / setThreshold
   <h2 id="faq">Questions</h2>
   <div class="faqs">
       <details><summary>Is opeq live?</summary><p>Yes, as a beta on Solana mainnet and on Ethereum, Base, Arbitrum and Robinhood Chain. Start with small amounts.</p></details>
-      <details><summary>When will quantum computers break Ed25519?</summary><p>Nobody knows. Published estimates range from five to twenty years. What is certain is that network-wide migrations take years, and that on Solana every public key is already visible on chain.</p></details>
-      <details><summary>Why not wait for Solana to add post-quantum signatures?</summary><p>A Falcon verification syscall has been proposed (SIMD-0416), and a full migration plan exists on paper. Protocol migrations are slow. opeq works today, on the network as it is, and can adopt Falcon later.</p></details>
+      <details><summary>When will quantum computers break Ed25519?</summary><p>Nobody knows. Published estimates range from five to twenty years. What is certain is that network-wide migrations take years, and that on Solana every public key is already visible on chain, as is the key of every EVM address that has sent a transaction.</p></details>
+      <details><summary>Why not wait for Solana or Ethereum to add post-quantum signatures?</summary><p>A Falcon verification syscall has been proposed for Solana (SIMD-0416), and Ethereum researchers are working on post-quantum plans too. Protocol migrations are slow. opeq works today, on the networks as they are, and can adopt new signature types later.</p></details>
       <details><summary>Do I get a new address?</summary><p>Yes. Your opeq wallet is a new address. You move funds into it like into any other address. After that the address never changes.</p></details>
       <details><summary>What is the fee key?</summary><p>Solana needs an Ed25519 key to pay each transaction's fee. opeq derives a small one from your words and keeps only a few cents of SOL on it. Your funds don't live there: they live in the opeq address, which only moves with your hash-based signature. If the fee key were ever broken, the attacker would get the fee balance and nothing else.</p></details>
       <details><summary>Where are my keys stored?</summary><p>In your browser, encrypted with your password (PBKDF2 with 600,000 rounds and AES-256-GCM). They never leave your device and are never sent to any server. The site loads nothing from third parties. An open wallet locks itself after 10 minutes without activity in Chrome and after 3 minutes on the USB edition, and showing the 24 words always asks for the password again. On the USB edition the encrypted wallet lives on the stick, not on the computer.</p></details>
