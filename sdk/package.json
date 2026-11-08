@@ -1,0 +1,19 @@
+{
+  "name": "@opeq/sdk",
+  "version": "0.1.0",
+  "description": "Quantum-resistant accounts for Solana and EVM networks: one-time hash-based keys, signing and offline verification.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./filestore": "./filestore.js",
+    "./compute": "./src/lib/compute.js"
+  },
+  "files": ["index.js", "filestore.js", "locks.js", "src", "examples", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/Sercan0x/opeq", "directory": "sdk" },
+  "homepage": "https://opeq.io",
+  "keywords": ["solana", "ethereum", "post-quantum", "wots", "wallet", "self-custody"],
+  "sideEffects": ["./locks.js", "./index.js"]
+}
