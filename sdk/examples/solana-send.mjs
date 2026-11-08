@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Vault, NETWORKS } from "@opeq/sdk";
 import { FileStore } from "@opeq/sdk/filestore";
 
@@ -6,9 +8,10 @@ const network = process.env.OPEQ_NETWORK || "devnet";
 const password = process.env.OPEQ_PASSWORD;
 if (!password) throw new Error("set OPEQ_PASSWORD");
 if (!process.env.OPEQ_RPC) throw new Error(`set OPEQ_RPC to a Solana ${network} RPC URL`);
+if (network === "mainnet" && !process.env.OPEQ_CHECK_RPC) throw new Error("set OPEQ_CHECK_RPC to a second Solana RPC from another provider");
 
-const store = await FileStore.open(process.env.OPEQ_DIR || "./opeq-wallet");
-const vault = new Vault({ rpcUrl: process.env.OPEQ_RPC, network, store });
+const store = await FileStore.open(process.env.OPEQ_DIR || join(homedir(), ".opeq-sdk-wallet"));
+const vault = new Vault({ rpcUrl: process.env.OPEQ_RPC, checkRpcUrl: process.env.OPEQ_CHECK_RPC, network, store });
 try {
   if (cmd === "create") {
     const { id, words } = await vault.create(password);

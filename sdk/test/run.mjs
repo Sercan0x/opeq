@@ -99,7 +99,7 @@ try {
   await Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map((n) => fs1.put({ id: "b", epoch: 0, next_leaf: n, active: true }).catch(() => null)));
   ok((await fs1.get("b")).next_leaf === 8, "parallel writes end on the highest counter");
   await fs1.close();
-  writeFileSync(join(dir, ".lock"), "999999999");
+  writeFileSync(join(dir, ".lock"), "999999999 " + "ab".repeat(16));
   const fs2 = await FileStore.open(dir);
   ok((await fs2.get("a")).next_leaf === 6, "a stale lock from a dead process is taken over");
   await fs2.close();

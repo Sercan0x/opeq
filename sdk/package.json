@@ -9,7 +9,7 @@
     "./filestore": "./filestore.js",
     "./compute": "./src/lib/compute.js"
   },
-  "files": ["index.js", "filestore.js", "locks.js", "src", "examples", "README.md", "LICENSE"],
+  "files": ["index.js", "filestore.js", "locks.js", "src/feekey.js", "src/lib/*.js", "examples/*.mjs", "README.md", "LICENSE"],
   "engines": { "node": ">=20" },
   "license": "Apache-2.0",
   "repository": { "type": "git", "url": "https://github.com/Sercan0x/opeq", "directory": "sdk" },

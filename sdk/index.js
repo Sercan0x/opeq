@@ -32,12 +32,37 @@ export const EVM_CHAINS = Object.freeze({
 
 const MAX_PRIORITY = 100000;
 const enc = new TextEncoder();
+const LOCAL = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const httpsUrl = (u, what) => {
-  if (typeof u !== "string" || !/^https?:\/\/[^\s]+$/.test(u)) throw new Error(`${what} must be an http(s) URL`);
+  let x;
+  try { x = new URL(u); } catch { throw new Error(`${what} must be an https URL`); }
+  if (x.protocol !== "https:" && !(x.protocol === "http:" && LOCAL.has(x.hostname))) throw new Error(`${what} must be an https URL (plain http only for localhost)`);
   return u;
 };
+const differ = (a, b, what) => {
+  if (new URL(a).host.toLowerCase() === new URL(b).host.toLowerCase()) throw new Error(`${what} must be a different provider from the main RPC, or the second check means nothing`);
+};
+const U64 = 1n << 64n, U256 = 1n << 256n;
+const amount = (v, what, max, min = 0n) => {
+  let n;
+  if (typeof v === "bigint") n = v;
+  else if (typeof v === "number" && Number.isSafeInteger(v)) n = BigInt(v);
+  else if (typeof v === "string" && /^[0-9]+$/.test(v)) n = BigInt(v);
+  else throw new Error(`${what} must be a whole number in base units (bigint, integer or digit string)`);
+  if (n < min || n >= max) throw new Error(`${what} is out of range`);
+  return n;
+};
 const key = (k) => (typeof k === "string" ? pubkey(k) : k instanceof Uint8Array && k.length === 32 ? k : (() => { throw new Error("a Solana address must be base58 text or 32 bytes"); })());
-const bytes = (d) => (d == null ? new Uint8Array(0) : typeof d === "string" ? hexToBytes(d) : d instanceof Uint8Array ? d : Uint8Array.from(d));
+const bytes = (d) => {
+  if (d == null) return new Uint8Array(0);
+  if (d instanceof Uint8Array) return new Uint8Array(d);
+  if (typeof d === "string") {
+    if (!/^(0x)?([0-9a-fA-F]{2})*$/.test(d)) throw new Error("hex data must have an even number of hex digits");
+    return hexToBytes(d.startsWith("0x") ? d : "0x" + d);
+  }
+  if (Array.isArray(d) && d.every((x) => Number.isInteger(x) && x >= 0 && x <= 255)) return Uint8Array.from(d);
+  throw new Error("data must be a Uint8Array, a Buffer, a hex string or an array of bytes 0-255");
+};
 
 export function newWords() {
   const m = M.newMaster();
@@ -51,10 +76,13 @@ export function checkWords(words) {
   return true;
 }
 
-function toInner(ix) {
-  if (Array.isArray(ix)) return [key(ix[0]), ix[1].map(([k, s, w]) => [key(k), !!s, !!w]), bytes(ix[2])];
-  if (!ix || !ix.programId || !Array.isArray(ix.keys)) throw new Error("an instruction needs programId, keys and data");
-  return [key(ix.programId), ix.keys.map((m) => [key(m.pubkey), !!m.isSigner, !!m.isWritable]), bytes(ix.data)];
+function toInner(ix, wallet) {
+  let out;
+  if (Array.isArray(ix)) out = [key(ix[0]), ix[1].map(([k, s, w]) => [key(k), s === true, w === true]), bytes(ix[2])];
+  else if (ix && ix.programId && Array.isArray(ix.keys)) out = [key(ix.programId), ix.keys.map((m) => [key(m.pubkey), m.isSigner === true, m.isWritable === true]), bytes(ix.data)];
+  else throw new Error("an instruction needs programId, keys and data");
+  for (const [k, signer] of out[1]) if (signer && !eq(k, wallet)) throw new Error("only the OPEQ account itself can sign inside an instruction; nothing was signed");
+  return out;
 }
 
 function priceFor(rpc) {
@@ -74,13 +102,23 @@ export class Vault {
     const net = NETWORKS[network];
     if (!net && !(program && genesis)) throw new Error("network must be mainnet or devnet, or pass program and genesis");
     if (!store) throw new Error("pass a store: FileStore.open(dir) in Node, IdbStore in a browser, MemoryStore for tests");
-    this.rpc = new Rpc(httpsUrl(rpcUrl, "rpcUrl"));
-    this.engine = new Engine({ rpc: this.rpc, program: program || net.program, store, compute, payer: null });
-    this.engine.genesis = genesis || net.genesis;
-    this.engine.maxPriority = MAX_PRIORITY;
-    this.engine.priceFor = priceFor(this.rpc);
-    if (checkRpcUrl) this.engine.refRpc = new Rpc(httpsUrl(checkRpcUrl, "checkRpcUrl"));
+    httpsUrl(rpcUrl, "rpcUrl");
+    if (network === "mainnet" && !checkRpcUrl) throw new Error("pass checkRpcUrl: a second Solana RPC from another provider. OPEQ uses it to confirm that a transaction can no longer land before it reuses anything");
+    if (checkRpcUrl) { httpsUrl(checkRpcUrl, "checkRpcUrl"); differ(rpcUrl, checkRpcUrl, "checkRpcUrl"); }
+    this.cfg = { rpcUrl, checkRpcUrl, program: program || net.program, genesis: genesis || net.genesis, compute };
     this.store = store;
+    this.engine = this.newEngine();
+    this.rpc = this.engine.rpc;
+  }
+
+  newEngine() {
+    const rpc = new Rpc(this.cfg.rpcUrl);
+    const e = new Engine({ rpc, program: this.cfg.program, store: this.store, compute: this.cfg.compute, payer: null });
+    e.genesis = this.cfg.genesis;
+    e.maxPriority = MAX_PRIORITY;
+    e.priceFor = priceFor(rpc);
+    if (this.cfg.checkRpcUrl) e.refRpc = new Rpc(this.cfg.checkRpcUrl);
+    return e;
   }
 
   async create(password, progress) {
@@ -105,14 +143,16 @@ export class Vault {
   async open(id, password) {
     const record = await this.store.get(id);
     if (!record) throw new Error("no wallet with that id in this store");
-    const session = await this.engine.unlock(record, password);
-    return new Account(this, session);
+    const engine = this.newEngine();
+    const session = await engine.unlock(record, password);
+    return new Account(this, engine, session);
   }
 }
 
 export class Account {
-  constructor(vault, session) {
+  constructor(vault, engine, session) {
     this.vault = vault;
+    this.e = engine;
     this.s = session;
     this.id = session.id;
     this.address = session.id;
@@ -124,8 +164,8 @@ export class Account {
 
   async feeKey() {
     this.live();
-    if (!this.payer) this.payer = await feePayer(this.s.master, this.vault.engine.program);
-    this.vault.engine.payer = this.payer;
+    if (!this.payer) this.payer = await feePayer(this.s.master, this.e.program);
+    this.e.payer = this.payer;
     return this.payer.address;
   }
 
@@ -147,21 +187,25 @@ export class Account {
 
   async balance() {
     this.live();
-    return this.vault.rpc.balance(this.s.wallet);
+    return this.e.rpc.balance(this.s.wallet);
   }
 
   async activate() {
     await this.use();
-    return this.vault.engine.init(await this.s.load());
+    return this.e.init(await this.s.load());
   }
 
   async send(to, lamports, progress) {
-    return (await this.use()).sendSol(key(to), BigInt(lamports), progress);
+    const n = amount(lamports, "lamports", U64, 1n);
+    return (await this.use()).sendSol(key(to), n, progress);
   }
 
   async execute(instructions, { computeUnits = 400000, progress } = {}) {
     if (!Array.isArray(instructions) || !instructions.length) throw new Error("pass at least one instruction");
-    return (await this.use()).exec(instructions.map(toInner), computeUnits, progress);
+    if (!Number.isInteger(computeUnits) || computeUnits < 1 || computeUnits > 1400000) throw new Error("computeUnits must be a whole number from 1 to 1,400,000");
+    this.live();
+    const inner = instructions.map((ix) => toInner(ix, this.s.wallet));
+    return (await this.use()).exec(inner, computeUnits, progress);
   }
 
   async rekey(progress) {
@@ -177,19 +221,21 @@ export class Account {
     return this.s.words().join(" ");
   }
 
-  async evm(chainId, { rpcUrl, checkUrl, store } = {}) {
+  async evm(chainId, { rpcUrl, checkUrl } = {}) {
     this.live();
     const meta = EVM_CHAINS[chainId];
     if (!meta) throw new Error(`chain ${chainId} is not an OPEQ network`);
+    httpsUrl(rpcUrl, "rpcUrl");
     if (!checkUrl && chainId !== 31337) throw new Error("pass checkUrl: a second, independent RPC for this chain. OPEQ compares both before it signs");
+    if (checkUrl) { httpsUrl(checkUrl, "checkUrl"); differ(rpcUrl, checkUrl, "checkUrl"); }
     const raw = sha256(enc.encode("opeq/evm/records/v1"), this.s.master);
     let macKey;
     try { macKey = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]); }
     finally { raw.fill(0); }
     const c = new EvmChain({
-      chain: { ...meta, rpc: httpsUrl(rpcUrl, "rpcUrl"), check: checkUrl ? httpsUrl(checkUrl, "checkUrl") : null },
-      store: store || this.vault.store, macKey, legacyMac: this.s.macKey, vaultId: this.s.id,
-      master: this.s.master.slice(), compute: this.vault.engine.compute,
+      chain: { ...meta, rpc: rpcUrl, check: checkUrl || null },
+      store: this.vault.store, macKey, legacyMac: this.s.macKey, vaultId: this.s.id,
+      master: this.s.master.slice(), compute: this.e.compute,
     });
     await c.loadIdentity(null);
     const a = new EvmAccount(c);
@@ -200,8 +246,12 @@ export class Account {
   close() {
     for (const a of this.chains.keys()) a.close();
     this.chains.clear();
-    if (this.s) { this.s.master.fill(0); this.s = null; }
-    if (this.vault.engine.payer === this.payer) this.vault.engine.payer = null;
+    if (this.s) {
+      this.s.master.fill(0);
+      if (this.s.macRaw instanceof Uint8Array) this.s.macRaw.fill(0);
+      this.s = null;
+    }
+    this.e.payer = null;
     this.payer = null;
   }
 }
@@ -231,12 +281,15 @@ export class EvmAccount {
   async execute(calls, onHash) {
     this.live();
     if (!Array.isArray(calls) || !calls.length) throw new Error("pass at least one call");
-    const norm = calls.map((x) => ({ to: checkAddress(x.to), value: BigInt(x.value || 0), data: bytes(x.data) }));
+    const norm = calls.map((x) => {
+      if (!x || typeof x !== "object") throw new Error("each call needs to, value and data");
+      return { to: checkAddress(x.to), value: x.value == null ? 0n : amount(x.value, "value", U256), data: bytes(x.data) };
+    });
     return this.c.execute(norm, onHash);
   }
 
   async send(to, wei, onHash) {
-    return this.execute([{ to, value: BigInt(wei) }], onHash);
+    return this.execute([{ to, value: amount(wei, "wei", U256, 1n) }], onHash);
   }
 
   async rekey(progress, onHash) {
@@ -263,15 +316,23 @@ export function solanaAccountFor(pubSeed, root, network = "mainnet") {
   return { id: hex(aid), wallet: b58encode(P.walletPda(aid, program).key), state: b58encode(P.statePda(aid, program).key) };
 }
 
+const exact = (v, n) => { const b = bytes(v); if (b.length !== n) throw new Error("wrong length"); return b; };
+
 export function verifySolanaInstruction(data, accountKeys, { pubSeed, root, aid, epoch }, network = "mainnet") {
-  const program = pubkey(NETWORKS[network].program);
-  const keys = accountKeys.map((k) => (typeof k === "string" ? k : b58encode(k)));
-  const cur = { pubSeed: bytes(pubSeed), root: bytes(root), aid: bytes(aid), epoch };
-  try { return signedLeaf(bytes(data), keys, program, cur); } catch { return null; }
+  try {
+    const program = pubkey(NETWORKS[network].program);
+    const keys = accountKeys.map((k) => (typeof k === "string" ? b58encode(pubkey(k)) : b58encode(exact(k, 32))));
+    if (!Number.isInteger(epoch) || epoch < 0 || epoch > 0xffffffff) return null;
+    const cur = { pubSeed: exact(pubSeed, W.N), root: exact(root, W.N), aid: exact(aid, 32), epoch };
+    return signedLeaf(bytes(data), keys, program, cur);
+  } catch { return null; }
 }
 
 export function verifyWots({ pubSeed, root, leaf, digest, signature, path }) {
-  return W.verify(bytes(pubSeed), bytes(root), leaf, bytes(digest), bytes(signature), bytes(path));
+  try {
+    if (!Number.isInteger(leaf) || leaf < 0 || leaf >= W.LEAVES) return false;
+    return W.verify(exact(pubSeed, W.N), exact(root, W.N), leaf, exact(digest, W.N), exact(signature, W.SIG_LEN), exact(path, W.PATH_LEN)) === true;
+  } catch { return false; }
 }
 
 const word = (b, o) => { let v = 0n; for (let i = 0; i < 32; i++) v = (v << 8n) | BigInt(b[o + i]); return v; };
@@ -295,14 +356,19 @@ export function decodeEvmExecute(calldata) {
   }
   const plen = small(b, proofAt, b.length);
   if (plen !== E.PROOF_LEN || proofAt + 32 + plen > b.length) throw new Error("bad proof length");
-  return { leaf, deadline, salt, rnd, calls, proof: b.slice(proofAt + 32, proofAt + 32 + plen) };
+  const proof = b.slice(proofAt + 32, proofAt + 32 + plen);
+  if (!eq(E.encodeExecute(calls, leaf, deadline, salt, rnd, proof), d)) throw new Error("calldata is not in the exact form the OPEQ account accepts");
+  return { leaf, deadline, salt, rnd, calls, proof };
 }
 
 export function verifyEvmExecute(calldata, { chainId, account, epoch, pubSeed, root }) {
-  let x;
-  try { x = decodeEvmExecute(calldata); } catch { return null; }
-  const digest = E.execHasher(x.rnd, chainId, account, epoch, x.leaf, x.deadline, x.calls)(x.salt);
-  return eq(E.rootFromProof(bytes(pubSeed), x.leaf, digest, x.proof), bytes(root)) ? { leaf: x.leaf, calls: x.calls, deadline: x.deadline } : null;
+  try {
+    if (!Number.isSafeInteger(chainId) || chainId < 1 || !Number.isSafeInteger(epoch) || epoch < 0) return null;
+    const ps = exact(pubSeed, E.N), rt = exact(root, E.N), acct = checkAddress(account);
+    const x = decodeEvmExecute(calldata);
+    const digest = E.execHasher(x.rnd, chainId, acct, epoch, x.leaf, x.deadline, x.calls)(x.salt);
+    return eq(E.rootFromProof(ps, x.leaf, digest, x.proof), rt) ? { leaf: x.leaf, calls: x.calls, deadline: x.deadline } : null;
+  } catch { return null; }
 }
 
 export function evmAccountAddress(words) {

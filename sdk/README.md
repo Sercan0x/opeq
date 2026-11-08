@@ -25,7 +25,7 @@ Node.js 20 or later, or any current browser. In Node, use `FileStore`; in a brow
 **A one-time key must never sign twice.** The SDK enforces this for you:
 
 - Every store refuses to move a key counter backwards.
-- `FileStore` locks its folder, so two processes cannot use the same wallet at once.
+- `FileStore` locks its folder, so two processes cannot use the same wallet at once. The folder must be on a local disk, owned by you and closed to other users (`chmod 700`); a shared, network or synced folder defeats the lock.
 - Signing jobs inside one process run one at a time.
 
 What the SDK cannot see is a second copy somewhere else. If the same 24 words are used on another device, that device must call `useHere()` first. It moves the account to a fresh key tree, and the old copy stops signing. Never restore a store from a backup to continue signing; recover from the words and call `useHere()` instead.
@@ -37,7 +37,7 @@ import { Vault } from "@opeq/sdk";
 import { FileStore } from "@opeq/sdk/filestore";
 
 const store = await FileStore.open("./opeq-wallet");
-const vault = new Vault({ rpcUrl: "https://your-solana-rpc", network: "mainnet", store });
+const vault = new Vault({ rpcUrl: "https://your-solana-rpc", checkRpcUrl: "https://a-second-provider", network: "mainnet", store });
 
 const { id, words } = await vault.create(password);
 const acct = await vault.open(id, password);
@@ -55,7 +55,9 @@ await store.close();
 - `acct.address` is the quantum account. Keep funds there.
 - `await acct.feeKey()` returns the fee key's address. It only pays Solana network fees, signs with Ed25519 and is not quantum-safe, so keep only a little SOL on it.
 - `activate()` writes the account's key root on chain once. The fee key pays for it.
-- `execute()` takes web3.js-style instructions (`{ programId, keys, data }`) or `[program, [[key, signer, writable]], data]`. The account signs as the wallet address.
+- `checkRpcUrl` is required on mainnet and must be another provider. Before the wallet ever reuses a key slot after a failure, both RPCs must agree the old transaction can no longer land.
+- `execute()` takes web3.js-style instructions (`{ programId, keys, data }`) or `[program, [[key, signer, writable]], data]`. The account signs as the wallet address; no other key may be marked as a signer. Data must be a `Uint8Array`/`Buffer`, a hex string or an array of bytes 0-255; anything else is refused rather than guessed.
+- Amounts are whole numbers in base units (lamports, wei) as bigint, integer or digit string.
 - `status()` reports how many one-time keys are left. Call `rekey()` before they run out; it moves the account to a new tree.
 - `recover(words, password)` brings an existing account into a new store. Then call `useHere()` (see the rule above).
 
@@ -88,7 +90,7 @@ verifySolanaInstruction(data, accountKeys, { pubSeed, root, aid, epoch });
 verifyEvmExecute(calldata, { chainId, account, epoch, pubSeed, root });
 ```
 
-Both return the one-time key index, or `null` if the signature does not match. They make no network calls. `examples/verify.mjs` checks a landed Solana transaction against the account's key root on chain.
+Both return the one-time key index, or `null` if the signature does not match or the input is malformed. They make no network calls. `verifyEvmExecute` only accepts calldata in the exact form the account contract decodes. `verifyWots` checks every length (16-byte digest, full signature and path, leaf inside the tree) before verifying. `examples/verify.mjs` checks a landed Solana transaction against the account's key root on chain.
 
 ## Speed
 
@@ -96,7 +98,11 @@ Building a key tree takes about 2 seconds on Solana and about 10 seconds on EVM 
 
 ## RPC
 
-Bring your own. `rpc.opeq.io` only serves the OPEQ apps.
+Bring your own, two per network from different providers, over https. `rpc.opeq.io` only serves the OPEQ apps.
+
+## Known limits
+
+- On EVM, a takeover (`useHere()`) picks its one-time key from the local record. If two devices take over the same account at the same moment, or a store is lost and restored, they can pick the same key. Take over from one device at a time and never restore a store from a backup.
 
 ## Tests
 
@@ -105,11 +111,13 @@ python3 build_sdk.py
 node sdk/test/run.mjs
 node sdk/test/e2e_anvil.mjs
 node sdk/test/e2e_devnet.mjs <funded devnet keypair json>
+node sdk/test/attack.mjs
 ```
 
 - `run.mjs` checks the JS code against vectors from the Python reference implementation (`sdk/test/gen_vectors.py`): words, key trees, addresses, signatures and the exact signed message. Every result must be byte-identical.
 - `e2e_anvil.mjs` runs a full EVM account on a local chain: setup, sends, offline verification, and a takeover from a second device.
 - `e2e_devnet.mjs` does the same on Solana devnet: activate, send, verify, rekey.
+- `attack.mjs` runs the attacks from the security review: lock races between processes, symlink and permission tricks on the wallet folder, signature forgeries against the verifiers, malformed amounts and data, shared fee keys, and packing a stray wallet file.
 
 ## License
 

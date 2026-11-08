@@ -15,7 +15,7 @@ ENTRIES = ["engine.js", "compute.js", "evmwallet.js", "wots.js", "evmwots.js", "
            "solana.js", "vaultstore.js", "sha256.js", "keccak.js", "secp256k1.js", "evmtx.js", "evmcode.js"]
 EXTRA = {"feekey.js": os.path.join(ROOT, "extension", "feekey.js")}
 PACK_FILES = ["package.json", "README.md", "index.js", "filestore.js", "locks.js"]
-PACK_DIRS = ["src", "examples"]
+SAFE = re.compile(r"^(src/feekey\.js|src/lib/[a-z0-9]+\.js|examples/[a-z0-9-]+\.mjs)$")
 IMPORT = re.compile(r'from\s+"\./([A-Za-z0-9_]+\.js)"')
 EPOCH = 1767225600
 
@@ -71,11 +71,14 @@ def sync(check):
 def pack_list():
     files = [(f, os.path.join(SDK, f)) for f in PACK_FILES]
     files.append(("LICENSE", os.path.join(ROOT, "LICENSE")))
-    for d in PACK_DIRS:
+    for d in ("src", "examples"):
         for base, _, names in os.walk(os.path.join(SDK, d)):
             for n in names:
                 p = os.path.join(base, n)
-                files.append((os.path.relpath(p, SDK).replace(os.sep, "/"), p))
+                rel = os.path.relpath(p, SDK).replace(os.sep, "/")
+                if not SAFE.match(rel):
+                    raise SystemExit(f"refusing to pack {rel}: only library .js files and example .mjs files may ship")
+                files.append((rel, p))
     return sorted(files)
 
 
