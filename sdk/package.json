@@ -1,5 +1,5 @@
 {
-  "name": "@opeq/sdk",
+  "name": "@opeqlabs/sdk",
   "version": "0.1.0",
   "description": "Quantum-resistant accounts for Solana and EVM networks: one-time hash-based keys, signing and offline verification.",
   "type": "module",

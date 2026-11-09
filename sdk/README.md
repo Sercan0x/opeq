@@ -1,4 +1,4 @@
-# @opeq/sdk
+# @opeqlabs/sdk
 
 Quantum-resistant accounts for Solana, Ethereum, Base, Arbitrum and Robinhood Chain.
 
@@ -15,7 +15,7 @@ It is the same code the OPEQ wallet runs. `src/` is copied byte for byte from th
 ## Install
 
 ```
-npm install @opeq/sdk
+npm install @opeqlabs/sdk
 ```
 
 Node.js 20 or later, or any current browser. In Node, use `FileStore`; in a browser, `IdbStore`. Both refuse to move a key counter backwards.
@@ -33,8 +33,8 @@ What the SDK cannot see is a second copy somewhere else. If the same 24 words ar
 ## Solana
 
 ```js
-import { Vault } from "@opeq/sdk";
-import { FileStore } from "@opeq/sdk/filestore";
+import { Vault } from "@opeqlabs/sdk";
+import { FileStore } from "@opeqlabs/sdk/filestore";
 
 const store = await FileStore.open("./opeq-wallet");
 const vault = new Vault({ rpcUrl: "https://your-solana-rpc", checkRpcUrl: "https://a-second-provider", network: "mainnet", store });
@@ -84,7 +84,7 @@ acct.close();
 ## Verify without trusting anyone
 
 ```js
-import { verifySolanaInstruction, verifyEvmExecute } from "@opeq/sdk";
+import { verifySolanaInstruction, verifyEvmExecute } from "@opeqlabs/sdk";
 
 verifySolanaInstruction(data, accountKeys, { pubSeed, root, aid, epoch });
 verifyEvmExecute(calldata, { chainId, account, epoch, pubSeed, root });
@@ -94,7 +94,7 @@ Both return the one-time key index, or `null` if the signature does not match or
 
 ## Speed
 
-Building a key tree takes about 2 seconds on Solana and about 10 seconds on EVM in Node on a laptop. Signing takes under a second. EVM `setup()` builds three trees, so it takes about a minute. In a browser, pass `new Vault({ compute })` with a `run(op, args)` that hands the job to a Web Worker running `OPS` from `@opeq/sdk/compute`, so the page does not freeze.
+Building a key tree takes about 2 seconds on Solana and about 10 seconds on EVM in Node on a laptop. Signing takes under a second. EVM `setup()` builds three trees, so it takes about a minute. In a browser, pass `new Vault({ compute })` with a `run(op, args)` that hands the job to a Web Worker running `OPS` from `@opeqlabs/sdk/compute`, so the page does not freeze.
 
 ## RPC
 

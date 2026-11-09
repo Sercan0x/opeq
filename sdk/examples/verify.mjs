@@ -1,4 +1,4 @@
-import { NETWORKS, verifySolanaInstruction, b58decode, b58encode, lowLevel } from "@opeq/sdk";
+import { NETWORKS, verifySolanaInstruction, b58decode, b58encode, lowLevel } from "@opeqlabs/sdk";
 
 const [, , rpcUrl, signature, network = "mainnet"] = process.argv;
 if (!rpcUrl || !signature) throw new Error("usage: node verify.mjs <solana rpc> <transaction signature> [mainnet|devnet]");

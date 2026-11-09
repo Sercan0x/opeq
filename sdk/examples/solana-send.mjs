@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Vault, NETWORKS } from "@opeq/sdk";
-import { FileStore } from "@opeq/sdk/filestore";
+import { Vault, NETWORKS } from "@opeqlabs/sdk";
+import { FileStore } from "@opeqlabs/sdk/filestore";
 
 const [, , cmd, ...rest] = process.argv;
 const network = process.env.OPEQ_NETWORK || "devnet";
