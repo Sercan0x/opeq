@@ -26,6 +26,7 @@ export const EVM_CHAINS = Object.freeze({
   8453: Object.freeze({ chainId: 8453, name: "Base", symbol: "ETH", explorer: "https://basescan.org" }),
   42161: Object.freeze({ chainId: 42161, name: "Arbitrum", symbol: "ETH", explorer: "https://arbiscan.io" }),
   4663: Object.freeze({ chainId: 4663, name: "Robinhood Chain", symbol: "ETH", explorer: "https://robinhoodchain.blockscout.com" }),
+  99901: Object.freeze({ chainId: 99901, name: "Elysium", symbol: "HYPE", explorer: "https://elysium.kinetiq.xyz/explorer" }),
   84532: Object.freeze({ chainId: 84532, name: "Base Sepolia", symbol: "ETH", explorer: "https://sepolia.basescan.org" }),
   31337: Object.freeze({ chainId: 31337, name: "Local", symbol: "ETH", explorer: "" }),
 });

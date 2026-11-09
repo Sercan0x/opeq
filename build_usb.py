@@ -6,7 +6,7 @@ import shutil
 import zipfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 CHECKS = os.path.join(ROOT, "web", "usb")
 USB = os.path.join(ROOT, "usb")
 SRC = os.path.join(ROOT, "build", "extension-mainnet")

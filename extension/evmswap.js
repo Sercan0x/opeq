@@ -170,7 +170,7 @@ export function initEvmSwap(ctx) {
       if (LOOKS_PINNED.includes(t.symbol.toUpperCase()) || t.symbol.toUpperCase() === c.chain.symbol.toUpperCase()) notes.push({ text: `This token calls itself ${t.symbol} but it is not the ${t.symbol} this wallet knows. Anyone can create a token with any name. Do not swap unless you are sure of the contract address.`, warn: true });
       else notes.push({ text: `${t.symbol} is a token you added. Anyone can create a token with any name, and some tokens take a fee on every transfer, behave differently on chain than in the test run, or can't be sold later; with those you can receive less than the minimum shown. Check the contract address.`, warn: true });
     }
-    if (top) notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18)} ETH from your account to it for future network fees.` });
+    if (top) notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18)} ${c.chain.symbol} from your account to it for future network fees.` });
     if (!(await ctx.ask({ ...ctx.tag(), title: `Swap ${formatUnits(amount, a.decimals)} ${a.symbol} for ${b.symbol}`, rows, notes }, "Swap"))) return;
     if (ctx.chain() !== c) throw new Error("the network changed. Nothing was signed");
     if (Date.now() - quotedAt > FRESH_S * 1000) throw new Error("this price is more than a minute old. Nothing was signed; review the swap again");

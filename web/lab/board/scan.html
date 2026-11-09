@@ -39,7 +39,7 @@
     <p class="more" id="r-more"></p>
     <div class="actions" id="r-actions">
       <a class="btn btn-solid" href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer">Get OPEQ for Chrome</a>
-      <a class="btn btn-line" href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.4.1" target="_blank" rel="noopener noreferrer">OPEQ on a USB drive</a>
+      <a class="btn btn-line" href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.5.0" target="_blank" rel="noopener noreferrer">OPEQ on a USB drive</a>
       <button class="btn btn-line" id="r-copy" type="button">Copy result</button>
     </div>
   </section>
@@ -47,8 +47,8 @@
   <section class="notes">
     <h2>How this check works</h2>
     <p>The page decodes the address and tests whether it is a point on the Ed25519 curve. A point on the curve is a public key, so a private key exists behind it. An address off the curve belongs to a program and has no private key of its own.</p>
-    <p>For an EVM address, the page asks Ethereum, Base, Arbitrum and Robinhood Chain whether the address has ever sent a transaction and whether it holds contract code. A signed transaction reveals the public key; a smart contract has no private key of its own. Only native ETH is counted.</p>
-    <p>Balances come from Solana mainnet and the four EVM networks through rpc.opeq.io, and dollar values from Jupiter's price API. The address you paste is sent to them to look up the balance. OPEQ does not store it, and it never leaves this page in any other way.</p>
+    <p>For an EVM address, the page asks Ethereum, Base, Arbitrum, Robinhood Chain and Elysium whether the address has ever sent a transaction and whether it holds contract code. A signed transaction reveals the public key; a smart contract has no private key of its own. Only native ETH is counted.</p>
+    <p>Balances come from Solana mainnet and the five EVM networks through rpc.opeq.io, and dollar values from Jupiter's price API. The address you paste is sent to them to look up the balance. OPEQ does not store it, and it never leaves this page in any other way.</p>
     <p>Nothing here means a quantum computer can do this today. It means the key is already public, so the coins are waiting for the day one can.</p>
     <p>OPEQ never asks for your recovery words or seed phrase, and has no migration or claim tool. Anyone who does is a scammer.</p>
   </section>

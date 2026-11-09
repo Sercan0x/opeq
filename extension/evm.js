@@ -35,7 +35,7 @@ function bar(id, frac) {
 }
 
 const CHAIN_KEY = "opeq:chain";
-const COLORS = { 1: "#627eea", 8453: "#0052ff", 84532: "#0052ff", 42161: "#28a0f0", 421614: "#28a0f0", 4663: "#ccff00", 11155111: "#627eea" };
+const COLORS = { 1: "#627eea", 8453: "#0052ff", 84532: "#0052ff", 42161: "#28a0f0", 421614: "#28a0f0", 4663: "#ccff00", 99901: "#97fce4", 11155111: "#627eea" };
 let picked = "sol";
 function net() { return NETS.find((n) => String(n.chainId) === picked) || NETS[0]; }
 const evmOn = () => picked !== "sol";

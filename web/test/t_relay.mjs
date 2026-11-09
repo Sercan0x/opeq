@@ -10,10 +10,11 @@ const SOL_USER = "5Tdzw7ytncu1LgF9cTdbc6oqzEJ9EVQgnGy8JWrfrsn4";
 const user = (id) => (R.isSolana(id) ? SOL_USER : EVM_USER);
 const now = () => Math.floor(Date.now() / 1000);
 
-ok(R.destinations(R.SOLANA_ID).join() === "1,4663,8453,42161", "Solana bridges to all four EVM networks");
+ok(R.destinations(R.SOLANA_ID).join() === "1,4663,8453,42161,99901", "Solana bridges to all five EVM networks");
 ok(R.kinds(4663, 8453).join() === "native", "Robinhood bridges ETH only");
 ok(R.kinds(8453, R.SOLANA_ID).join() === "native,usdc", "Base to Solana offers ETH/SOL and USDC");
 ok(R.kinds(8453, 8453).length === 0, "no bridge to the same network");
+ok(R.kinds(8453, 99901).join() === "native,usdc" && R.kinds(99901, 8453).join() === "usdc" && R.kinds(99901, R.SOLANA_ID).join() === "usdc", "HYPE bridges into Elysium only; USDC both ways");
 throws(() => R.request({ from: 4663, to: 8453, kind: "usdc", amount: 1n, user: EVM_USER, recipient: EVM_USER, slippageBps: 100 }), /not supported/, "unsupported asset refused");
 throws(() => R.request({ from: 8453, to: 42161, kind: "native", amount: 1n, user: EVM_USER, recipient: EVM_USER, slippageBps: 900 }), /slippage/, "slippage above the cap refused");
 throws(() => R.request({ from: 8453, to: R.SOLANA_ID, kind: "native", amount: 1n, user: EVM_USER, recipient: EVM_USER, slippageBps: 100 }), /address/, "an EVM address as a Solana receiver refused");
@@ -26,6 +27,9 @@ const ROUTES = [
   [R.SOLANA_ID, 42161, "usdc", 5000000n],
   [4663, 8453, "native", 1000000000000000n],
   [1, 8453, "native", 3000000000000000n],
+  [8453, 99901, "native", 1000000000000000n],
+  [R.SOLANA_ID, 99901, "native", 10000000n],
+  [99901, 8453, "usdc", 5000000n],
 ];
 const live = [];
 for (const [from, to, kind, amount] of ROUTES) {
@@ -63,6 +67,16 @@ if (live.length) {
   tamper("refund chain as a prototype key", (t) => { t.protocol.v2.orderData.inputs[0].refunds[0].chainId = "constructor"; }, /another network/);
   tamper("missing order data", (t) => { delete t.protocol; }, /no order data/);
   tamper("malformed amount", (t) => { t.protocol.v2.orderData.output.payments[0].expectedAmount = "1e30"; }, /malformed/);
+  const ely = live.find((l) => l.req.destinationChainId === 99901 && l.req.originChainId === 8453);
+  if (ely) {
+    const et = (label, f, re) => { const t = clone(ely.q); f(t); throws(() => R.check(t, ely.req, now()), re, label); };
+    const at = (q, chain) => q.protocol.v2.orderData.inputs[0].refunds.find((r) => r.chainId === chain);
+    ok(at(ely.q, "elysium") && at(ely.q, "elysium").currency.toLowerCase() === R.DEST_REFUND[99901], "Relay refunds HYPE orders in USDC on Elysium, and that passes");
+    et("Elysium refund in an unknown token", (t) => { at(t, "elysium").currency = "0x000000000000000000000000000000000000dead"; }, /another asset/);
+    et("Elysium USDC refund to someone else", (t) => { at(t, "elysium").recipient = "0x000000000000000000000000000000000000dead"; }, /someone else/);
+    et("Elysium USDC used as the sending refund", (t) => { at(t, "base").currency = R.DEST_REFUND[99901]; }, /another asset/);
+    et("Elysium order paid out in USDC instead of HYPE", (t) => { t.protocol.v2.orderData.output.payments[0].currency = R.DEST_REFUND[99901]; }, /different asset/);
+  }
   const t = clone(q);
   t.steps[t.steps.length - 1].items[0].data.data = t.steps[t.steps.length - 1].items[0].data.data.slice(0, -2) + "00";
   const c = R.check(q, req, now());

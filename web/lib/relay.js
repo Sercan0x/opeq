@@ -24,7 +24,7 @@ const SEL = {
   approve: sel("approve(address,uint256)"),
 };
 
-export const NAMES = { 1: "ethereum", 8453: "base", 42161: "arbitrum", 4663: "robinhood", [SOLANA_ID]: "solana" };
+export const NAMES = { 1: "ethereum", 8453: "base", 42161: "arbitrum", 4663: "robinhood", 99901: "elysium", [SOLANA_ID]: "solana" };
 const ZERO = "0x0000000000000000000000000000000000000000";
 export const ASSETS = {
   [SOLANA_ID]: {
@@ -35,13 +35,16 @@ export const ASSETS = {
   8453: { native: { symbol: "ETH", decimals: 18, address: ZERO }, usdc: { symbol: "USDC", decimals: 6, address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" } },
   42161: { native: { symbol: "ETH", decimals: 18, address: ZERO }, usdc: { symbol: "USDC", decimals: 6, address: "0xaf88d065e77c8cc2239327c5edb3a432268e5831" } },
   4663: { native: { symbol: "ETH", decimals: 18, address: ZERO } },
+  99901: { native: { symbol: "HYPE", decimals: 18, address: ZERO, inOnly: true }, usdc: { symbol: "USDC", decimals: 6, address: "0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65" } },
 };
 
 export const isSolana = (id) => id === SOLANA_ID;
 
+export const DEST_REFUND = { 99901: "0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65" };
+
 export function kinds(from, to) {
   if (from === to || !ASSETS[from] || !ASSETS[to]) return [];
-  return Object.keys(ASSETS[from]).filter((k) => ASSETS[to][k]);
+  return Object.keys(ASSETS[from]).filter((k) => ASSETS[to][k] && !ASSETS[from][k].inOnly);
 }
 
 export function destinations(from) {
@@ -119,7 +122,8 @@ export function check(q, req, nowS) {
     if (chain === null) bad("refund on another network");
     const mine = chain === from ? req.user : req.recipient;
     if (!sameAddress(chain, rf.recipient, mine)) bad("refund goes to someone else");
-    if (!sameAddress(chain, rf.currency, chain === from ? req.originCurrency : req.destinationCurrency)) bad("refund in another asset");
+    const alt = chain === to && from !== to && DEST_REFUND[to] && sameAddress(chain, rf.currency, DEST_REFUND[to]);
+    if (!alt && !sameAddress(chain, rf.currency, chain === from ? req.originCurrency : req.destinationCurrency)) bad("refund in another asset");
     if (chain === from) originRefund = true;
   }
   if (!originRefund) bad("no refund on the sending network");

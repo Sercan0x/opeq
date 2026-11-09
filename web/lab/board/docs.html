@@ -64,15 +64,15 @@
   <h2 id="overview">Overview</h2>
   <p>opeq is a wallet built to resist quantum computers. Your funds sit in an address that has no private key at all, and the code on chain moves them only after it checks a hash-based signature (WOTS+ in a Merkle tree, the same family as NIST's SLH-DSA). Nothing in any network protocol has to change.</p>
   <dl class="list">
-    <div><dt>Networks</dt><dd>Solana, plus four EVM networks: Ethereum, Base, Arbitrum and Robinhood Chain.</dd></div>
+    <div><dt>Networks</dt><dd>Solana, plus five EVM networks: Ethereum, Base, Arbitrum, Robinhood Chain and Elysium.</dd></div>
     <div><dt>Apps</dt><dd>OPEQ Wallet for Chrome, and OPEQ USB, a wallet that runs from a USB drive on Windows. A devnet test wallet runs on this website.</dd></div>
     <div><dt>One set of words</dt><dd>24 standard BIP39 words open your Solana wallet and your EVM account on every network.</dd></div>
     <div><dt>Bridge</dt><dd>Move SOL, ETH and USDC between Solana and the EVM networks, always to your own address, with no OPEQ fee.</dd></div>
-    <div><dt>Optional multisig</dt><dd>Shared vaults that move funds only after several opeq wallets approve, on Solana and all four EVM networks.</dd></div>
+    <div><dt>Optional multisig</dt><dd>Shared vaults that move funds only after several opeq wallets approve, on Solana and all five EVM networks.</dd></div>
     <div><dt>Open source</dt><dd>Apache 2.0, at <a href="https://github.com/Sercan0x/opeq" target="_blank" rel="noopener noreferrer">github.com/Sercan0x/opeq</a>.</dd></div>
   </dl>
   <h3>Why it matters</h3>
-  <p class="intro">Every Solana and EVM account today is protected by an elliptic-curve signature: Ed25519 on Solana, secp256k1 on Ethereum, Base, Arbitrum and Robinhood Chain. Their safety rests on one assumption: you can't work out a private key from its public key.</p>
+  <p class="intro">Every Solana and EVM account today is protected by an elliptic-curve signature: Ed25519 on Solana, secp256k1 on Ethereum, Base, Arbitrum, Robinhood Chain and Elysium. Their safety rests on one assumption: you can't work out a private key from its public key.</p>
         <h4>Shor's algorithm</h4>
         <p>In 1994 Peter Shor showed that a large enough quantum computer solves exactly that problem. Ed25519, secp256k1 and every elliptic curve in use today fall to it.</p>
         <h4>Your address is the key</h4>
@@ -86,7 +86,7 @@
   <p>Install <a href="https://chromewebstore.google.com/detail/ppddghgloaomicpgkpodjenaogmhhijj" target="_blank" rel="noopener noreferrer">OPEQ Wallet from the Chrome Web Store</a>. Choose Create, set a password of at least 10 characters, write down the 24 words and confirm three of them. The wallet opens in the toolbar popup or in a full tab.</p>
   <h3>USB edition (Windows)</h3>
   <ol class="steps">
-    <li>Download <a href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.4.1" target="_blank" rel="noopener noreferrer">OPEQ-USB.zip from GitHub</a> and choose Extract All. It won't run from inside the zip.</li>
+    <li>Download <a href="https://github.com/Sercan0x/opeq/releases/tag/usb-v1.5.0" target="_blank" rel="noopener noreferrer">OPEQ-USB.zip from GitHub</a> and choose Extract All. It won't run from inside the zip.</li>
     <li>Copy the OPEQ-USB folder to your USB drive. The encrypted wallet will live on the drive.</li>
     <li>Double-click OPEQ. It first checks its own files against the release list on opeq.io and refuses to open a changed copy.</li>
     <li>It opens in its own Chrome or Edge window with a throwaway profile that is deleted when you close it. Pull the drive out and the wallet locks and the window closes.</li>
@@ -116,10 +116,10 @@
   <h2 id="evm">EVM accounts</h2>
   <p>Every regular EVM address is an ECDSA key that a quantum computer could break once its public key has been seen. opeq gives you a smart-contract account instead. It holds your funds and moves them only after it checks a hash-based signature, the same scheme as on Solana, built on keccak256.</p>
   <dl class="list">
-    <div><dt>Same address</dt><dd>Your account has the same address on Ethereum, Base, Arbitrum and Robinhood Chain. Receive only on these four: funds sent to it on any other network can't be used.</dd></div>
+    <div><dt>Same address</dt><dd>Your account has the same address on Ethereum, Base, Arbitrum, Robinhood Chain and Elysium. Receive only on these five: funds sent to it on any other network can't be used.</dd></div>
     <div><dt>Separate keys per network</dt><dd>Each network gets its own key trees, so a one-time key is never shared between networks.</dd></div>
     <div><dt>What you can do</dt><dd>Send and receive ETH and ERC-20 tokens (add a token by its contract), swap on Uniswap, bridge, receive NFTs, rekey, and use multisig. Some exchanges can't withdraw to smart-contract accounts: send a small test amount first.</dd></div>
-    <div><dt>Costs</dt><dd>About 170,000 to 200,000 gas per send. On Base, Arbitrum and Robinhood Chain that is usually a cent or less; on Ethereum it depends on the gas price.</dd></div>
+    <div><dt>Costs</dt><dd>About 170,000 to 200,000 gas per send. On Base, Arbitrum, Robinhood Chain and Elysium (paid in HYPE) that is usually a cent or less; on Ethereum it depends on the gas price.</dd></div>
     <div><dt>Two sources</dt><dd>The wallet reads every network through two independent RPC sources and refuses to continue when they disagree.</dd></div>
   </dl>
 
@@ -144,11 +144,11 @@
   </dl>
 
   <h2 id="bridge">Bridge</h2>
-  <p>Move funds between Solana and Ethereum, Base, Arbitrum and Robinhood Chain from inside the wallet: the Bridge tab on Solana and on each EVM network. The bridge is run by <a href="https://relay.link" target="_blank" rel="noopener noreferrer">Relay</a>. OPEQ takes no fee; Relay's fee is shown before you sign.</p>
+  <p>Move funds between Solana and Ethereum, Base, Arbitrum, Robinhood Chain and Elysium from inside the wallet: the Bridge tab on Solana and on each EVM network. The bridge is run by <a href="https://relay.link" target="_blank" rel="noopener noreferrer">Relay</a>. OPEQ takes no fee; Relay's fee is shown before you sign.</p>
   <h3>How to use it</h3>
   <ol class="steps">
     <li><b>Set up the other side first.</b> Funds always go to your own opeq address on the other network, so that account must exist: activated on Solana, Set up on an EVM network. The wallet tells you if it doesn't.</li>
-    <li><b>Pick the network, the asset and the amount.</b> SOL, ETH and USDC between Solana, Ethereum, Base and Arbitrum; ETH only on Robinhood Chain. You can set how much the price may move before the bridge cancels, up to 3%.</li>
+    <li><b>Pick the network, the asset and the amount.</b> SOL, ETH and USDC between Solana, Ethereum, Base and Arbitrum; ETH only on Robinhood Chain; on Elysium, HYPE in from any network and USDC both ways. You can set how much the price may move before the bridge cancels, up to 3%.</li>
     <li><b>Review.</b> The confirmation shows what you send, what you receive and the minimum, your address on the other network, Relay's fee and the expected time.</li>
     <li><b>Bridge.</b> The wallet signs the deposit with a one-time key and follows the bridge until Relay reports it done, usually within seconds. The Relay request id is in the activity log, so you can look it up on relay.link.</li>
   </ol>
@@ -161,7 +161,7 @@
   <table class="tbl">
     <thead><tr><th scope="col">Relay deposit contract</th><th scope="col">Address</th></tr></thead>
     <tbody>
-      <tr><th scope="row">EVM (all four networks, non-upgradable)</th><td class="addr">0x4cd00e387622c35bddb9b4c962c136462338bc31</td></tr>
+      <tr><th scope="row">EVM (all five networks, non-upgradable)</th><td class="addr">0x4cd00e387622c35bddb9b4c962c136462338bc31</td></tr>
       <tr><th scope="row">Solana program</th><td class="addr">99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2</td></tr>
     </tbody>
   </table>
@@ -253,7 +253,7 @@
       </div>
     </div>
   
-  <p class="quiet">On Ethereum, Base, Arbitrum and Robinhood Chain the same scheme runs inside a smart-contract account: the same ladders and tree, with keccak256 in place of SHA-256, and a small gas key paying the fees instead of the fee key.</p>
+  <p class="quiet">On Ethereum, Base, Arbitrum, Robinhood Chain and Elysium the same scheme runs inside a smart-contract account: the same ladders and tree, with keccak256 in place of SHA-256, and a small gas key paying the fees instead of the fee key.</p>
   <h3>Compared</h3>
   <table class="tbl">
       <thead><tr><th scope="col"></th><th scope="col">Ed25519 wallet</th><th scope="col">Winternitz vault</th><th scope="col">opeq</th></tr></thead>
@@ -331,8 +331,8 @@ costs
 
   <h2 id="spec-evm">EVM specification</h2>
   <dl class="params">
-  <div><dt>networks</dt><dd><span>Ethereum (1), Base (8453), Arbitrum (42161), Robinhood Chain (4663)</span></dd></div>
-  <div><dt>account factory</dt><dd><span>0xa9993f90af137adc80c70814d27fe4ecc773b50b, same address on all four, no owner</span></dd></div>
+  <div><dt>networks</dt><dd><span>Ethereum (1), Base (8453), Arbitrum (42161), Robinhood Chain (4663), Elysium (99901)</span></dd></div>
+  <div><dt>account factory</dt><dd><span>0xa9993f90af137adc80c70814d27fe4ecc773b50b, same address on all five, no owner</span></dd></div>
   <div><dt>one-time signature</dt><dd><span>WOTS+ as on Solana, n = 16 bytes, w = 256, 18 chains, with keccak256 instead of SHA-256</span></dd></div>
   <div><dt>proof size</dt><dd><span>448 B (288 B signature + 160 B Merkle path)</span></dd></div>
   <div><dt>merkle tree</dt><dd><span>height 10, 1024 leaves</span><span>leaves 0..959 sign calls, 960..1023 only rekeys and device takeovers</span></dd></div>
@@ -357,7 +357,7 @@ rekey(new pub_seed, new root, leaf, deadline, salt, rnd, proof)</pre>
   <p class="quiet">Optional and separate from the wallet: a normal opeq wallet never needs it. Every owner is an opeq wallet or opeq account, so each approval is that owner's own hash-based signature. A proposal stores the full instructions or calls on chain, so every owner approves exactly what will run. Owner and threshold changes are proposals too, and they void every open proposal.</p>
 <dl class="params">
   <div><dt>Solana program</dt><dd><span>3qjjDf8MdqDTFmBm3zJfKFqZKbZ5xgZM1ntGYVeqEuHB</span><span>code sha256 83ff2e876a98bccc62080f739792860c0b964355b9848c0cf6695dee28fc222c</span><span>upgrade key: the admin opeq wallet, locked after the external audit</span></dd></div>
-  <div><dt>EVM factory</dt><dd><span>0x260e85a98575012b816605b0feacb6cfdde78cef on all four networks, immutable</span></dd></div>
+  <div><dt>EVM factory</dt><dd><span>0x260e85a98575012b816605b0feacb6cfdde78cef on all five networks, immutable</span></dd></div>
   <div><dt>owners</dt><dd><span>Solana: up to 8 opeq wallets, named by their owner ID (account id)</span><span>EVM: up to 10 opeq accounts, checked by code hash</span></dd></div>
   <div><dt>Solana addresses (PDAs)</dt><dd><span>multisig = ["m", creator, nonce 32]</span><span>deposit address = ["v", multisig]</span><span>proposal = ["p", multisig, proposer, config u32, seq u32]</span></dd></div>
   <div><dt>EVM vault address</dt><dd><span>CREATE2 from (owners, threshold, nonce): the same on every network</span></dd></div>
@@ -393,8 +393,8 @@ execute(id, calls)        setOwners / setThreshold
       <tr><th scope="row">Swap lookup table (frozen)</th><td class="addr">FqmZkMZWoA3Z5c5epD9M1PSDts44iBojrqGyxE6xcJEq</td></tr>
       <tr><th scope="row">Multisig program (Solana)</th><td class="addr">3qjjDf8MdqDTFmBm3zJfKFqZKbZ5xgZM1ntGYVeqEuHB</td></tr>
       <tr><th scope="row">Its code sha256</th><td class="addr">83ff2e876a98bccc62080f739792860c0b964355b9848c0cf6695dee28fc222c</td></tr>
-      <tr><th scope="row">EVM account factory (all four networks)</th><td class="addr">0xa9993f90af137adc80c70814d27fe4ecc773b50b</td></tr>
-      <tr><th scope="row">EVM multisig factory (all four networks)</th><td class="addr">0x260e85a98575012b816605b0feacb6cfdde78cef</td></tr>
+      <tr><th scope="row">EVM account factory (all five networks)</th><td class="addr">0xa9993f90af137adc80c70814d27fe4ecc773b50b</td></tr>
+      <tr><th scope="row">EVM multisig factory (all five networks)</th><td class="addr">0x260e85a98575012b816605b0feacb6cfdde78cef</td></tr>
     </tbody>
   </table>
   <p class="quiet">Both Solana programs are reproducible from the source: the README shows the commands that print the hashes above.</p>
@@ -414,7 +414,7 @@ execute(id, calls)        setOwners / setThreshold
 
   <h2 id="faq">Questions</h2>
   <div class="faqs">
-      <details><summary>Is opeq live?</summary><p>Yes, as a beta on Solana mainnet and on Ethereum, Base, Arbitrum and Robinhood Chain. Start with small amounts.</p></details>
+      <details><summary>Is opeq live?</summary><p>Yes, as a beta on Solana mainnet and on Ethereum, Base, Arbitrum, Robinhood Chain and Elysium. Start with small amounts.</p></details>
       <details><summary>When will quantum computers break Ed25519?</summary><p>Nobody knows. Published estimates range from five to twenty years. What is certain is that network-wide migrations take years, and that on Solana every public key is already visible on chain, as is the key of every EVM address that has sent a transaction.</p></details>
       <details><summary>Why not wait for Solana or Ethereum to add post-quantum signatures?</summary><p>A Falcon verification syscall has been proposed for Solana (SIMD-0416), and Ethereum researchers are working on post-quantum plans too. Protocol migrations are slow. opeq works today, on the networks as they are, and can adopt new signature types later.</p></details>
       <details><summary>Do I get a new address?</summary><p>Yes. Your opeq wallet is a new address. You move funds into it like into any other address. After that the address never changes.</p></details>
@@ -427,9 +427,9 @@ execute(id, calls)        setOwners / setThreshold
       <details><summary>Why are the signatures so big?</summary><p>Hash-based signatures trade size for safety. 288 bytes of signature plus 160 bytes of Merkle path, 448 bytes in total, against 64 bytes for Ed25519. It still fits in one transaction, together with a swap.</p></details>
       <details><summary>Which apps work?</summary><p>Any program that accepts a signer. Tested: system transfers, SPL Token, Token-2022, associated token accounts, Memo, and swaps through Jupiter on mainnet. Large transactions need address lookup tables, which opeq supports. Programs that demand an Ed25519 signature from the wallet itself can't work with any program-based wallet.</p></details>
       <details><summary>How does opeq work on EVM networks?</summary><p>Every EVM address you know is an ECDSA key that a quantum computer could break once its public key is seen. opeq gives you a smart-contract account instead. It holds your funds and moves them only after it checks a hash-based signature, the same scheme as on Solana, built on keccak256. The account has the same address on Ethereum, Base, Arbitrum and Robinhood Chain. Press Set up once per network. A small gas key derived from your words pays the fees and can't move your funds.</p></details>
-      <details><summary>What does an EVM transaction cost?</summary><p>About 170,000 to 200,000 gas for a send. On Base, Arbitrum and Robinhood Chain that is usually a cent or less; on Ethereum it depends on the gas price. Set up on a network costs a few transactions once.</p></details>
-      <details><summary>What is a multisig?</summary><p>A shared vault that moves funds only after several opeq wallets approve, for example 2 of 3. Each owner shares their owner ID (Solana) or account address (EVM), one owner creates the vault, any owner proposes a payment, and it runs once enough owners approve. Each approval is a one-time hash-based signature from that owner's own wallet. It is optional, in the Multisig tab, on Solana and all four EVM networks.</p></details>
-      <details><summary>Can I move funds between Solana and EVM?</summary><p>Yes, with the Bridge tab on Solana and on each EVM network. It moves SOL, ETH and USDC (ETH only on Robinhood Chain), always to your own opeq address on the other network, through Relay. The wallet checks Relay's order before you sign. The deposit carries your quantum-resistant signature; Relay's delivery on the other side does not, so you rely on Relay for the few seconds until it arrives. OPEQ takes no fee.</p></details>
+      <details><summary>What does an EVM transaction cost?</summary><p>About 170,000 to 200,000 gas for a send. On Base, Arbitrum, Robinhood Chain and Elysium (paid in HYPE) that is usually a cent or less; on Ethereum it depends on the gas price. Set up on a network costs a few transactions once.</p></details>
+      <details><summary>What is a multisig?</summary><p>A shared vault that moves funds only after several opeq wallets approve, for example 2 of 3. Each owner shares their owner ID (Solana) or account address (EVM), one owner creates the vault, any owner proposes a payment, and it runs once enough owners approve. Each approval is a one-time hash-based signature from that owner's own wallet. It is optional, in the Multisig tab, on Solana and all five EVM networks.</p></details>
+      <details><summary>Can I move funds between Solana and EVM?</summary><p>Yes, with the Bridge tab on Solana and on each EVM network. It moves SOL, ETH and USDC (ETH only on Robinhood Chain; on Elysium, HYPE comes in from any network and USDC goes both ways), always to your own opeq address on the other network, through Relay. The wallet checks Relay's order before you sign. The deposit carries your quantum-resistant signature; Relay's delivery on the other side does not, so you rely on Relay for the few seconds until it arrives. OPEQ takes no fee.</p></details>
       <details><summary>Can I swap on EVM networks?</summary><p>Yes, with the Swap tab on each EVM network, through Uniswap. The pinned stablecoin is USDC, and USDG on Robinhood Chain. The wallet gets the price from Uniswap's own contracts on both network sources, builds the swap itself, and test-runs it as your account before you sign. The tokens come straight back to your account, and if Uniswap would pay out less than the minimum you accepted, the whole swap is undone. OPEQ takes no fee.</p></details>
       <details><summary>Can websites connect to opeq?</summary><p>No, on purpose. opeq signs only transactions you build inside the wallet. No site can ask it for a signature, so wallet drainers and fake approval requests can't reach it. Type your 24 words only into the OPEQ Chrome extension or the OPEQ USB app.</p></details>
       <details><summary>Could the opeq team steal my funds?</summary><p>The program can be upgraded, and whoever controls upgrades could change it. The upgrade key is itself an opeq wallet held by the developer, on a governance program nobody can change. There is no timelock yet, so an upgrade takes effect at once. The Solana multisig program has the same upgrade key until the external audit, then it will be locked. The EVM contracts have no owner and can't be upgraded by anyone. Upgrades are announced on @opeqio, and a timelock or an immutable program is on the roadmap.</p></details>

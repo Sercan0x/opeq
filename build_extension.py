@@ -21,6 +21,7 @@ EVM_MAINNETS = [
     {"chainId": 8453, "name": "Base", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/8453", "check": "https://mainnet.base.org", "explorer": "https://basescan.org"},
     {"chainId": 42161, "name": "Arbitrum", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/42161", "check": "https://arb1.arbitrum.io/rpc", "explorer": "https://arbiscan.io"},
     {"chainId": 4663, "name": "Robinhood Chain", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/4663", "check": "https://rpc.mainnet.chain.robinhood.com", "explorer": "https://robinhoodchain.blockscout.com"},
+    {"chainId": 99901, "name": "Elysium", "symbol": "HYPE", "rpc": "https://rpc.opeq.io/evm/99901", "check": "https://rpc.elysium.kinetiq.xyz", "explorer": "https://elysium.kinetiq.xyz/explorer"},
     {"chainId": 1, "name": "Ethereum", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/1", "check": "https://ethereum-rpc.publicnode.com", "explorer": "https://etherscan.io"},
 ]
 EVM_TESTNETS = [{"chainId": 84532, "name": "Base Sepolia", "symbol": "ETH", "rpc": "https://sepolia.base.org", "check": "https://base-sepolia-rpc.publicnode.com", "explorer": "https://sepolia.basescan.org"}]
@@ -211,8 +212,8 @@ def build(args):
                         raise SystemExit(f"devnet leftovers {hit} in mainnet build: {n}")
     if cfg["mainnet"]:
         ids = sorted(n["chainId"] for n in cfg["evm"])
-        if ids != [1, 4663, 8453, 42161] or any(not (n["rpc"].startswith("https://rpc.opeq.io/evm/") and n["check"].startswith("https://") and n["explorer"].startswith("https://")) for n in cfg["evm"]):
-            raise SystemExit("mainnet EVM networks must be exactly Ethereum, Base, Arbitrum and Robinhood Chain over rpc.opeq.io")
+        if ids != [1, 4663, 8453, 42161, 99901] or any(not (n["rpc"].startswith("https://rpc.opeq.io/evm/") and n["check"].startswith("https://") and n["explorer"].startswith("https://")) for n in cfg["evm"]):
+            raise SystemExit("mainnet EVM networks must be exactly Ethereum, Base, Arbitrum, Robinhood Chain and Elysium over rpc.opeq.io")
         with open(os.path.join(dist, "net.js"), encoding="utf-8") as f:
             netjs = f.read().lower()
         if any(w in netjs for w in ("sepolia", "testnet", "devnet", "goerli", "holesky")):

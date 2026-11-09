@@ -7,7 +7,7 @@ const PRICE = "https://lite-api.jup.ag/price/v3?ids=";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SYSTEM = "11111111111111111111111111111111";
 const ETH_MINT = "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs";
-const EVM = [[1, "Ethereum"], [8453, "Base"], [42161, "Arbitrum"], [4663, "Robinhood Chain"]];
+const EVM = [[1, "Ethereum"], [8453, "Base"], [42161, "Arbitrum"], [4663, "Robinhood Chain"], [99901, "Elysium", "HYPE"]];
 const SHOWN = 6;
 const LABELS = 10;
 
@@ -80,15 +80,15 @@ async function evmCall(chain, method, params) {
 }
 
 async function evmState(addr) {
-  const out = await Promise.all(EVM.map(async ([id, name]) => {
+  const out = await Promise.all(EVM.map(async ([id, name, sym = "ETH"]) => {
     try {
       const [nonce, bal, code] = await Promise.all([evmCall(id, "eth_getTransactionCount", [addr, "latest"]), evmCall(id, "eth_getBalance", [addr, "latest"]), evmCall(id, "eth_getCode", [addr, "latest"])]);
-      return { id, name, ok: true, nonce: Number(BigInt(nonce)), wei: BigInt(bal), code: code.toLowerCase() };
-    } catch { return { id, name, ok: false }; }
+      return { id, name, sym, ok: true, nonce: Number(BigInt(nonce)), wei: BigInt(bal), code: code.toLowerCase() };
+    } catch { return { id, name, sym, ok: false }; }
   }));
   if (!out.some((c) => c.ok)) throw new Error("rpc");
   const px = (await prices([ETH_MINT])).get(ETH_MINT);
-  const rows = out.filter((c) => c.ok && c.wei > 0n).map((c) => ({ sym: `ETH on ${c.name}`, amount: units(c.wei, 18), usd: px ? (Number(c.wei) / 1e18) * px : null }));
+  const rows = out.filter((c) => c.ok && c.wei > 0n).map((c) => ({ sym: `${c.sym} on ${c.name}`, amount: units(c.wei, 18), usd: px && c.sym === "ETH" ? (Number(c.wei) / 1e18) * px : null }));
   rows.sort((a, b) => (b.usd ?? -1) - (a.usd ?? -1));
   const total = rows.reduce((s, r) => s + (r.usd || 0), 0);
   const unpriced = rows.filter((r) => r.usd === null).length;
@@ -123,7 +123,7 @@ function render(kind, title, say, h) {
   const rest = h.rows.length - SHOWN;
   const notes = [];
   if (rest > 0) notes.push(`and ${rest} more token${rest === 1 ? "" : "s"}`);
-  if (h.evm) notes.push("Native ETH only, on Ethereum, Base, Arbitrum and Robinhood Chain; ERC-20 tokens and other networks are not counted");
+  if (h.evm) notes.push("Native ETH and HYPE only, on Ethereum, Base, Arbitrum, Robinhood Chain and Elysium; ERC-20 tokens and other networks are not counted");
   if (h.failed && h.failed.length) notes.push(`could not reach ${h.failed.join(", ")}`);
   if (h.unpriced) notes.push(`${h.unpriced} without a market price, not counted in the total`);
   if (!h.rows.length) notes.push("This address holds nothing right now.");

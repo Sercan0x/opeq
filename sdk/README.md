@@ -75,7 +75,7 @@ await base.execute([{ to: token, value: 0n, data: "0xa9059cbb..." }]);
 acct.close();
 ```
 
-- Chains: 1 (Ethereum), 8453 (Base), 42161 (Arbitrum), 4663 (Robinhood Chain).
+- Chains: 1 (Ethereum), 8453 (Base), 42161 (Arbitrum), 4663 (Robinhood Chain), 99901 (Elysium, gas in HYPE).
 - `checkUrl` must be a second, independent RPC. Before signing, the SDK checks the account state on both and refuses if they disagree.
 - The same words give the same account address on every chain.
 - The fee key (`feeAddress`) pays gas. It is an ordinary secp256k1 key, so keep only gas money on it.

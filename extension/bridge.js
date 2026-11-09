@@ -8,7 +8,7 @@ const CU_BRIDGE = 400000;
 const SOL_KEEP = 2000000n;
 const ERC20_DEPOSIT_GAS = 150000n;
 const POLL_MS = 4000, POLL_MAX = 75, CLEAR_MS = 20000;
-const NAME = { 1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 4663: "Robinhood Chain", [R.SOLANA_ID]: "Solana" };
+const NAME = { 1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 4663: "Robinhood Chain", 99901: "Elysium", [R.SOLANA_ID]: "Solana" };
 
 
 const solCard = { gen: 0 }, evmCard = { gen: 0 };
@@ -186,7 +186,7 @@ export function initEvm(ctx) {
     const from = c.id;
     fill($("eb-to"), R.destinations(from).map((id) => [id, NAME[id]]));
     const to = Number($("eb-to").value);
-    fill($("eb-kind"), R.kinds(from, to).map((k) => [k, k === "native" ? `ETH to ${R.ASSETS[to].native.symbol}` : "USDC to USDC"]));
+    fill($("eb-kind"), R.kinds(from, to).map((k) => [k, k === "native" ? `${R.ASSETS[from].native.symbol} to ${R.ASSETS[to].native.symbol}` : "USDC to USDC"]));
   };
   const bal = balRow($("eb-amt"), async () => {
     const c = ctx.chain();
@@ -208,7 +208,7 @@ export function initEvm(ctx) {
     const amount = amountOf($("eb-amt").value, asset.decimals);
     const s = await c.status();
     if (s.state !== "ready") throw new Error("set up this network first");
-    if (kind === "native") { if (s.bal < amount) throw new Error(`not enough ETH: the account holds ${fmt(s.bal, 18)}`); }
+    if (kind === "native") { if (s.bal < amount) throw new Error(`not enough ${R.ASSETS[from].native.symbol}: the account holds ${fmt(s.bal, 18)}`); }
     else { const t = await c.token(asset.address); if (t.balance < amount) throw new Error(`not enough USDC: the account holds ${fmt(t.balance, 6)}`); }
     $("eb-st").textContent = "Getting a quote from Relay…";
     let p, calls;
@@ -223,7 +223,7 @@ export function initEvm(ctx) {
     const rows = [...reviewRows(from, to, kind, p), ["Network fee", await ctx.feeText(EXEC_GAS + inner)]];
     const notes = reviewNotes(ctx, from, to, p);
     if (kind === "usdc") notes.push({ text: `This also lets Relay's deposit contract take exactly ${fmt(amount, 6)} USDC, in the same transaction.` });
-    if (top) notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18, 8)} ETH from your account to it for future network fees.` });
+    if (top) notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18, 8)} ${R.ASSETS[from].native.symbol} from your account to it for future network fees.` });
     if (!(await ctx.ask({ ...ctx.tag(), title: `Bridge ${fmt(amount, asset.decimals)} ${asset.symbol} to ${NAME[to]}`, rows, notes }, "Bridge"))) return;
     if (ctx.chain() !== c) throw new Error("the network changed. Nothing was signed");
     if (Math.floor(Date.now() / 1000) > p.c.deadline - 60) throw new Error("the quote expired. Nothing was signed; review the bridge again");

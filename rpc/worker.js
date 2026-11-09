@@ -15,6 +15,7 @@ const EVM_DEFAULT = {
   8453: ["https://mainnet.base.org"],
   42161: ["https://arb1.arbitrum.io/rpc"],
   4663: ["https://rpc.mainnet.chain.robinhood.com"],
+  99901: ["https://rpc.elysium.kinetiq.xyz"],
 };
 const MAX_BODY = 16384;
 const FALLBACK = "https://api.mainnet-beta.solana.com";
