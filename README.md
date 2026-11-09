@@ -7,6 +7,8 @@
 
 Solana wallets built to resist quantum computers, usable with any Solana program.
 
+[![npm @opeqlabs/sdk](https://img.shields.io/npm/v/@opeqlabs/sdk?label=%40opeqlabs%2Fsdk&color=3ad0ff&logo=npm)](https://www.npmjs.com/package/@opeqlabs/sdk)
+
 Every Solana wallet today is protected by Ed25519. A large enough quantum computer running Shor's algorithm recovers an Ed25519 private key from its public key, and on Solana the address *is* the public key. opeq replaces that signature with a hash-based one whose security rests only on SHA-256, without any change to the Solana protocol.
 
 > **Status: mainnet beta.** The program and the wallet have been through repeated internal adversarial reviews and a full test suite, but no external audit yet. The program can still be upgraded by a single admin opeq wallet with no timelock (see below). Start with small amounts.
