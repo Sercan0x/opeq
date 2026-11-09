@@ -49,6 +49,10 @@
     <li><a href="#spec-multisig">Multisig specification</a></li>
     <li><a href="#addresses">Addresses</a></li>
   </ul>
+  <p class="toc-h">Developers</p>
+  <ul>
+    <li><a href="sdk.html">SDK</a></li>
+  </ul>
   <p class="toc-h">Project</p>
   <ul>
     <li><a href="#built">Built from scratch</a></li>
@@ -58,8 +62,8 @@
 </nav>
 <main class="doc">
   <h1>Documentation</h1>
-  <p class="meta">Last updated 5 November 2026. Mainnet beta: start with small amounts.</p>
-  <p>New to OPEQ? The <a href="guide.html">step-by-step guide</a> walks through every screen.</p>
+  <p class="meta">Last updated 9 November 2026. Mainnet beta: start with small amounts.</p>
+  <p>New to OPEQ? The <a href="guide.html">step-by-step guide</a> walks through every screen. Building with OPEQ? See the <a href="sdk.html">SDK</a>.</p>
 
   <h2 id="overview">Overview</h2>
   <p>opeq is a wallet built to resist quantum computers. Your funds sit in an address that has no private key at all, and the code on chain moves them only after it checks a hash-based signature (WOTS+ in a Merkle tree, the same family as NIST's SLH-DSA). Nothing in any network protocol has to change.</p>
@@ -406,9 +410,9 @@ execute(id, calls)        setOwners / setThreshold
 
   <h2 id="roadmap">Roadmap</h2>
   <div class="road">
-      <div><h4 class="mono">done</h4><ul><li>On-chain program</li><li>Any-program CPI, tokens, Jupiter swaps</li><li>Rekey, quantum-safe upgrades</li><li>24 recovery words</li><li>Repeated internal security reviews</li><li>Chrome extension</li><li>USB edition for Windows</li><li>EVM: Ethereum, Base, Arbitrum, Robinhood Chain</li><li>Multisig on Solana and EVM</li><li>Bridge between Solana and EVM</li><li>Swaps on EVM through Uniswap</li></ul></div>
+      <div><h4 class="mono">done</h4><ul><li>On-chain program</li><li>Any-program CPI, tokens, Jupiter swaps</li><li>Rekey, quantum-safe upgrades</li><li>24 recovery words</li><li>Repeated internal security reviews</li><li>Chrome extension</li><li>USB edition for Windows</li><li>EVM: Ethereum, Base, Arbitrum, Robinhood Chain, Elysium</li><li>Multisig on Solana and EVM</li><li>Bridge between Solana and EVM</li><li>Swaps on EVM through Uniswap</li><li>SDK on npm: @opeqlabs/sdk</li></ul></div>
       <div><h4 class="mono">next</h4><ul><li>More bridge routes</li><li>Android app</li><li>External audits</li><li>Upgrade governance: timelock or an immutable program</li></ul></div>
-      <div><h4 class="mono">later</h4><ul><li>TypeScript SDK</li><li>Falcon signatures once SIMD-0416 lands</li></ul></div>
+      <div><h4 class="mono">later</h4><ul><li>SDK: multisig support</li><li>Falcon signatures once SIMD-0416 lands</li></ul></div>
     </div>
   
 

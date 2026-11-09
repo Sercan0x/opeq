@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>opeq SDK</title>
+<meta name="description" content="@opeqlabs/sdk: quantum-resistant accounts for Solana and EVM networks in your own code. Create accounts, send, rekey and verify OPEQ signatures offline.">
+<meta name="theme-color" content="#070b11">
+<link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="docs.css">
+<script type="module" src="docs.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html"><img src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <a class="back" href="docs.html">Docs</a>
+</header>
+<div class="docs">
+<nav class="toc" aria-label="SDK">
+  <p class="toc-h">Start</p>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#rule">The one rule</a></li>
+  </ul>
+  <p class="toc-h">Use</p>
+  <ul>
+    <li><a href="#solana">Solana</a></li>
+    <li><a href="#evm">EVM</a></li>
+    <li><a href="#verify">Verify offline</a></li>
+  </ul>
+  <p class="toc-h">Details</p>
+  <ul>
+    <li><a href="#speed">Speed</a></li>
+    <li><a href="#rpc">RPC</a></li>
+    <li><a href="#status">Status</a></li>
+    <li><a href="#tests">Tests</a></li>
+  </ul>
+</nav>
+<main class="doc">
+  <h1>SDK</h1>
+  <p class="meta">@opeqlabs/sdk 0.1.0. Beta, not yet externally audited: start with small amounts.</p>
+
+  <h2 id="overview">Overview</h2>
+  <p>The OPEQ SDK puts quantum-resistant accounts into your own code. An OPEQ account is controlled by one-time hash-based keys (WOTS+ in a Merkle tree of 1024 keys) instead of an elliptic-curve key, so a quantum computer that breaks Ed25519 or secp256k1 does not break it.</p>
+  <p>It is the same code the OPEQ wallet runs. The library is copied byte for byte from the wallet, and the test suite fails if the two ever differ. It has no dependencies and is open source under the Apache 2.0 license.</p>
+  <dl class="list">
+    <div><dt>Networks</dt><dd>Solana, Ethereum, Base, Arbitrum, Robinhood Chain and Elysium</dd></div>
+    <div><dt>Accounts</dt><dd>Create, recover from 24 words, activate or set up, send, run any transaction, rekey</dd></div>
+    <div><dt>Verification</dt><dd>Check any OPEQ signature offline, with no network calls</dd></div>
+    <div><dt>Runs in</dt><dd>Node.js 20 or later, and any current browser</dd></div>
+    <div><dt>Source</dt><dd><a href="https://github.com/Sercan0x/opeq/tree/main/sdk" target="_blank" rel="noopener noreferrer">github.com/Sercan0x/opeq/tree/main/sdk</a></dd></div>
+    <div><dt>Package</dt><dd><a href="https://www.npmjs.com/package/@opeqlabs/sdk" target="_blank" rel="noopener noreferrer">npmjs.com/package/@opeqlabs/sdk</a></dd></div>
+  </dl>
+
+  <h2 id="install">Install</h2>
+  <pre>npm install @opeqlabs/sdk</pre>
+  <p>In Node, keep the wallet in a <code>FileStore</code>. In a browser, use <code>IdbStore</code>. Both refuse to move a key counter backwards.</p>
+  <p class="quiet">The npm scope is @opeqlabs. Packages under any other name are not ours.</p>
+
+  <h2 id="rule">The one rule</h2>
+  <p><strong>A one-time key must never sign twice.</strong> The SDK enforces this for you:</p>
+  <ul>
+    <li>Every store refuses to move a key counter backwards.</li>
+    <li><code>FileStore</code> locks its folder, so two processes cannot use the same wallet at once. Keep the folder on a local disk, owned by you and closed to other users. A shared, network or synced folder defeats the lock.</li>
+    <li>Signing jobs inside one process run one at a time.</li>
+  </ul>
+  <p>The SDK cannot see a second copy somewhere else. If the same 24 words are used on another device, that device must call <code>useHere()</code> first. It moves the account to a fresh key tree, and the old copy stops signing. Never restore a store from a backup to keep signing: recover from the words and call <code>useHere()</code> instead.</p>
+
+  <h2 id="solana">Solana</h2>
+  <pre>import { Vault } from "@opeqlabs/sdk";
+import { FileStore } from "@opeqlabs/sdk/filestore";
+
+const store = await FileStore.open("./opeq-wallet");
+const vault = new Vault({
+  rpcUrl: "https://your-solana-rpc",
+  checkRpcUrl: "https://a-second-provider",
+  network: "mainnet",
+  store,
+});
+
+const { id, words } = await vault.create(password);
+const acct = await vault.open(id, password);
+
+await acct.feeKey();
+await acct.activate();
+await acct.send(to, 1_000_000n);
+await acct.execute([instruction]);
+await acct.rekey();
+
+acct.close();
+await store.close();</pre>
+  <ul>
+    <li><code>acct.address</code> is the quantum-resistant account. Keep funds there.</li>
+    <li><code>feeKey()</code> returns the fee key's address. It only pays Solana network fees, signs with Ed25519 and is not quantum-safe, so keep only a little SOL on it.</li>
+    <li><code>activate()</code> writes the account's key root on chain once. The fee key pays for it.</li>
+    <li><code>execute()</code> takes web3.js-style instructions. The account signs as the wallet address.</li>
+    <li>Amounts are whole numbers in base units (lamports, wei) as bigint, integer or digit string.</li>
+    <li><code>status()</code> reports how many one-time keys are left. Call <code>rekey()</code> before they run out.</li>
+  </ul>
+
+  <h2 id="evm">EVM</h2>
+  <pre>const acct = await vault.open(id, password);
+const base = await acct.evm(8453, {
+  rpcUrl: "https://your-base-rpc",
+  checkUrl: "https://a-second-base-rpc",
+});
+
+await base.setup();
+await base.send(to, 10n ** 16n);
+await base.execute([{ to: token, value: 0n, data: "0xa9059cbb..." }]);
+
+acct.close();</pre>
+  <dl class="list">
+    <div><dt>1</dt><dd>Ethereum</dd></div>
+    <div><dt>8453</dt><dd>Base</dd></div>
+    <div><dt>42161</dt><dd>Arbitrum</dd></div>
+    <div><dt>4663</dt><dd>Robinhood Chain</dd></div>
+    <div><dt>99901</dt><dd>Elysium, gas in HYPE</dd></div>
+  </dl>
+  <ul>
+    <li>The same words give the same account address on every chain.</li>
+    <li><code>checkUrl</code> must be a second, independent RPC. Before signing, the SDK checks the account state on both and refuses if they disagree.</li>
+    <li>The fee key (<code>feeAddress</code>) pays gas. It is an ordinary secp256k1 key, so keep only gas money on it.</li>
+    <li><code>setup()</code> deploys the account contract and moves it to a key tree only this device knows.</li>
+  </ul>
+
+  <h2 id="verify">Verify offline</h2>
+  <pre>import { verifySolanaInstruction, verifyEvmExecute } from "@opeqlabs/sdk";
+
+verifySolanaInstruction(data, accountKeys, { pubSeed, root, aid, epoch });
+verifyEvmExecute(calldata, { chainId, account, epoch, pubSeed, root });</pre>
+  <p>Both return the one-time key index, or <code>null</code> if the signature does not match or the input is malformed. They make no network calls, so anyone can check that a transaction was signed by an OPEQ account without trusting OPEQ, an RPC or a block explorer.</p>
+
+  <h2 id="speed">Speed</h2>
+  <p>Building a key tree takes about 2 seconds on Solana and about 10 seconds on EVM in Node on a laptop. Signing takes under a second. EVM <code>setup()</code> builds three trees, so it takes about a minute. In a browser, hand the work to a Web Worker with <code>@opeqlabs/sdk/compute</code> so the page does not freeze.</p>
+
+  <h2 id="rpc">RPC</h2>
+  <p>Bring your own: two per network, from different providers, over https. <code>rpc.opeq.io</code> only serves the OPEQ apps.</p>
+
+  <h2 id="status">Status</h2>
+  <ul>
+    <li><strong>Beta, not yet externally audited.</strong> The audits planned for the wallet will cover the SDK too.</li>
+    <li>The Solana program can still be upgraded by the OPEQ team, as described in the <a href="docs.html#faq">docs</a>. The program cannot move funds on its own: every transfer needs a one-time signature from the account's own key tree. The EVM contracts cannot be upgraded by anyone.</li>
+    <li>On EVM, take over an account from one device at a time, and never restore a store from a backup.</li>
+  </ul>
+
+  <h2 id="tests">Tests</h2>
+  <p>The JavaScript code is checked against vectors from an independent Python implementation, and every result must be byte-identical. End-to-end tests run full accounts on a local EVM chain and on Solana devnet, and an attack suite replays the issues found in the security review before release. The commands are in the <a href="https://github.com/Sercan0x/opeq/tree/main/sdk" target="_blank" rel="noopener noreferrer">README</a>.</p>
+</main>
+</div>
+</body>
+</html>
