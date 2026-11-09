@@ -21,7 +21,7 @@ EVM_MAINNETS = [
     {"chainId": 8453, "name": "Base", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/8453", "check": "https://mainnet.base.org", "explorer": "https://basescan.org"},
     {"chainId": 42161, "name": "Arbitrum", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/42161", "check": "https://arb1.arbitrum.io/rpc", "explorer": "https://arbiscan.io"},
     {"chainId": 4663, "name": "Robinhood Chain", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/4663", "check": "https://rpc.mainnet.chain.robinhood.com", "explorer": "https://robinhoodchain.blockscout.com"},
-    {"chainId": 99901, "name": "Elysium", "symbol": "HYPE", "rpc": "https://rpc.opeq.io/evm/99901", "check": "https://rpc.elysium.kinetiq.xyz", "explorer": "https://elysium.kinetiq.xyz/explorer"},
+    {"chainId": 99901, "name": "Elysium", "symbol": "HYPE", "rpc": "https://rpc.opeq.io/evm/99901", "check": "https://rpc.elysium.kinetiq.xyz", "explorer": "https://elysium.kinetiq.xyz"},
     {"chainId": 1, "name": "Ethereum", "symbol": "ETH", "rpc": "https://rpc.opeq.io/evm/1", "check": "https://ethereum-rpc.publicnode.com", "explorer": "https://etherscan.io"},
 ]
 EVM_TESTNETS = [{"chainId": 84532, "name": "Base Sepolia", "symbol": "ETH", "rpc": "https://sepolia.base.org", "check": "https://base-sepolia-rpc.publicnode.com", "explorer": "https://sepolia.basescan.org"}]
