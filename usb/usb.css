@@ -17,3 +17,9 @@ body.usb-locked > :not(#usb-gate) { display: none !important; }
 .act-wait { min-height: 1.6em; margin: 0 0 10px; font-size: 14px; color: var(--text-2); }
 .act-wait.act-ok { color: var(--green); font-weight: 600; }
 #w-init.act-ready { box-shadow: 0 0 0 3px rgba(79, 209, 139, 0.35); }
+html, body { width: 100%; max-width: 100%; height: 100%; overflow: hidden; }
+body[data-mode="popup"] { max-width: 480px; margin: 0 auto; height: 100vh; height: 100dvh; font-size: 14px; }
+#p-expand, #m-expand { display: none; }
+.pmain { padding: 14px; overscroll-behavior: contain; }
+.panel { max-height: 45vh; }
+.act-steps { padding-left: 18px; font-size: 13px; color: var(--text-2); }

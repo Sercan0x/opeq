@@ -6,11 +6,11 @@ import shutil
 import zipfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 CHECKS = os.path.join(ROOT, "web", "usb")
 USB = os.path.join(ROOT, "usb")
 SRC = os.path.join(ROOT, "build", "extension-mainnet")
-SKIP = {"manifest.json", "bg.js", "popup.html", "popup.js", "popup.css", "keep.js"}
+SKIP = {"manifest.json", "bg.js", "popup.html", "keep.js"}
 ADDED = ["gate.js", "usbstore.js", "usb.css", "keep.js", "opeq.ps1", "activate.js"]
 MODULE_TAG = '<script type="module" src="app.js"></script>'
 
@@ -31,13 +31,13 @@ REWORD = {
         ("connect-src https:;", "connect-src 'self' https:;", 1),
         ("<title>OPEQ Wallet</title>", "<title>OPEQ Wallet USB</title>", 1),
         ("about 15 seconds, once per browser.", "about 15 seconds, once per stick.", 1),
-        ("wallets in this browser", "wallets on this USB", None),
-        ("Your keys are made in this browser and never leave it.", "Your keys are made on this computer and kept only on your USB.", 1),
+        ("Wallets in this browser", "Wallets on this USB", 1),
+        ("Keys are made in this browser and never leave it.", "Keys are made on this computer and kept only on your USB.", 1),
         ("New password for this browser", "New password for this USB", 1),
         ("Remove from this browser", "Remove from this USB", 1),
         ('autocomplete="new-password"', 'autocomplete="off"', 4),
         ('autocomplete="current-password"', 'autocomplete="off"', 2),
-        ('<p class="hint">One-time setup. Send at least 0.01 SOL, and only SOL, never tokens, to this activation address from any wallet. About 0.0015 SOL goes to rent, 0.005 SOL stays on the fee key and the rest moves into your opeq wallet.</p>',
+        ('<p class="hint">Send at least 0.01 SOL, and only SOL, never tokens, to this activation address. About 0.0015 SOL goes to rent, 0.005 SOL stays for fees and the rest moves into your wallet.</p>',
          '<ol class="steps act-steps"><li>Copy the activation address below.</li><li>From Phantom, an exchange or any other Solana wallet, send at least 0.01 SOL to that address, and only SOL, never tokens. You do this once.</li><li>When the SOL arrives, OPEQ shows it here. Then press Activate.</li></ol>\n        <p class="hint">About 0.0015 SOL pays for the setup, 0.005 SOL stays on the fee key that pays network fees, and the rest moves into your OPEQ wallet.</p>', 1),
         ('<p class="hint" id="i-bal"></p>', '<p class="hint" id="i-bal"></p>\n        <p class="act-wait" id="i-wait" role="status"></p>', 1),
     ],
@@ -79,6 +79,7 @@ def build(src, out):
         shutil.rmtree(out)
     app = os.path.join(out, "app")
     shutil.copytree(src, app, ignore=lambda d, names: [n for n in names if d == src and n in SKIP])
+    shutil.copy(os.path.join(src, "popup.html"), os.path.join(app, "app.html"))
     for name in ADDED:
         shutil.copy(os.path.join(USB, name), os.path.join(app, name))
     shutil.copy(os.path.join(USB, "shim.js"), os.path.join(app, "shim.js"))

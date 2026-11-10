@@ -299,7 +299,7 @@ if (-not $NoBrowser) {
   New-Item -ItemType Directory -Path (Join-Path $profileDir "Default") -Force | Out-Null
   $prefs = '{"credentials_enable_service":false,"profile":{"password_manager_enabled":false},"autofill":{"profile_enabled":false,"credit_card_enabled":false},"translate":{"enabled":false}}'
   [System.IO.File]::WriteAllText((Join-Path $profileDir "Default\Preferences"), $prefs)
-  $browserArgs = @("--user-data-dir=`"$profileDir`"", "--app=$Origin/app.html#t=$Token", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-sync", "--disable-breakpad", "--disable-crash-reporter", "--disable-features=Translate", "--window-size=1180,880")
+  $browserArgs = @("--user-data-dir=`"$profileDir`"", "--app=$Origin/app.html#t=$Token", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-sync", "--disable-breakpad", "--disable-crash-reporter", "--disable-features=Translate", "--window-size=480,880")
   $browser = Start-Process -FilePath $exe -ArgumentList $browserArgs -PassThru
 } else {
   Write-Output "OPEQ USB serving $Origin token $Token check $($check.state)"
