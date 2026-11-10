@@ -10,3 +10,4 @@ body[data-mode="popup"] { height: 100vh; height: 100dvh; font-size: 14px; }
 .pmain { padding: 14px; overscroll-behavior: contain; }
 .panel { max-height: 45vh; }
 .mono, .addr { overflow-wrap: anywhere; }
+#m-expand { display: none; }

@@ -20,16 +20,16 @@
     <ul class="chain-menu hidden" id="chain-menu" role="listbox" aria-label="Network" tabindex="-1"></ul>
   </div>
   <span class="drive mono" id="drive"><i></i><span id="drive-text">wallet</span></span>
-  <button class="icon-btn" id="p-wallets" type="button" aria-expanded="false" aria-controls="p-panel" title="Wallets">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="13" height="6" rx="3"/><rect x="16" y="10" width="5" height="4" rx="1"/></svg>
-    <span class="sr">Wallets</span>
+  <button class="wpill" id="p-wallets" type="button" aria-expanded="false" aria-controls="p-panel" title="Wallets"><span id="p-wname">Wallets</span><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg></button>
+  <button class="icon-btn" id="p-menu" type="button" title="Settings" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    <span class="sr">Settings</span>
   </button>
   <button class="icon-btn" id="p-expand" type="button" title="Open in a tab">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6M4 20l8-8"/></svg>
     <span class="sr">Open in a tab</span>
   </button>
 </header>
-<p class="pnet mono" data-only="devnet">devnet only, never send real SOL here</p><p class="pnet mono" data-only="mainnet">beta, start with small amounts</p>
 
 <section class="panel hidden" id="p-panel" aria-label="Wallets in this browser">
   <div id="ports" class="ports"></div>
@@ -38,6 +38,26 @@
 </section>
 
 <main class="pmain">
+
+  <div class="pback hidden" id="p-back"><button class="icon-btn" id="p-back-go" type="button" title="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg><span class="sr">Back</span></button><b id="p-title"></b></div>
+
+  <div class="palert hidden" id="p-alert" role="alert"><p id="p-alert-text"></p><button class="btn btn-sm" id="p-alert-go" type="button">Try again</button></div>
+
+  <section class="menu hidden" id="p-sheet" aria-label="Settings">
+    <p class="kick"><span>WALLET</span></p>
+    <div class="mlist">
+      <button type="button" data-go="wallets"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="13" height="6" rx="3"/><rect x="16" y="10" width="5" height="4" rx="1"/></svg>Wallets</button>
+      <button type="button" data-go="tokens"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><circle cx="15" cy="15" r="5"/></svg>Tokens</button>
+      <button type="button" data-go="multisig"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="3"/><circle cx="16" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg>Multisig</button>
+      <button type="button" data-go="activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Activity</button>
+    </div>
+    <p class="kick"><span>SECURITY</span></p>
+    <div class="mlist">
+      <button type="button" data-go="keys"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z"/></svg>Keys and recovery words<em id="m-left"></em></button>
+      <button type="button" data-go="expand" id="m-expand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6M4 20l8-8"/></svg>Open in a tab</button>
+      <button type="button" data-go="lock"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Lock wallet</button>
+    </div>
+  </section>
 
   <div class="view" id="v-welcome">
     <div class="hello">
@@ -103,19 +123,19 @@
   <div class="view hidden" id="v-wallet">
   <section class="evm-view hidden" id="evm-view" aria-label="EVM account">
     <div class="cpu" id="e-cpu">
-      <div class="cpu-pins" aria-hidden="true"></div>
+      <div class="cpu-pins" aria-hidden="true"></div><svg class="trace" viewBox="0 0 120 190" preserveAspectRatio="none" aria-hidden="true"><g class="tr-dim"><path d="M120 40H92L80 52V110L68 122H40"/><path d="M120 150H100L90 140V80"/></g><path class="tr-lit" d="M120 40H92L80 52V90"/><circle class="tr-dot" cx="80" cy="90" r="2.5"/></svg><i class="hole hole-b" aria-hidden="true"></i>
       <div class="cpu-die">
-        <p class="silk-line mono">OPEQ EVM <span id="e-state">…</span></p>
+        <p class="silk-line mono"><span class="chain-slot"></span><span class="tag">WOTS+ / SHA-256</span><span class="vh" id="e-state">…</span></p>
         <p class="bal"><span id="e-bal">…</span><small id="e-sym">ETH</small></p>
         <div id="e-load" class="hidden"><p class="hint">Building your EVM identity from your words, about 15 seconds, once per browser.</p><div class="progress"><div id="e-load-bar"></div></div></div>
         <div id="e-main" class="hidden">
           <div class="addr-row"><p class="mono addr" id="e-addr"></p><button class="icon-btn small" id="e-copy" type="button" title="Copy EVM address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy EVM address</span></button></div>
-          
-          
-          
         </div>
+        <div class="meter" id="e-meter"><div class="mbar"></div><p><span>Quantum keys</span><span class="mleft"></span></p></div>
       </div>
     </div>
+    <nav class="edge" id="e-edge" aria-label="Actions"><button type="button" data-tab="etab-send" data-title="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg><span>Send</span></button><button type="button" data-tab="etab-recv" data-title="Receive"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg><span>Receive</span></button><button type="button" data-tab="etab-swap" data-title="Swap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Swap</span></button><button type="button" data-tab="etab-bridge" data-title="Bridge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c3-6 15-6 18 0M6 13.5V17M18 13.5V17M12 11.5V17"/></svg><span>Bridge</span></button></nav>
+    <section class="tokp" id="e-home-toks"><p class="kick"><span>TOKENS</span><button type="button" class="kick-go" data-go="activity">ACTIVITY</button></p><div class="hrow"><i class="ti" id="e-home-ico"></i><div><b id="e-home-name">Native coin</b><small id="e-home-sym">ETH</small></div><span class="mono" id="e-home-bal">…</span></div><div id="e-home-list"></div></section>
     
     <div id="e-gas-top"><div class="gasline hidden" id="e-gas">
       <span class="gas-k" title="Pays network fees only. Do not deposit here.">Gas key, fees only</span>
@@ -225,9 +245,9 @@
     </section>
   </section>
     <div class="cpu" id="cpu">
-      <div class="cpu-pins" aria-hidden="true"></div>
+      <div class="cpu-pins" aria-hidden="true"></div><svg class="trace" viewBox="0 0 120 190" preserveAspectRatio="none" aria-hidden="true"><g class="tr-dim"><path d="M120 40H92L80 52V110L68 122H40"/><path d="M120 150H100L90 140V80"/></g><path class="tr-lit" d="M120 40H92L80 52V90"/><circle class="tr-dot" cx="80" cy="90" r="2.5"/></svg><i class="hole hole-b" aria-hidden="true"></i>
       <div class="cpu-die">
-        <p class="silk-line mono">OPEQ Q1 <span id="w-status">…</span></p>
+        <p class="silk-line mono"><span class="chain-slot"></span><span class="tag">WOTS+ / SHA-256</span><span class="vh" id="w-status">…</span></p>
         <p class="bal"><span id="w-bal">…</span><small>SOL</small></p>
         <div class="addr-row">
           <p class="mono addr" id="w-addr"></p>
@@ -237,8 +257,10 @@
           </button>
         </div>
         <div class="sign hidden" id="sign"><span class="mono" id="sign-text">signing</span><div class="progress"><div id="sign-bar"></div></div></div>
+        <div class="meter" id="w-meter"><div class="mbar"></div><p><span>Quantum keys</span><span class="mleft"></span></p></div>
       </div>
     </div>
+    <nav class="edge" id="w-edge" aria-label="Actions"><button type="button" data-tab="tab-send" data-title="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg><span>Send</span></button><button type="button" data-tab="tab-receive" data-title="Receive"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg><span>Receive</span></button><button type="button" data-tab="tab-swap" data-title="Swap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg><span>Swap</span></button><button type="button" data-tab="tab-bridge" data-title="Bridge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c3-6 15-6 18 0M6 13.5V17M18 13.5V17M12 11.5V17"/></svg><span>Bridge</span></button></nav>
 
     <div class="fe hidden" id="w-sweep" role="status"><span id="w-sweep-text"></span><button class="fe-go" id="w-sweep-go" type="button">Move to wallet</button></div>
     <div class="fe hidden" id="w-fe" role="status"><span>Fee key is empty. Send it 0.01 SOL.</span><button class="fe-go" id="w-fe-copy" type="button" title="Copy fee key address">Copy</button></div>
@@ -262,6 +284,8 @@
       <p class="hint" data-only="devnet"><a href="https://faucet.solana.com" rel="noopener noreferrer" target="_blank">Free devnet SOL</a></p>
       <p class="err" id="i-err" role="alert"></p>
     </div>
+
+    <section class="tokp" id="w-home-toks"><p class="kick"><span>TOKENS</span><button type="button" class="kick-go" data-go="activity">ACTIVITY</button></p><div class="hrow"><i class="ti sol"></i><div><b>Solana</b><small>SOL</small></div><span class="mono" id="w-home-bal">…</span></div><div id="w-home-list"></div></section>
 
     <section class="dock" id="dock">
       <div class="tabs" role="tablist" aria-label="Actions">
@@ -439,6 +463,7 @@
   </div>
 
 </main>
+<footer class="pstat"><span class="on" data-only="mainnet"><i></i>MAINNET</span><span class="on dev" data-only="devnet"><i></i>DEVNET</span><span class="beta" data-only="mainnet"><i></i>beta, start with small amounts</span><span class="beta" data-only="devnet"><i></i>never send real SOL here</span></footer>
 
 <dialog class="ask" id="ask" aria-labelledby="ask-text">
   <div id="ask-text"></div>
