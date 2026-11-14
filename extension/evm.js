@@ -4,6 +4,7 @@ import { IdbStore } from "./lib/vaultstore.js";
 import { NET } from "./net.js";
 import { sha256 } from "./lib/sha256.js";
 import * as MSV from "./evmvault.js";
+import * as SF from "./safeui.js";
 import * as BR from "./bridge.js";
 import * as SW from "./evmswap.js";
 import { UNI } from "./lib/uniswap.js";
@@ -133,6 +134,7 @@ function clearCard() {
   for (const id of ["e-addr", "e-gas-addr", "e-gas-bal", "e-toks", "e-asset", ...($("e-raddr") ? ["e-raddr"] : [])]) $(id).textContent = "";
   for (const id of ["e-to", "e-amt", "e-tok"]) $(id).value = "";
   MSV.hideAll();
+  SF.hideAll();
   BR.stopEvm();
   queueMicrotask(repaint);
   if ($("eb-st")) $("eb-st").textContent = "";
@@ -226,6 +228,7 @@ async function refresh() {
   $("e-rw-text").textContent = `${s.left} signatures left on this network's key tree. Rekey soon, it takes one transaction.`;
   await refreshTokens();
   if (c === chain) await MSV.refresh(s.state === "ready").catch((e) => { $("e-err").textContent = e.message; });
+  if (c === chain) await SF.refresh(s.state === "ready").catch((e) => { $("e-err").textContent = e.message; });
 }
 
 const tokMeta = new Map();
@@ -542,7 +545,7 @@ export function init(api) {
       onChain: (f) => { swapPaint = f; },
     });
   }
-  MSV.init({
+  const msCtx = {
     $, hide, chain: () => chain, tag, feeText, last, explorer, lookalike, recipient, remember,
     ask: (m, y) => ui.ask(m, y),
     guard: (fn) => ui.guard("e-err", "e-ok", fn),
@@ -555,7 +558,9 @@ export function init(api) {
       get: async (k) => { try { return (await chrome.storage.local.get(k))[k]; } catch { return null; } },
       set: async (k, v) => { try { await chrome.storage.local.set({ [k]: v }); } catch {} },
     },
-  });
+  };
+  MSV.init(msCtx);
+  SF.init(msCtx);
   initDock();
 }
 

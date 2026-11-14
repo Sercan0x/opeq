@@ -10,6 +10,7 @@ import * as keep from "./keep.js";
 import { NET } from "./net.js";
 import * as evm from "./evm.js";
 import * as SV from "./solvaultui.js";
+import * as SQ from "./squadsui.js";
 import * as BR from "./bridge.js";
 
 const PROGRAM = NET.program;
@@ -465,7 +466,7 @@ function initTabs() {
 async function showWallet() {
   show("v-wallet");
   setDrive("on", `wallet unlocked, ${NET.name}`);
-  if (NET.vault && $("pane-vaults")) { SV.hide(); if (!$("pane-vaults").classList.contains("hidden")) SV.refresh().catch((e) => { $("sv-err").textContent = e.message; }); }
+  if (NET.vault && $("pane-vaults")) { SV.hide(); SQ.hide(); if (!$("pane-vaults").classList.contains("hidden")) SV.refresh().then(() => SQ.refresh()).catch((e) => { $("sv-err").textContent = e.message; }); }
   await refreshWallet();
   refreshPorts();
 }
@@ -737,7 +738,7 @@ function lockVault(reason) {
   loadLog(null);
   if (session.master) session.master.fill(0);
   try { evm.stop(); } catch {}
-  try { SV.hide(); } catch {}
+  try { SV.hide(); SQ.hide(); } catch {}
   try { BR.stopSol(); if ($("b-st")) $("b-st").textContent = ""; } catch {}
   if (session.macRaw) session.macRaw.fill(0);
   session.master = null;
@@ -1318,7 +1319,7 @@ async function init() {
   watchLock();
   evm.init({ ask, guard, log, copyTo, session: () => session, busy: () => busy, lock: () => lockVault(""), compute: engine.compute });
   if (NET.vault && $("pane-vaults")) {
-    SV.init({
+    const svCtx = {
       $, NET, ask, log, lookalike, checkRecipient, parseSol, planTopup, run,
       session: () => session, engine: () => engine, rpc: () => rpc, busy: () => busy,
       tag: () => ({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds" }),
@@ -1332,8 +1333,10 @@ async function init() {
         get: async (k) => { try { return (await chrome.storage.local.get(k))[k]; } catch { return null; } },
         set: async (k, v) => { try { await chrome.storage.local.set({ [k]: v }); } catch {} },
       },
-    });
-    $("tab-vaults").addEventListener("click", () => guard("sv-err", null, () => SV.refresh()));
+    };
+    SV.init(svCtx);
+    SQ.init(svCtx);
+    $("tab-vaults").addEventListener("click", () => guard("sv-err", null, async () => { await SV.refresh(); await SQ.refresh(); }));
   } else {
     if ($("tab-vaults")) $("tab-vaults").remove();
     if ($("pane-vaults")) $("pane-vaults").remove();

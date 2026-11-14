@@ -191,3 +191,18 @@ body[data-mode="popup"] #e-dock .card { padding: 4px 14px 14px; }
 .balrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .balrow .hint { margin: 0; }
 .balrow .btn[hidden] { display: none; }
+.lock-h { margin-top: 22px; }
+.card > .lock-h:first-child { margin-top: 0; }
+.lock-state { display: grid; gap: 8px; margin: 10px 0 12px; }
+.lock-state p { margin: 0; }
+.lock-ok, .lock-bad { padding: 8px 10px; border-radius: 6px; font-size: 13px; line-height: 1.45; color: var(--text); }
+.lock-ok { border: 1px solid rgba(79, 209, 139, 0.45); background: rgba(79, 209, 139, 0.07); }
+.lock-bad { border: 1px solid rgba(255, 122, 110, 0.45); background: rgba(255, 122, 110, 0.07); }
+#sv-view:not(.hidden) ~ #sq-box, #ms-v:not(.hidden) ~ #e-safe { display: none; }
+.sf-steps { display: grid; gap: 10px; margin-top: 10px; }
+.sf-steps:empty { display: none; }
+.sf-step { padding: 12px; border: 1px solid #2e3c50; border-radius: 6px; background: #070b11; }
+.sf-step p { margin: 0 0 6px; }
+.sf-step .row { margin-top: 6px; }
+#sq-box .addr-row, #sq-view .addr-row, #sf-v .addr-row { display: flex; align-items: center; gap: 8px; }
+#sq-box .addr-row .addr, #sq-view .addr-row .addr, #sf-v .addr-row .addr { flex: 1; min-width: 0; margin: 0; word-break: break-all; }

@@ -206,3 +206,4 @@ body[data-mode="popup"] .balrow .btn:hover { background: rgba(58, 208, 255, 0.1)
 .palert.hidden { display: none; }
 .palert p { flex: 1; margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text); }
 .palert .btn { flex: 0 0 auto; background: var(--red); color: #1d0705; }
+body[data-mode="popup"] .lock-h { display: block !important; }

@@ -252,6 +252,46 @@
         </details>
         <div class="row tight"><a class="btn btn-line btn-sm" id="ms-v-exp" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="ms-v-refresh" type="button">Refresh</button><button class="btn btn-line btn-sm" id="ms-v-close" type="button">All vaults</button></div>
       </div>
+    <div class="card hidden" id="e-safe">
+      <h2 class="silk lock-h"><span>LOCK</span><b>safe lock</b></h2>
+      <p class="hint">Beta. Keep your team's funds in Safe and make an OPEQ approval required for every Safe transaction. The OPEQ guard contract has had internal reviews only, so start with small amounts.</p>
+      <div class="ms-list" id="sf-list"></div>
+      <details class="ev-more"><summary>Add a Safe</summary>
+        <label class="f" for="sf-add">Safe address</label><input type="text" id="sf-add" spellcheck="false" autocomplete="off" placeholder="0x…">
+        <div class="row"><button class="btn btn-line btn-sm" id="sf-add-go" type="button">Add Safe</button></div>
+      </details>
+    </div>
+    <div class="card hidden" id="sf-v">
+      <h2 class="silk lock-h"><span>LOCK</span><b>safe lock</b></h2>
+      <div class="addr-row"><p class="mono addr" id="sf-v-addr"></p><button class="icon-btn small" id="sf-v-copy" type="button" title="Copy Safe address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy Safe address</span></button></div>
+      <div class="lock-state" id="sf-state"></div>
+      <dl class="kv">
+        <div><dt>Balance</dt><dd id="sf-bal">–</dd></div>
+        <div><dt>Owner signatures</dt><dd id="sf-thr">–</dd></div>
+      </dl>
+      <div class="ms-props" id="sf-recs"></div>
+      <details class="ev-more" id="sf-setup"><summary>Set up the lock</summary>
+        <p class="hint">The Safe owners send these transactions from the Safe app (Apps, then Transaction Builder, with custom data on), as one batch in this order.</p>
+        <label class="f" for="sf-appr">Other OPEQ approvers, one per line (optional, your address is included)</label><textarea id="sf-appr" rows="2" spellcheck="false" autocomplete="off" placeholder="0x…"></textarea>
+        <label class="f" for="sf-req">OPEQ approvals needed</label><input type="text" id="sf-req" inputmode="numeric" autocomplete="off" placeholder="1">
+        <label class="f" for="sf-delay">Recovery delay in days (7 to 90)</label><input type="text" id="sf-delay" inputmode="numeric" autocomplete="off" placeholder="7">
+        <p class="hint">If every OPEQ approver loses access, an owner can still move funds after this delay. Any approver can cancel such a request during the delay.</p>
+        <div class="row"><button class="btn btn-line btn-sm" id="sf-steps-go" type="button">Show the Safe transactions</button></div>
+        <div class="sf-steps" id="sf-steps"></div>
+      </details>
+      <details class="ev-more" id="sf-ap"><summary>Approve a Safe transaction</summary>
+        <p class="hint">Copy these from the transaction details in the Safe app.</p>
+        <label class="f" for="sf-to">To</label><input type="text" id="sf-to" spellcheck="false" autocomplete="off" placeholder="0x…">
+        <label class="f" for="sf-val">Value</label><input type="text" id="sf-val" inputmode="decimal" autocomplete="off" placeholder="0">
+        <label class="f" for="sf-data">Data</label><textarea id="sf-data" rows="2" spellcheck="false" autocomplete="off" placeholder="0x"></textarea>
+        <label class="f" for="sf-op">Operation</label><select id="sf-op"><option value="0">Call</option><option value="1">Delegate call</option></select>
+        <label class="f" for="sf-hash">Safe transaction hash</label><input type="text" id="sf-hash" spellcheck="false" autocomplete="off" placeholder="0x…">
+        <label class="f" for="sf-nonce">Nonce (empty for the next transaction)</label><input type="text" id="sf-nonce" inputmode="numeric" autocomplete="off">
+        <div class="row"><button class="btn btn-solid btn-sm" id="sf-ap-go" type="button">Check and approve</button></div>
+      </details>
+      <div class="row tight"><a class="btn btn-line btn-sm" id="sf-v-exp" rel="noopener noreferrer" target="_blank">Explorer</a><button class="btn btn-line btn-sm" id="sf-v-refresh" type="button">Refresh</button><button class="btn btn-line btn-sm" id="sf-v-close" type="button">All Safes</button></div>
+    </div>
+    
       </div>
       
       </section>
@@ -430,7 +470,29 @@
     </details>
     <div class="row tight"><button class="btn btn-line btn-sm" id="sv-refresh" type="button">Refresh</button><button class="btn btn-line btn-sm" id="sv-back" type="button">All vaults</button></div>
           </div>
-          <p class="ok" id="sv-ok"></p><p class="err" id="sv-err" role="alert"></p>
+          <div id="sq-box">
+          <h3 class="silk lock-h"><span>LOCK</span><b>squads lock</b></h3>
+          <p class="hint">Beta. Keep your team's funds in Squads and make your OPEQ vote required. In Squads, add the address below as a member with only the Vote permission, then raise the threshold so the other members cannot approve alone.</p>
+          <div class="addr-row"><p class="mono addr"><span class="hint">Member address </span><span id="sq-me"></span></p><button class="icon-btn small" id="sq-me-copy" type="button" title="Copy member address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy member address</span></button></div>
+          <div class="ms-list" id="sq-list"></div>
+          <details class="ev-more"><summary>Add a Squads multisig</summary>
+            <label class="f" for="sq-add-in">Squads multisig address</label><input type="text" id="sq-add-in" spellcheck="false" autocomplete="off">
+            <p class="hint">Use the multisig address from the Squads settings page, not the vault address.</p>
+            <div class="row"><button class="btn btn-line btn-sm" id="sq-add" type="button">Add</button></div>
+          </details>
+        </div>
+        <div class="hidden" id="sq-view">
+          <h3 class="silk lock-h"><span>LOCK</span><b>squads lock</b></h3>
+          <div class="addr-row"><p class="mono addr"><span class="hint">Multisig </span><span id="sq-addr"></span></p></div>
+          <div class="addr-row"><p class="mono addr"><span class="hint">Vault 0 </span><span id="sq-vault"></span></p><button class="icon-btn small" id="sq-vault-copy" type="button" title="Copy vault address"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span class="sr">Copy vault address</span></button></div>
+          <div class="lock-state" id="sq-state"></div>
+          <dl class="kv"><div><dt>Vault 0 balance</dt><dd id="sq-bal">–</dd></div><div><dt>Approvals needed</dt><dd id="sq-thr">–</dd></div></dl>
+          <div class="ms-owners" id="sq-members"></div>
+          <div class="ms-props" id="sq-props"></div>
+          <p class="hint">Create and execute transactions in Squads as usual. They show up here so you can check and approve them with your OPEQ vote.</p>
+          <div class="row tight"><button class="btn btn-line btn-sm" id="sq-refresh" type="button">Refresh</button><button class="btn btn-line btn-sm" id="sq-back" type="button">All multisigs</button></div>
+        </div>
+        <p class="ok" id="sv-ok"></p><p class="err" id="sv-err" role="alert"></p>
         </div>
         <div class="pane hidden" role="tabpanel" id="pane-keys" aria-labelledby="tab-keys">
           <div class="split">
