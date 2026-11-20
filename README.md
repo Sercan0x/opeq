@@ -5,15 +5,25 @@
 
 # opeq
 
-Solana wallets built to resist quantum computers, usable with any Solana program.
+Wallets built to resist quantum computers, on Solana and on Ethereum, Base, Arbitrum, Robinhood Chain and Elysium.
 
 [![npm @opeqlabs/sdk](https://img.shields.io/npm/v/@opeqlabs/sdk?label=%40opeqlabs%2Fsdk&color=3ad0ff&logo=npm)](https://www.npmjs.com/package/@opeqlabs/sdk)
 
-Every Solana wallet today is protected by Ed25519. A large enough quantum computer running Shor's algorithm recovers an Ed25519 private key from its public key, and on Solana the address *is* the public key. opeq replaces that signature with a hash-based one whose security rests only on SHA-256, without any change to the Solana protocol.
+Every Solana wallet today is protected by Ed25519. A large enough quantum computer running Shor's algorithm recovers an Ed25519 private key from its public key, and on Solana the address *is* the public key. opeq replaces that signature with a hash-based one whose security rests only on SHA-256, without any change to the Solana protocol. EVM addresses have the same weakness once they have sent a transaction, so on EVM networks opeq is a smart-contract account that checks the same kind of hash-based signature (with keccak256) on chain.
 
 > **Status: mainnet beta.** The program and the wallet have been through repeated internal adversarial reviews and a full test suite, but no external audit yet. The program can still be upgraded by a single admin opeq wallet with no timelock (see below). Start with small amounts.
 
 ## What it does
+
+The wallet runs as a Chrome extension, from a USB stick on Windows, and soon on Android. It offers:
+
+- **Solana and five EVM networks** from the same 24 words: Ethereum, Base, Arbitrum, Robinhood Chain and Elysium. See [EVM accounts](#evm-accounts).
+- **Swaps** through Jupiter on Solana and Uniswap on EVM, each checked and simulated before signing, and a **bridge** between Solana and the EVM networks through Relay.
+- **Multisig** vaults where every approval is a quantum-resistant signature, and a **lock for existing Safe and Squads multisigs** that makes an OPEQ approval required.
+- **AI agents** that pay for services over x402 from the wallet, up to an allowance the token program enforces on chain.
+- **An SDK** for developers: [`@opeqlabs/sdk`](https://www.npmjs.com/package/@opeqlabs/sdk) (see `sdk/`).
+
+The Solana account itself:
 
 - **A normal Solana address.** Your opeq wallet is a program-derived address with no Ed25519 private key behind it. The only secret is your 24 recovery words, which produce hash-based keys. It receives SOL, holds SPL and Token-2022 tokens, and other programs see it as an ordinary signer.
 - **Any program, one signature.** One hash-based signature authorizes a list of instructions to any programs. Tested: SOL transfers, SPL Token, Token-2022, Memo, Associated Token Account creation, Raydium CPMM swaps on devnet, and Jupiter swaps on mainnet.
@@ -34,15 +44,16 @@ Every Solana wallet today is protected by Ed25519. A large enough quantum comput
 Install the mainnet wallet from the [Chrome Web Store](https://chromewebstore.google.com/detail/opeq-wallet/ppddghgloaomicpgkpodjenaogmhhijj), or build the extension yourself and load `build/extension-mainnet` with *Load unpacked* on `chrome://extensions`. A mainnet build checks the program, its governance and the admin vault on chain:
 
 ```
-python3 build_extension.py --net mainnet --version 1.0.0 \
+python3 build_extension.py --net mainnet --version 1.8.0 \
   --program HL598vrersxS5AUUV6NyzHgpSyK31xAmqMsqUhxzeKm8 \
   --authority 6KX8M2fwCGyMTFodAL2HE1gbhwM5vYzfia2rsjhuHPU8 \
   --gov 2UpwhLHUUS1Uqij7KVdXxLRWjt8yCssdFjB2QG4saRAj \
   --admin-state 3AMt6BShy2aigE8hRAAnrHsPR4kedNjbtGo2tCxKuJTp \
+  --vault-program 3qjjDf8MdqDTFmBm3zJfKFqZKbZ5xgZM1ntGYVeqEuHB \
   --rpc https://api.mainnet-beta.solana.com
 ```
 
-The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store (version 1.0.0) file for file. To compare it with your own install, Chrome keeps the store copy in its profile folder under `Extensions/ppddghgloaomicpgkpodjenaogmhhijj/1.0.0_0` (on Windows `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\...`). The store adds its own `_metadata` signature folder, adds store fields such as `update_url` to `manifest.json`, and re-encodes the icon images, so leave those out:
+The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store for the same version file for file. To compare it with your own install, Chrome keeps the store copy in its profile folder under `Extensions/ppddghgloaomicpgkpodjenaogmhhijj/1.8.0_0` (on Windows `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\...`). The store adds its own `_metadata` signature folder, adds store fields such as `update_url` to `manifest.json`, and re-encodes the icon images, so leave those out:
 
 ```
 diff -r --exclude=_metadata --exclude=manifest.json --exclude=icons build/extension-mainnet <installed folder>
@@ -161,6 +172,17 @@ python3 opeq.py recover --program <PROGRAM_ID> --vault restored.json
 
 The vault file holds the encrypted master seed. Keep one copy in use at a time: two machines signing from the same file can reuse a one-time key. `recover` reads the on-chain counter and skips 64 keys, and `restore` does the same for an older copy of a vault file.
 
+## EVM accounts
+
+On Ethereum, Base, Arbitrum, Robinhood Chain and Elysium the wallet is a smart-contract account (`evm/src/OpeqAccount.sol`) created by an ownerless factory at `0xa9993f90af137adc80c70814d27fe4ecc773b50b`, the same address on all five networks. The account holds the funds and accepts a call only with a valid one-time signature.
+
+- **Signature:** WOTS+ as on Solana (n = 16 bytes, w = 256, 18 chains) with keccak256 instead of SHA-256, plus a Merkle path: 448 bytes per proof. Trees of 1024 keys; keys 0 to 959 sign calls, 960 to 1023 are kept for rekeys and device takeovers.
+- **One address everywhere:** an identity tree fixes the address on every network, and each network gets its own key trees, so a one-time key is never used on two networks.
+- **Deadline:** every signature names a deadline at most one hour ahead, checked on chain.
+- **Gas:** a secp256k1 gas key derived from the same 24 words pays gas only and has no power over the account. A send costs about 170,000 to 200,000 gas.
+- **Lying RPC:** the wallet reads account state from two independent sources and refuses to sign when they disagree.
+- The contracts are immutable and have no owner.
+
 ## Multisig (beta)
 
 A multisig is optional. A normal wallet works exactly as before; a multisig is a separate shared account that several OPEQ wallets control together. Every owner is an OPEQ wallet or OPEQ account, never a plain Ed25519 or ECDSA key, so each approval is a quantum-resistant one-time signature from that owner's own wallet.
@@ -231,6 +253,10 @@ The Swap tab on each EVM network swaps ETH, a pinned dollar stablecoin (USDC on 
 | Admin vault state | `3AMt6BShy2aigE8hRAAnrHsPR4kedNjbtGo2tCxKuJTp` |
 | Swap lookup table (frozen) | `FqmZkMZWoA3Z5c5epD9M1PSDts44iBojrqGyxE6xcJEq` |
 | Program code sha256 | `b16442593877287bd4078207ef663a79cc1f3e555f957db39d547db5750e7893` |
+| Multisig program | `3qjjDf8MdqDTFmBm3zJfKFqZKbZ5xgZM1ntGYVeqEuHB` |
+| Multisig program code sha256 | `83ff2e876a98bccc62080f739792860c0b964355b9848c0cf6695dee28fc222c` |
+| EVM account factory (all five EVM networks) | `0xa9993f90af137adc80c70814d27fe4ecc773b50b` |
+| EVM multisig factory | `0x260e85a98575012b816605b0feacb6cfdde78cef` |
 
 The code is reproducible: `python3 -c "import program, hashlib; print(hashlib.sha256(program.build().elf()).hexdigest())"` prints the hash above, and the on-chain program data matches it byte for byte.
 
