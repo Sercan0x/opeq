@@ -5,6 +5,7 @@ import { Rpc, pubkey, b58encode, SYSTEM, concat, u32, u64, eq, isOnCurve, unhex 
 import * as T from "./lib/tokens.js";
 import { balRow, held, repaint } from "./balrow.js";
 import * as J from "./lib/jupiter.js";
+import * as AG from "./lib/agent.js";
 import { feePayer } from "./feekey.js";
 import * as keep from "./keep.js";
 import { NET } from "./net.js";
@@ -570,6 +571,123 @@ async function refreshTokens() {
   });
   if (tokens.some((t) => t.mint === chosen)) sel.value = chosen;
   fillSwap();
+  refreshAgents(owner, fresh).catch(() => {});
+}
+
+let agents = [];
+
+async function refreshAgents(owner, all) {
+  const sel = $("ag-sel"), chosen = sel.value;
+  sel.textContent = "";
+  for (const t of tokens) { const o = document.createElement("option"); o.value = t.mint; o.textContent = `${tokenName(t.mint)} (${T.formatAmount(t.amount, t.decimals)})`; sel.append(o); }
+  if (tokens.some((t) => t.mint === chosen)) sel.value = chosen;
+  const found = [];
+  for (const t of all.filter((x) => x.delegate && x.delegated > 0n)) {
+    const acc = await rpc.account(pubkey(t.account)).catch(() => null);
+    if (session !== owner) return;
+    let a; try { a = AG.readTokenAccount(acc); } catch { continue; }
+    if (a.delegate && a.delegatedAmount > 0n && eq(a.owner, session.wallet)) found.push({ ...t, agent: b58encode(a.delegate), left: a.delegatedAmount, balance: a.amount });
+  }
+  agents = found;
+  scanAgentPayments(owner, found).catch(() => {});
+  const list = $("ag-list");
+  list.textContent = "";
+  if (!found.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = "No agent can spend from this wallet."; list.append(p); return; }
+  for (const g of found) {
+    const row = document.createElement("div"); row.className = "tok";
+    const left = document.createElement("div");
+    const nm = document.createElement("b"); nm.textContent = `${tokenName(g.mint)}: up to ${T.formatAmount(g.left, g.decimals)} left${g.balance === 0n ? " (wallet holds none now)" : ""}`;
+    const m = document.createElement("span"); m.className = "mint mono"; m.textContent = `agent ${g.agent}`;
+    left.append(nm, m);
+    const b = document.createElement("button"); b.className = "btn btn-line btn-sm"; b.type = "button"; b.textContent = "Remove";
+    b.addEventListener("click", () => guard("ag-err", "ag-ok", () => revokeAgent(g)));
+    row.append(left, b); list.append(row);
+  }
+}
+
+async function scanAgentPayments(owner, found) {
+  const id = b58encode(owner.wallet), accKey = `opeq:agentacc2:${id}`;
+  let st = {};
+  try { st = await chrome.storage.local.get(accKey); } catch {}
+  const watched = new Map((Array.isArray(st[accKey]) ? st[accKey] : []).filter((x) => x && typeof x.account === "string" && typeof x.mint === "string" && Number.isInteger(x.decimals)).map((x) => [x.account, x]));
+  for (const g of found) { const w = watched.get(g.account); watched.set(g.account, { account: g.account, mint: g.mint, decimals: g.decimals, last: w ? w.last : null }); }
+  const next = [];
+  for (const w of [...watched.values()].slice(0, 60)) {
+    let sigs = [], before = null;
+    for (let page = 0; page < 5; page++) {
+      const opt = { limit: 100, commitment: "confirmed", ...(w.last ? { until: w.last } : {}), ...(before ? { before } : {}) };
+      const r = await rpc.call("getSignaturesForAddress", [w.account, opt]).catch(() => null);
+      if (session !== owner) return;
+      if (!Array.isArray(r)) { sigs = null; break; }
+      const ok = r.filter((x) => x && typeof x.signature === "string" && AG.SIG_RE.test(x.signature));
+      sigs.push(...ok);
+      if (r.length < 100 || !w.last) break;
+      before = ok.length ? ok[ok.length - 1].signature : null;
+      if (!before) break;
+    }
+    let last = w.last;
+    if (sigs) {
+      for (const x of sigs.slice().reverse()) {
+        if (!x.err) {
+          const tx = await rpc.call("getTransaction", [x.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]).catch(() => null);
+          if (session !== owner) return;
+          if (!tx) break;
+          for (const p of AG.delegatedSpends(tx, pubkey(w.account), owner.wallet)) {
+            const amt = `${T.formatAmount(p.amount, p.decimals ?? w.decimals)} ${tokenName(w.mint)}`;
+            log(p.kind === "burned" ? `agent ${short(p.agent)} burned ${amt}: ${x.signature}` : `agent ${short(p.agent)} paid ${amt} to token account ${short(p.dest)}: ${x.signature}`, "ok");
+          }
+        }
+        last = x.signature;
+      }
+    }
+    const live = found.some((g) => g.account === w.account);
+    if (live || !w.gone) next.push({ account: w.account, mint: w.mint, decimals: w.decimals, last, ...(live ? {} : { gone: 1 }) });
+  }
+  try { await chrome.storage.local.set({ [accKey]: next }); } catch {}
+}
+
+async function revokeAgent(g) {
+  needPayer();
+  const prog = pubkey(g.program);
+  const inner = [AG.revokeIx(prog, pubkey(g.account), session.wallet)];
+  const tables = await lookupTables();
+  const plan = await planTopup(inner, tables, 0n);
+  if (!(await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: `Stop agent ${short(g.agent)} from spending ${tokenName(g.mint)}`,
+    rows: [["Agent", g.agent, true], ["Token mint", g.mint, true], ["Network fee", `about ${sol(await networkFee(CU_TOKEN))} SOL`]],
+    notes: notes(plan.note) }, "Remove"))) return;
+  const sig = await run("removing the agent allowance", inner, plan, { cu: CU_TOKEN, tables });
+  $("ag-ok").textContent = `agent ${short(g.agent)} can no longer spend ${tokenName(g.mint)}`;
+  log(`removed the ${tokenName(g.mint)} allowance of agent ${short(g.agent)}: ${sig}`, "ok");
+  await refreshWallet();
+}
+
+async function allowAgent() {
+  needPayer();
+  const t = tokens.find((x) => x.mint === $("ag-sel").value);
+  if (!t) throw new Error("no token selected");
+  const agent = addrOf($("ag-addr").value);
+  if (eq(agent, session.wallet) || b58encode(agent) === engine.payer.address) throw new Error("the agent must be a separate key, not this wallet or its fee key");
+  if (!isOnCurve(agent)) throw new Error("the agent address must be an ordinary key that can sign, not a program address");
+  await lookalike(b58encode(agent));
+  const limit = T.parseAmount($("ag-amt").value, t.decimals);
+  if (limit <= 0n) throw new Error("enter a spending limit above zero");
+  const prog = pubkey(t.program), mint = pubkey(t.mint), shown = $("ag-amt").value.trim(), name = tokenName(t.mint);
+  if (t.account !== b58encode(AG.ataOf(session.wallet, mint, prog))) throw new Error("this token sits in a non-standard token account, so an agent could not pay from it. Move it to the wallet's standard account first");
+  const acc = AG.readTokenAccount(await rpc.account(pubkey(t.account)));
+  const old = acc.delegate && !eq(acc.delegate, agent) && acc.delegatedAmount > 0n ? b58encode(acc.delegate) : null;
+  const inner = [AG.approveIx(prog, pubkey(t.account), mint, agent, session.wallet, limit, t.decimals)];
+  const tables = await lookupTables();
+  const plan = await planTopup(inner, tables, 0n);
+  if (!(await ask({ tag: NET.mainnet ? "Solana mainnet, real funds" : "Solana devnet, test funds", title: `Allow agent ${short(b58encode(agent))} to spend up to ${shown} ${name}`,
+    rows: [["Agent", b58encode(agent), true], ["Token mint", t.mint, true], ["Spending limit", `${shown} ${name}`], ["Network fee", `about ${sol(await networkFee(CU_TOKEN))} SOL`]],
+    notes: notes(`\nThe agent can pay anyone up to this limit without asking you again, until it is used up or you remove it. Only allow a key you control.`,
+      limit > t.amount ? `\nThe limit is more than the ${T.formatAmount(t.amount, t.decimals)} ${name} in the wallet.` : "",
+      old ? `\nThis replaces the current delegate ${short(old)}, which can then no longer spend ${name}.` : "", plan.note) }, "Allow"))) return;
+  const sig = await run("allowing the agent", inner, plan, { cu: CU_TOKEN, tables });
+  $("ag-ok").textContent = `agent ${short(b58encode(agent))} may spend up to ${shown} ${name}`;
+  log(`allowed agent ${short(b58encode(agent))} to spend up to ${shown} ${name}: ${sig}`, "ok");
+  $("ag-amt").value = ""; $("ag-addr").value = "";
+  await refreshWallet();
 }
 
 const CU_JUP = 1400000;
@@ -1037,6 +1155,7 @@ function initWallet() {
     $("s-amt").value = "";
     await refreshWallet();
   }));
+  $("ag-go").addEventListener("click", () => guard("ag-err", "ag-ok", allowAgent));
   $("t-go").addEventListener("click", () => guard("t-err", "t-ok", async () => {
     needPayer();
     const t = tokens.find((x) => x.mint === $("t-sel").value);

@@ -1,6 +1,7 @@
 import { findPda, concat, u32, u64, SYSTEM, eq, isOnCurve } from "./solana.js";
 import { sha256 } from "./sha256.js";
 import { TOKEN, TOKEN22 } from "./tokens.js";
+import { decodeTokenAuthority } from "./agent.js";
 
 const enc = new TextEncoder();
 export const IX_CREATE = 0, IX_PROPOSE = 1, IX_APPROVE = 2, IX_REVOKE = 3, IX_CANCEL = 4, IX_EXECUTE = 5, IX_CLOSE = 6, IX_SWEEP = 7;
@@ -187,5 +188,7 @@ export function describe(ix, ctx) {
     && eq(flat[3].key, ctx.vault) && flat[3].signer && !flat[0].signer && flat[0].writable && !flat[1].writable && !flat[1].signer && flat[2].writable && !flat[2].signer) {
     return { kind: "token", program: prog, source: flat[0].key, mint: flat[1].key, dest: flat[2].key, amount: dv(data).getBigUint64(1, true), decimals: data[9], mayHaveFee: eq(prog, TOKEN22) };
   }
+  const auth = decodeTokenAuthority(prog, flat.map((f) => f.key), data);
+  if (auth) return auth;
   return { kind: "contract", program: prog, metas: flat, data };
 }

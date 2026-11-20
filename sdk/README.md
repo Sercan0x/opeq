@@ -81,6 +81,33 @@ acct.close();
 - The fee key (`feeAddress`) pays gas. It is an ordinary secp256k1 key, so keep only gas money on it.
 - `setup()` deploys the account contract and moves it to a key tree only this device knows. It needs gas on the fee key.
 
+## AI agents and x402 (Solana, beta)
+
+An agent can pay x402 services from an OPEQ account without holding the account's keys. The account gives an ordinary agent key a token allowance with one hash-based signature. The agent then pays with standard x402 `exact` transactions, and the SPL Token program refuses anything above the allowance.
+
+```js
+import { AgentKey, payX402 } from "@opeqlabs/sdk";
+
+const agent = await AgentKey.generate();
+await acct.allowAgent(agent.address, usdcMint, 5_000_000n);
+console.log(await acct.agentAllowance(usdcMint));
+
+const p = await payX402({ rpcUrl, requirements, agent, owner: acct.address, asset: usdcMint, maxAmount: 1_000_000n });
+fetch(url, { headers: { "PAYMENT-SIGNATURE": p.header } });
+
+await acct.revokeAgent(usdcMint);
+```
+
+- The money stays in the OPEQ account. The agent key holds no SOL and no tokens; the facilitator pays the network fee.
+- The most a stolen or quantum-broken agent key can move is the allowance left. Revoke it at any time with one signature.
+- Payments use no one-time keys. Only `allowAgent` and `revokeAgent` do.
+- A token account has one delegate at a time. A new `allowAgent` replaces the old agent and reports it in `replaced`.
+- `asset` and `maxAmount` are required: the agent only pays in that token and never more than `maxAmount` base units per request. A request for another token or another Solana network than your RPC is refused.
+- `payX402` checks the allowance, the receiver's token account, the fee payer and the network before it signs. It supports the `exact` scheme on Solana, without splits.
+- `AgentKey.fromSecret(hex)` restores an agent key; `secretHex()` exports it. Store it like any hot key.
+
+Tested end to end on devnet against the x402.org facilitator (`node test/e2e_agent_devnet.mjs <keypair>` with `X402_FACILITATOR=https://x402.org/facilitator`).
+
 ## Verify without trusting anyone
 
 ```js
@@ -112,6 +139,7 @@ node sdk/test/run.mjs
 node sdk/test/e2e_anvil.mjs
 node sdk/test/e2e_devnet.mjs <funded devnet keypair json>
 node sdk/test/attack.mjs
+X402_FACILITATOR=https://x402.org/facilitator node sdk/test/e2e_agent_devnet.mjs <funded devnet keypair json>
 ```
 
 - `run.mjs` checks the JS code against vectors from the Python reference implementation (`sdk/test/gen_vectors.py`): words, key trees, addresses, signatures and the exact signed message. Every result must be byte-identical.

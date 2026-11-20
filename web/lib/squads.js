@@ -1,6 +1,7 @@
 import { pubkey, findPda, concat, u64, eq, SYSTEM, b58encode } from "./solana.js";
 import { sha256 } from "./sha256.js";
 import { TOKEN, TOKEN22 } from "./tokens.js";
+import { decodeTokenAuthority } from "./agent.js";
 
 const enc = new TextEncoder();
 export const PROGRAM = pubkey("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf");
@@ -147,6 +148,8 @@ export function describeIx(ix, vault) {
   if ((eq(p, TOKEN) || eq(p, TOKEN22)) && m.every((a) => a.known)) {
     if (d.length === 9 && d[0] === 3 && m.length >= 3) return { kind: "token", program: p, source: m[0].key, dest: m[1].key, authority: m[2].key, amount: u64le(d, 1), mint: null, decimals: null };
     if (d.length === 10 && d[0] === 12 && m.length >= 4) return { kind: "token", program: p, source: m[0].key, mint: m[1].key, dest: m[2].key, authority: m[3].key, amount: u64le(d, 1), decimals: d[9] };
+    const auth = decodeTokenAuthority(p, m.map((a) => a.key), d);
+    if (auth) return auth;
   }
   return { kind: "call", program: p, metas: m, data: d };
 }

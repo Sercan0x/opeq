@@ -7,10 +7,11 @@ import { Engine, signedLeaf, EXEC_LIMIT } from "./src/lib/engine.js";
 import { localCompute } from "./src/lib/compute.js";
 import { EvmChain, checkAddress, parseUnits, formatUnits } from "./src/lib/evmwallet.js";
 import { MemoryStore, IdbStore } from "./src/lib/vaultstore.js";
-import { Rpc, pubkey, b58encode, b58decode, eq, hex, unhex } from "./src/lib/solana.js";
+import { Rpc, pubkey, b58encode, b58decode, eq, hex, unhex, isOnCurve } from "./src/lib/solana.js";
 import { sha256 } from "./src/lib/sha256.js";
 import { hexToBytes, bytesToHex } from "./src/lib/evmtx.js";
 import { feePayer } from "./src/feekey.js";
+import * as A from "./src/lib/agent.js";
 
 installLocks();
 
@@ -213,6 +214,41 @@ export class Account {
     return (await this.use()).rekey(progress);
   }
 
+  async agentAllowance(mint) {
+    this.live();
+    const m = A.readMint(await this.e.rpc.account(key(mint)));
+    const acc = await this.e.rpc.account(A.ataOf(this.s.wallet, key(mint), m.program));
+    if (!acc) return { agent: null, allowance: 0n, balance: 0n };
+    const t = A.readTokenAccount(acc);
+    return { agent: t.delegate ? b58encode(t.delegate) : null, allowance: t.delegate ? t.delegatedAmount : 0n, balance: t.amount };
+  }
+
+  async allowAgent(agent, mint, limit, progress) {
+    this.live();
+    const who = key(agent), mk = key(mint), n = amount(limit, "limit", U64, 1n);
+    if (eq(who, this.s.wallet)) throw new Error("the agent key must not be the OPEQ account itself");
+    if (!isOnCurve(who)) throw new Error("the agent must be an ordinary key that can sign, not a program address");
+    if (b58encode(who) === await this.feeKey()) throw new Error("the agent key must not be the fee key");
+    const m = A.readMint(await this.e.rpc.account(mk));
+    const source = A.ataOf(this.s.wallet, mk, m.program);
+    const t = A.readTokenAccount(await this.e.rpc.account(source));
+    if (!eq(t.owner, this.s.wallet)) throw new Error("the token account is not owned by this OPEQ account");
+    const previous = t.delegate && !eq(t.delegate, who) ? b58encode(t.delegate) : null;
+    const result = await (await this.use()).exec([A.approveIx(m.program, source, mk, who, this.s.wallet, n, m.decimals)], 400000, progress);
+    return { result, agent: b58encode(who), limit: n, replaced: previous };
+  }
+
+  async revokeAgent(mint, progress) {
+    this.live();
+    const mk = key(mint);
+    const m = A.readMint(await this.e.rpc.account(mk));
+    const source = A.ataOf(this.s.wallet, mk, m.program);
+    const t = A.readTokenAccount(await this.e.rpc.account(source));
+    if (!t.delegate) return { result: null, revoked: null };
+    const result = await (await this.use()).exec([A.revokeIx(m.program, source, this.s.wallet)], 400000, progress);
+    return { result, revoked: b58encode(t.delegate) };
+  }
+
   async useHere(progress) {
     return (await this.use()).takeover(progress);
   }
@@ -310,6 +346,58 @@ export class EvmAccount {
     this.c = null;
   }
 }
+
+const AGENT_TOKEN = Symbol("agent key");
+
+export class AgentKey {
+  #key;
+  #secret;
+
+  constructor(token, pub, key, secret) {
+    if (token !== AGENT_TOKEN) throw new Error("use AgentKey.generate() or AgentKey.fromSecret()");
+    this.pub = pub;
+    this.address = b58encode(pub);
+    this.#key = key;
+    this.#secret = secret;
+    Object.freeze(this);
+  }
+
+  static async generate() {
+    return AgentKey.fromSecret(crypto.getRandomValues(new Uint8Array(32)));
+  }
+
+  static async fromSecret(secret) {
+    const s = typeof secret === "string" ? hexToBytes(secret.startsWith("0x") ? secret : "0x" + secret) : Uint8Array.from(secret);
+    if (s.length !== 32) throw new Error("an agent secret is 32 bytes");
+    const pkcs8 = Uint8Array.from([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20, ...s]);
+    try {
+      const probe = await crypto.subtle.importKey("pkcs8", pkcs8, { name: "Ed25519" }, true, ["sign"]);
+      const jwk = await crypto.subtle.exportKey("jwk", probe);
+      const pub = Uint8Array.from(atob(jwk.x.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (jwk.x.length % 4)) % 4)), (c) => c.charCodeAt(0));
+      const k = await crypto.subtle.importKey("pkcs8", pkcs8, { name: "Ed25519" }, false, ["sign"]);
+      return new AgentKey(AGENT_TOKEN, pub, k, s);
+    } finally { pkcs8.fill(0); }
+  }
+
+  async sign(message) { return new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, this.#key, message)); }
+
+  secretHex() { return bytesToHex(this.#secret).slice(2); }
+
+  toJSON() { return { address: this.address }; }
+}
+
+export async function payX402({ rpcUrl, requirements, agent, owner, asset, maxAmount, resource }) {
+  httpsUrl(rpcUrl, "rpcUrl");
+  if (!(agent instanceof AgentKey)) throw new Error("agent must be an AgentKey");
+  if (asset == null) throw new Error("pass asset: the token mint this agent pays with");
+  const cap = amount(maxAmount, "maxAmount", U64, 1n);
+  const rpc = new Rpc(rpcUrl);
+  const genesis = await rpc.call("getGenesisHash", []);
+  if (typeof genesis !== "string") throw new Error("the RPC did not return its network");
+  const r = await A.x402Payment({ rpc, requirements, agent, owner: key(owner), resource, maxAmount: cap, asset: key(asset), genesis });
+  return { ...r, header: A.encodePaymentHeader(r.payload) };
+}
+
 
 export function solanaAccountFor(pubSeed, root, network = "mainnet") {
   const program = pubkey(NETWORKS[network].program);

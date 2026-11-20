@@ -12,7 +12,7 @@ LIB = os.path.join(ROOT, "web", "lib")
 SDK = os.path.join(ROOT, "sdk")
 SRC = os.path.join(SDK, "src")
 ENTRIES = ["engine.js", "compute.js", "evmwallet.js", "wots.js", "evmwots.js", "mnemonic.js", "protocol.js",
-           "solana.js", "vaultstore.js", "sha256.js", "keccak.js", "secp256k1.js", "evmtx.js", "evmcode.js"]
+           "solana.js", "vaultstore.js", "sha256.js", "keccak.js", "secp256k1.js", "evmtx.js", "evmcode.js", "agent.js"]
 EXTRA = {"feekey.js": os.path.join(ROOT, "extension", "feekey.js")}
 PACK_FILES = ["package.json", "README.md", "index.js", "filestore.js", "locks.js"]
 SAFE = re.compile(r"^(src/feekey\.js|src/lib/[a-z0-9]+\.js|examples/[a-z0-9-]+\.mjs)$")

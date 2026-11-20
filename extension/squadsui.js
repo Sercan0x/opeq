@@ -1,4 +1,5 @@
 import * as Q from "./lib/squads.js";
+import { authorityWords } from "./lib/agent.js";
 import { pubkey, b58encode, eq, SYSTEM } from "./lib/solana.js";
 
 const LIST_MAX = 20;
@@ -92,6 +93,7 @@ function words(t, v) {
       if (d.kind === "pay" && d.fromVault) out.push({ title: `Send ${sol(d.lamports)} SOL from vault ${t.vaultIndex}`, rows: [["To", b58encode(d.to), true]], check: [b58encode(d.to)], payee: d.to });
       else if (d.kind === "pay") out.push({ title: `Send ${sol(d.lamports)} SOL from ${short(d.from)}`, rows: [["From", b58encode(d.from), true], ["To", b58encode(d.to), true]], check: [b58encode(d.to)], risky: true });
       else if (d.kind === "token") out.push({ title: `Send ${d.amount} token units${d.decimals !== null ? ` (${d.decimals} decimals)` : ""}`, rows: [["To token account", b58encode(d.dest), true], ["From token account", b58encode(d.source), true], ...(d.mint ? [["Mint", b58encode(d.mint), true]] : [])], notes: ["Check the receiving token account and the token in Squads before you approve."], check: [b58encode(d.dest)], risky: true });
+      else if (d.kind === "allowance" || d.kind === "revoke" || d.kind === "authority") out.push(authorityWords(d, vault));
       else {
         const metas = d.metas.map((m, i) => [`Account ${i + 1}${m.key && eq(m.key, vault) ? " (the vault)" : ""}${m.signer ? ", signs" : ""}${m.writable ? ", writable" : ""}`, m.key ? b58encode(m.key) : "(from a lookup table)", true]);
         const data = d.data.length ? `${Array.from(d.data.slice(0, 300), (b) => b.toString(16).padStart(2, "0")).join("")}${d.data.length > 300 ? `… (first 300 of ${d.data.length} bytes)` : ""}` : "(empty)";

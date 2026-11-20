@@ -240,7 +240,9 @@ export class Rpc {
           if (typeof amt !== "string" || !/^\d{1,20}$/.test(amt) || !Number.isInteger(dec) || dec < 0 || dec > 18) continue;
           if (BigInt(amt) >= 1n << 64n) continue;
           pubkey(a.pubkey); pubkey(info.mint);
-          out.push({ account: a.pubkey, program: prog, mint: info.mint, amount: BigInt(amt), decimals: dec });
+          const del = typeof info.delegate === "string" && info.delegatedAmount && /^\d{1,20}$/.test(info.delegatedAmount.amount) ? { delegate: info.delegate, delegated: BigInt(info.delegatedAmount.amount) } : {};
+          if (del.delegate) pubkey(del.delegate);
+          out.push({ account: a.pubkey, program: prog, mint: info.mint, amount: BigInt(amt), decimals: dec, ...del });
         } catch {}
       }
     }

@@ -1,6 +1,7 @@
 import * as V from "./lib/solvault.js";
 import * as P from "./lib/protocol.js";
 import * as T from "./lib/tokens.js";
+import { authorityWords } from "./lib/agent.js";
 import { pubkey, b58encode, b58decode, SYSTEM, eq, unhex, concat, u32, u64 } from "./lib/solana.js";
 
 const LIST_MAX = 20;
@@ -101,6 +102,7 @@ function liveOf(p, info, now) {
 
 async function words(ix, v) {
   const d = V.describe(ix, { program: prog(), opeqProgram: opeq(), vault: v.vault });
+  if (d.kind === "allowance" || d.kind === "revoke" || d.kind === "authority") return authorityWords(d, v.vault);
   if (d.kind === "pay") return { title: `Send ${sol(d.lamports)} SOL`, rows: [["To", b58encode(d.to), true]], check: [b58encode(d.to)], payee: d.to };
   if (d.kind === "token") {
     const notes = d.mayHaveFee ? ["This token program can take a transfer fee, so the receiver may get less."] : [];

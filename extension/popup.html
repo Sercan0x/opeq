@@ -403,6 +403,15 @@
           <label class="f" for="t-amt">Amount</label><input type="text" id="t-amt" inputmode="decimal" autocomplete="off">
           <div class="row"><button class="btn btn-solid wide" id="t-go" type="button">Sign and send</button></div>
           <p class="ok" id="t-ok"></p><p class="err" id="t-err" role="alert"></p>
+          <details class="ev-more" id="ag-box"><summary>AI agents (beta)</summary>
+          <p class="hint">Let an AI agent pay for services (x402) from this wallet, up to a limit you set. The money stays here and the agent key holds nothing. Remove the allowance at any time.</p>
+          <div id="ag-list" class="toks"></div>
+          <label class="f" for="ag-addr">Agent address</label><input type="text" id="ag-addr" spellcheck="false" autocomplete="off">
+          <label class="f" for="ag-sel">Token</label><select id="ag-sel"></select>
+          <label class="f" for="ag-amt">Spending limit</label><input type="text" id="ag-amt" inputmode="decimal" autocomplete="off">
+          <div class="row"><button class="btn btn-solid" id="ag-go" type="button">Allow agent</button></div>
+          <p class="ok" id="ag-ok"></p><p class="err" id="ag-err" role="alert"></p>
+          </details>
         </div>
       </div>
       <div class="pane hidden" role="tabpanel" id="pane-vaults" aria-labelledby="tab-vaults">

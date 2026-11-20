@@ -187,6 +187,19 @@ Teams that already keep funds in Safe or Squads can keep them there and make an 
 
 The guard has had internal reviews only. Start with small amounts.
 
+## AI agents (beta, Solana)
+
+An AI agent can pay for services over x402 while the money stays in the OPEQ wallet. In the Tokens tab the wallet gives an ordinary agent key a spending allowance on one token (SPL Token `ApproveChecked`, signed once with a one-time key). The agent then pays with standard x402 `exact` transactions from the wallet's token account, and the SPL Token program refuses anything above the allowance. The agent key holds no SOL and no tokens; the facilitator pays the network fee.
+
+- The most a stolen or quantum-broken agent key can move is the allowance left. **Remove** revokes it with one signature.
+- Payments use no one-time keys; only giving and removing an allowance do.
+- A token account has one delegate at a time, so a new agent replaces the old one, and the review says so. Allowances on empty token accounts stay listed, because the next deposit would be spendable.
+- Agent payments are read from the chain and shown in Activity, including transfers and burns the agent makes through other programs.
+- Agents build payments with the SDK (`AgentKey`, `payX402`), which pays only in the token and up to the per-request cap the integrator sets, and refuses requests for another Solana network.
+- Multisig and Squads reviews now show token allowances, revokes and authority changes in plain words instead of a raw program call.
+
+Library `web/lib/agent.js`, tests `test_allowance_preview.mjs` and `sdk/test/e2e_agent_devnet.mjs` (settles a real payment through the x402.org facilitator on devnet).
+
 ## Bridge (beta)
 
 The wallet can move funds between Solana and the four EVM networks through [Relay](https://relay.link). OPEQ takes no fee; Relay's own fee is shown before you sign.
