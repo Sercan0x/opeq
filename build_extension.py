@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "extension")
 WEB = os.path.join(ROOT, "web")
 LIB = ["amms.js", "jupiter.js", "compute.js", "engine.js", "mnemonic.js", "protocol.js", "sha256.js", "solana.js", "tokens.js", "vaultstore.js", "wordlist.js", "worker.js", "wots.js",
-       "evmcode.js", "evmmscode.js", "evmmultisig.js", "solvault.js", "relay.js", "uniswap.js", "evmtx.js", "evmwallet.js", "evmwots.js", "keccak.js", "secp256k1.js", "squads.js", "safeguard.js", "safeguardcode.js", "agent.js"]
+       "evmcode.js", "evmmscode.js", "evmmultisig.js", "solvault.js", "relay.js", "uniswap.js", "evmtx.js", "evmwallet.js", "evmwots.js", "keccak.js", "secp256k1.js", "squads.js", "safeguard.js", "safeguardcode.js", "agent.js", "agentevm.js"]
 ASSETS = ["logo.svg", "mark.svg", "chain-sol.svg", "chain-eth.svg", "chain-base.svg", "chain-arb.svg", "chain-hood.svg"]
 FILES = ["manifest.json", "popup.html", "popup.js", "popup.css", "app.html", "app.js", "ext.css", "balrow.js", "evm.js", "evmvault.js", "solvaultui.js", "squadsui.js", "safeui.js", "bridge.js", "evmswap.js", "feekey.js", "keep.js", "net.js", "bg.js"]
 EVM_MAINNETS = [

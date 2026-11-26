@@ -197,7 +197,16 @@
     <div class="card hidden" id="e-tokpane"><div class="toks ev-toks" id="e-toks"></div><details class="ev-more"><summary>Add a token</summary>
         <label class="f" for="e-tok">Token contract address</label><input type="text" id="e-tok" spellcheck="false" autocomplete="off" placeholder="0x…">
         <div class="row"><button class="btn btn-line btn-sm" id="e-tok-go" type="button">Add token</button></div>
-      </details></div>
+      </details>
+        <details class="ev-more" id="ea-box"><summary>AI agents (beta)</summary>
+          <p class="hint">Let an AI agent pay for services (x402) up to a limit you set. The agent takes what it needs from this account, never more than the limit, and pays from its own address. Remove the allowance at any time.</p>
+          <div id="ea-list" class="toks"></div>
+          <label class="f" for="ea-addr">Agent address</label><input type="text" id="ea-addr" spellcheck="false" autocomplete="off" placeholder="0x…">
+          <label class="f" for="ea-sel">Token</label><select id="ea-sel"></select>
+          <label class="f" for="ea-amt">Spending limit</label><input type="text" id="ea-amt" inputmode="decimal" autocomplete="off">
+          <div class="row"><button class="btn btn-solid btn-sm" id="ea-go" type="button">Allow agent</button></div>
+          <p class="ok" id="ea-ok"></p><p class="err" id="ea-err" role="alert"></p>
+        </details></div>
         <div class="card hidden" id="e-keys"><dl class="kv">
             <div><dt>Key tree</dt><dd id="e-tree">–</dd></div>
             <div><dt>Signatures left</dt><dd id="e-left">–</dd></div>

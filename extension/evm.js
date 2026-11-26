@@ -11,6 +11,7 @@ import { UNI } from "./lib/uniswap.js";
 import { balRow, held, repaint } from "./balrow.js";
 import { b58encode } from "./lib/solana.js";
 import { factoryAddress as msFactoryAddress } from "./lib/evmmultisig.js";
+import { approveCall, readAllowance } from "./lib/agentevm.js";
 
 const $ = (id) => document.getElementById(id);
 const store = new IdbStore("opeq-evm");
@@ -268,6 +269,89 @@ async function refreshTokens() {
   }
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
   repaint();
+  refreshAgents().catch(() => {});
+}
+
+const AG_MAX = 20, AG_GRACE = 10 * 60 * 1000;
+const agKey = (c = chain) => `opeq:evm-agents:${c.vaultId}:${c.id}`;
+async function loadAgents(c = chain) {
+  let list = [];
+  try { list = (await chrome.storage.local.get(agKey(c)))[agKey(c)]; } catch {}
+  return (Array.isArray(list) ? list : []).filter((x) => x && /^0x[0-9a-f]{40}$/.test(x.agent) && /^0x[0-9a-f]{40}$/.test(x.token)).map((x) => ({ agent: x.agent, token: x.token, t: Number.isFinite(x.t) ? x.t : 0 })).slice(0, AG_MAX * 2);
+}
+async function editAgents(c, fn) {
+  const next = fn(await loadAgents(c));
+  try { await chrome.storage.local.set({ [agKey(c)]: next.slice(0, AG_MAX * 2) }); } catch {}
+}
+const tokName = (a, c = chain) => { const t = tokens.find((x) => x.address === a); const pin = UNI[c.id] && UNI[c.id].stable === a; return pin ? UNI[c.id].stableSymbol : t ? `${t.symbol} (unverified)` : `token ${a.slice(0, 6)}…${a.slice(-4)}`; };
+
+async function refreshAgents() {
+  const c = chain;
+  const sel = $("ea-sel"), keep = sel.value;
+  sel.textContent = "";
+  for (const t of tokens) { const o = document.createElement("option"); o.value = t.address; o.textContent = tokName(t.address, c); sel.append(o); }
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  const list = await loadAgents(c), live = [], gone = [];
+  for (const x of list) {
+    const left = await readAllowance(c.rpc, x.token, c.account, x.agent).catch(() => null);
+    if (c !== chain) return;
+    if (left === 0n && Date.now() - x.t > AG_GRACE) {
+      const second = c.check ? await readAllowance(c.check, x.token, c.account, x.agent).catch(() => null) : 0n;
+      if (second === 0n) { gone.push(x); continue; }
+    }
+    live.push({ ...x, left });
+  }
+  if (gone.length) await editAgents(c, (cur) => cur.filter((y) => !gone.some((g) => g.agent === y.agent && g.token === y.token && g.t === y.t)));
+  if (c !== chain) return;
+  const box = $("ea-list"); box.textContent = "";
+  if (!live.length) { const p = document.createElement("p"); p.className = "hint"; p.textContent = "No agent can spend from this account that this wallet knows of. To stop an agent set up elsewhere, enter its address with a limit of 0."; box.append(p); return; }
+  for (const x of live) {
+    const t = tokens.find((y) => y.address === x.token);
+    const row = document.createElement("div"); row.className = "tok";
+    const l = document.createElement("div");
+    const nm = document.createElement("b"); nm.textContent = `${tokName(x.token, c)}: ${x.left === null ? "allowance not refreshed" : x.left === 0n ? "nothing left" : `up to ${t ? formatUnits(x.left, t.decimals, t.decimals) : x.left} left`}`;
+    const m = document.createElement("span"); m.className = "mint mono"; m.textContent = `agent ${x.agent}`;
+    l.append(nm, m);
+    const b = document.createElement("button"); b.className = "btn btn-line btn-sm"; b.type = "button"; b.textContent = "Remove";
+    b.addEventListener("click", () => ui.guard("ea-err", "ea-ok", () => setAllowance(x.agent, x.token, 0n)));
+    row.append(l, b); box.append(row);
+  }
+}
+
+async function setAllowance(agent, token, value, shown) {
+  const c = chain;
+  const t = tokens.find((y) => y.address === token);
+  if (value > 0n && !t) throw new Error("add this token to the account first");
+  const name = tokName(token, c), short = `${agent.slice(0, 6)}…${agent.slice(-4)}`;
+  const old = await readAllowance(c.rpc, token, c.account, agent);
+  const calls = [];
+  if (value > 0n && old > 0n) { const z = approveCall(token, agent, 0n); calls.push({ to: z.to, value: 0n, data: z.data }); }
+  const call = approveCall(token, agent, value);
+  calls.push({ to: call.to, value: 0n, data: call.data });
+  const notes = [{ text: "Signed with one quantum-resistant one-time key." }];
+  const top = await c.topupPlan(0n);
+  if (top) { calls.push({ to: c.feeAddress, value: top, data: new Uint8Array(0) }); notes.push({ text: `Your gas key is running low, so this transaction also moves ${formatUnits(top, 18, 8)} ${c.chain.symbol} to it for future network fees.` }); }
+  let title;
+  const fmt = (v) => (t ? formatUnits(v, t.decimals, t.decimals) : String(v));
+  if (value > 0n) {
+    title = `Allow agent ${short} to take up to ${shown} ${name}`;
+    notes.push({ text: "The agent can take tokens up to this limit without asking you again and pay anyone with them, until the limit is used up or you remove it. Only allow a key you control.", warn: true });
+    notes.push({ text: `The agent pays network fees for taking tokens from its own address, so it needs a little ${c.chain.symbol}.` });
+    if (old > 0n) notes.push({ text: `This agent can already take ${fmt(old)} ${name}. The old limit is set to zero and the new one set in the same transaction, but if the agent takes the old limit before this confirms, it also gets the new one.`, warn: true });
+    if (t && t.balance !== null && value > t.balance) notes.push({ text: `The limit is more than the ${fmt(t.balance)} ${name} in the account.`, warn: true });
+  } else {
+    title = `Stop agent ${short} from taking ${name}`;
+    if (old === 0n) notes.push({ text: "This agent currently has no allowance on this token. The transaction sets it to zero anyway." });
+  }
+  const rows = [["Agent", agent, true], ["Token contract", token, true], ...(value > 0n ? [["Spending limit", `${shown} ${name}`]] : old > 0n ? [["Allowance now", `${fmt(old)} ${name}`]] : []), ["Network fee", await feeText(EXEC_GAS)]];
+  if (c !== chain) throw new Error("the network changed, nothing was signed");
+  if (!(await ui.ask({ ...tag(), title, rows, notes }, value > 0n ? "Allow" : "Remove"))) return;
+  if (c !== chain) throw new Error("the network changed, nothing was signed");
+  const res = await c.execute(calls, (h) => last(`${title} sent.`, h));
+  last(`${title} confirmed.`, res.hash);
+  await editAgents(c, (cur) => { const rest = cur.filter((x) => !(x.agent === agent && x.token === token)); return value > 0n ? [...rest, { agent, token, t: Date.now() }] : rest; });
+  if (c === chain) $("ea-ok").textContent = value > 0n ? `agent ${short} may take up to ${shown} ${name}` : `agent ${short} can no longer take ${name}`;
+  await refresh();
 }
 
 function progressTo(id) {
@@ -455,6 +539,24 @@ function bind() {
     if (swapPaint && status && status.state === "ready") { hide("e-sw", false); swapPaint(); }
   }));
 
+  $("ea-go").addEventListener("click", () => ui.guard("ea-err", "ea-ok", async () => {
+    const agent = checkAddress($("ea-addr").value).toLowerCase();
+    if (agent === chain.account || agent === chain.feeAddress) throw new Error("the agent must be a separate key, not this account or its gas key");
+    const code = await chain.rpc.code(agent);
+    if (code !== "0x") throw new Error(code.startsWith("0xef0100") ? "the agent address delegates to a contract (EIP-7702); use an ordinary address that only signs" : "the agent must be an ordinary address that can sign, not a contract");
+    const known = await loadAgents();
+    const twin = known.map((x) => x.agent).find((a) => a !== agent && similar(a.slice(2), agent.slice(2)));
+    if (twin && !(await ui.ask({ ...tag(), title: "This address looks like one of your agents", rows: [["New address", agent, true], ["Your agent", twin, true]], notes: [{ text: "Scammers create addresses that start and end like ones you use. Compare every character.", warn: true }] }, "It is the right address"))) throw new Error("cancelled: check the agent address");
+    await lookalike(agent);
+    const token = $("ea-sel").value;
+    const t = tokens.find((y) => y.address === token);
+    if (!t) throw new Error("choose a token");
+    const shown = $("ea-amt").value.trim();
+    const v = /^0+(\.0*)?$/.test(shown) ? 0n : parseUnits(shown, t.decimals);
+    if (v > 0n && !known.some((x) => x.agent === agent && x.token === token) && known.length >= AG_MAX) throw new Error(`at most ${AG_MAX} agents per network; remove one first`);
+    await setAllowance(agent, token, v, shown);
+    $("ea-amt").value = ""; $("ea-addr").value = "";
+  }));
   $("e-send-go").addEventListener("click", () => ui.guard("e-err", "e-ok", async () => {
     const asset = $("e-asset").value;
     const to = checkAddress($("e-to").value);

@@ -81,7 +81,7 @@ acct.close();
 - The fee key (`feeAddress`) pays gas. It is an ordinary secp256k1 key, so keep only gas money on it.
 - `setup()` deploys the account contract and moves it to a key tree only this device knows. It needs gas on the fee key.
 
-## AI agents and x402 (Solana, beta)
+## AI agents and x402 (beta)
 
 An agent can pay x402 services from an OPEQ account without holding the account's keys. The account gives an ordinary agent key a token allowance with one hash-based signature. The agent then pays with standard x402 `exact` transactions, and the SPL Token program refuses anything above the allowance.
 
@@ -107,6 +107,26 @@ await acct.revokeAgent(usdcMint);
 - `AgentKey.fromSecret(hex)` restores an agent key; `secretHex()` exports it. Store it like any hot key.
 
 Tested end to end on devnet against the x402.org facilitator (`node test/e2e_agent_devnet.mjs <keypair>` with `X402_FACILITATOR=https://x402.org/facilitator`).
+
+### On EVM
+
+The account contract has no ERC-1271, so the agent pays from its own address. The account allows it a limit, the agent takes what it needs and pays with EIP-3009.
+
+```js
+import { EvmAgentKey, pullForAgent, payX402Evm } from "@opeqlabs/sdk";
+
+const agent = EvmAgentKey.generate();
+await base.allowAgent(agent.address, usdc, 5_000_000n);
+
+await pullForAgent({ rpcUrl, chainId: 8453, agent, token: usdc, owner: base.address, amount: 2_000_000n });
+const p = await payX402Evm({ rpcUrl, chainId: 8453, requirements, agent, asset: usdc, maxAmount: 1_000_000n });
+fetch(url, { headers: { "PAYMENT-SIGNATURE": p.header } });
+
+await base.revokeAgent(agent.address, usdc);
+```
+
+- The agent needs a little ETH for `pullForAgent`. Tokens it has taken stay on its address until it pays; that part is not quantum-resistant, and it is never more than the limit.
+- `payX402Evm` supports EIP-3009 only (not Permit2) and refuses another chain, another token, paying the agent itself, and anything above `maxAmount`.
 
 ## Verify without trusting anyone
 

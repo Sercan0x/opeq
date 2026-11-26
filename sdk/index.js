@@ -5,13 +5,14 @@ import * as W from "./src/lib/wots.js";
 import * as E from "./src/lib/evmwots.js";
 import { Engine, signedLeaf, EXEC_LIMIT } from "./src/lib/engine.js";
 import { localCompute } from "./src/lib/compute.js";
-import { EvmChain, checkAddress, parseUnits, formatUnits } from "./src/lib/evmwallet.js";
+import { EvmChain, EvmRpc, checkAddress, parseUnits, formatUnits } from "./src/lib/evmwallet.js";
 import { MemoryStore, IdbStore } from "./src/lib/vaultstore.js";
 import { Rpc, pubkey, b58encode, b58decode, eq, hex, unhex, isOnCurve } from "./src/lib/solana.js";
 import { sha256 } from "./src/lib/sha256.js";
 import { hexToBytes, bytesToHex } from "./src/lib/evmtx.js";
 import { feePayer } from "./src/feekey.js";
 import * as A from "./src/lib/agent.js";
+import * as AE from "./src/lib/agentevm.js";
 
 installLocks();
 
@@ -329,6 +330,32 @@ export class EvmAccount {
     return this.execute([{ to, value: amount(wei, "wei", U256, 1n) }], onHash);
   }
 
+  async agentAllowance(agent, token) {
+    this.live();
+    return AE.readAllowance(this.c.rpc, checkAddress(token), this.address, checkAddress(agent));
+  }
+
+  async allowAgent(agent, token, limit, onHash) {
+    this.live();
+    const a = checkAddress(agent), t = checkAddress(token), v = amount(limit, "limit", 1n << 255n, 1n);
+    if (a === this.address || a === this.feeAddress) throw new Error("the agent must be a separate key, not this account or its gas key");
+    if ((await this.c.rpc.code(a)) !== "0x") throw new Error("the agent must be an ordinary address that can sign, not a contract or an EIP-7702 account");
+    const previous = await AE.readAllowance(this.c.rpc, t, this.address, a);
+    const calls = [];
+    if (previous > 0n) { const z = AE.approveCall(t, a, 0n); calls.push({ to: z.to, value: 0n, data: z.data }); }
+    const call = AE.approveCall(t, a, v);
+    calls.push({ to: call.to, value: 0n, data: call.data });
+    const result = await this.c.execute(calls, onHash);
+    return { result, agent: a, limit: v, previous };
+  }
+
+  async revokeAgent(agent, token, onHash) {
+    this.live();
+    const a = checkAddress(agent), t = checkAddress(token);
+    const call = AE.approveCall(t, a, 0n);
+    return { result: await this.c.execute([{ to: call.to, value: 0n, data: call.data }], onHash) };
+  }
+
   async rekey(progress, onHash) {
     this.live();
     return this.c.rekey(progress, onHash);
@@ -398,6 +425,22 @@ export async function payX402({ rpcUrl, requirements, agent, owner, asset, maxAm
   return { ...r, header: A.encodePaymentHeader(r.payload) };
 }
 
+
+export const EvmAgentKey = AE.EvmAgentKey;
+
+export async function pullForAgent({ rpcUrl, chainId, agent, token, owner, amount: value, onHash }) {
+  httpsUrl(rpcUrl, "rpcUrl");
+  if (!EVM_CHAINS[chainId]) throw new Error(`chain ${chainId} is not an OPEQ network`);
+  return AE.pullFromOwner({ rpc: new EvmRpc(rpcUrl), chainId, agent, token: checkAddress(token), owner: checkAddress(owner), value: amount(value, "amount", U256, 1n), onHash });
+}
+
+export async function payX402Evm({ rpcUrl, chainId, requirements, agent, asset, maxAmount, resource }) {
+  httpsUrl(rpcUrl, "rpcUrl");
+  if (!EVM_CHAINS[chainId]) throw new Error(`chain ${chainId} is not an OPEQ network`);
+  if (asset == null) throw new Error("pass asset: the token contract this agent pays with");
+  const r = await AE.x402EvmPayment({ rpc: new EvmRpc(rpcUrl), chainId, requirements, agent, asset: checkAddress(asset), maxAmount: amount(maxAmount, "maxAmount", U256, 1n), resource });
+  return { ...r, header: AE.encodeHeader(r.payload) };
+}
 
 export function solanaAccountFor(pubSeed, root, network = "mainnet") {
   const program = pubkey(NETWORKS[network].program);
