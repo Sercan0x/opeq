@@ -1,6 +1,6 @@
 import { REGISTRY, series as indSeries, MTF_SECONDS } from "./indicators.js";
 
-export const TIMEFRAMES = { "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
+export const TIMEFRAMES = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200, "1d": 86400, "1w": 604800 };
 export const PAIRS = { "SOL/USDC": { base: "SOL", quote: "USDC", feed: "SOLUSDT" } };
 export const OPS = ["<", "<=", ">", ">="];
 export const INDICATORS = Object.freeze(Object.keys(REGISTRY));
@@ -128,9 +128,9 @@ export function step(rule, state, candles, i, get, feePct = 0.3) {
   return { state: s, events };
 }
 
-export function backtest(rule, candles, startCash = 1000, feePct = 0.3, from = 1, to = candles.length) {
+export function backtest(rule, candles, startCash = 1000, feePct = 0.3, from = 1, to = candles.length, shared = null) {
   validateRule(rule);
-  const get = makeCache(candles, rule.timeframe);
+  const get = shared || makeCache(candles, rule.timeframe);
   let state = { cash: startCash, pos: null, trades: 0, day: null };
   const log = [], curve = [];
   for (let i = Math.max(1, from); i < to; i++) { const r = step(rule, state, candles, i, get, feePct); state = r.state; log.push(...r.events); curve.push({ t: candles[i].t, equity: state.cash + (state.pos ? state.pos.qty * candles[i].c : 0) }); }

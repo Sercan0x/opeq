@@ -12,7 +12,7 @@ function walk(n, start = 100, t0 = 1700000000 - (1700000000 % 86400)) {
   const C = []; let p = start;
   for (let i = 0; i < n; i++) {
     const o = p, c = Math.max(1, o * (1 + (rnd() - 0.5) * 0.04)), h = Math.max(o, c) * (1 + rnd() * 0.01), l = Math.min(o, c) * (1 - rnd() * 0.01), v = 100 + rnd() * 900;
-    C.push({ t: t0 + i * 3600, o, h, l, c, v, tb: v * rnd(), fr: (rnd() - 0.4) * 0.02, oi: 5e8 * (1 + rnd() * 0.1), ls: 1 + rnd() * 3, lsl: 50 + rnd() * 30 }); p = c;
+    C.push({ t: t0 + i * 3600, o, h, l, c, v, tb: v * rnd(), nt: 20 + Math.floor(rnd() * 200), fr: (rnd() - 0.4) * 0.02, oi: 5e8 * (1 + rnd() * 0.1), ls: 1 + rnd() * 3, lsl: 50 + rnd() * 30 }); p = c;
   }
   return C;
 }
@@ -102,5 +102,25 @@ const bt = backtest({ ...base, entry: { all: [{ left: { ind: "rsi", tf: "4h" }, 
 ok(fin(bt.equity), `a multi-timeframe backtest runs (${bt.trades} trades)`);
 ok(describe().split("\n").length === Object.keys(REGISTRY).length, `the indicator guide for Claude lists all ${Object.keys(REGISTRY).length} indicators`);
 
+
+const RW = walk(3000);
+const hu = series(RW, { ind: "hurst", period: 200 }, "1h").filter(fin);
+ok(hu.length > 2000 && Math.abs(hu.reduce((a, b) => a + b, 0) / hu.length - 0.55) < 0.12, `Hurst of a random walk sits near 0.5 (${(hu.reduce((a, b) => a + b, 0) / hu.length).toFixed(3)})`);
+const ac1 = series(RW, { ind: "autocorr", period: 500 }, "1h").filter(fin);
+ok(ac1.every((v) => Math.abs(v) < 0.25), "autocorrelation of random returns stays near 0");
+const tm = series(RW, { ind: "time", out: "hour" }, "1h"), wd = series(RW, { ind: "time", out: "weekday" }, "1h");
+ok(RW.every((c, i) => tm[i] === new Date(c.t * 1000).getUTCHours()) && wd[0] === (new Date(RW[0].t * 1000).getUTCDay() + 6) % 7 && Math.max(...wd) === 6 && Math.min(...wd) === 0, "time gives the UTC hour and weekday with Monday as 0");
+const fr = (hs) => hs.map((h, i) => ({ t: 1700000000 + i * 3600, o: h - 1, h, l: h - 2, c: h - 1, v: 1 }));
+const fx = series(fr([10, 11, 15, 12, 11, 10]), { ind: "fractal", out: "newUp" }, "1h"), fl = series(fr([10, 11, 15, 12, 11, 10]), { ind: "fractal", out: "lastUp" }, "1h");
+ok(fx[3] === 0 && fx[4] === 1 && fl[4] === 15 && !fin(fl[3]), "an up fractal shows only once the two candles after it close");
+const day = Array.from({ length: 48 }, (_, i) => ({ t: 1699920000 + i * 3600, o: 100, h: i < 24 ? 110 : 120, l: i < 24 ? 90 : 95, c: i < 24 ? 105 : 100, v: 1 }));
+const pv = series(day, { ind: "pivot" }, "1h"), r1 = series(day, { ind: "pivot", out: "r1" }, "1h");
+ok(!fin(pv[23]) && near(pv[24], (110 + 90 + 105) / 3) && near(r1[30], 2 * ((110 + 90 + 105) / 3) - 90), "daily pivots use only the previous finished day");
+const gk = series(RW, { ind: "garmanklass", period: 50 }, "1h").filter(fin), pk = series(RW, { ind: "parkinson", period: 50 }, "1h").filter(fin), yz = series(RW, { ind: "yangzhang", period: 50 }, "1h").filter(fin);
+ok(gk.length && pk.length && yz.length && [gk, pk, yz].every((a) => a.every((v) => v > 0 && v < 10)), "range-based volatility estimators give positive percent values");
+ok(["laguerrersi", "stc", "imi", "psy", "tii", "rvix"].every((k) => series(RW, { ind: k }, "1h").filter(fin).every((v) => v >= -1e-9 && v <= 100 + 1e-9)) && ["demarker", "er", "entropy"].every((k) => series(RW, { ind: k }, "1h").filter(fin).every((v) => v >= -1e-9 && v <= 1 + 1e-9)), "new bounded indicators stay inside their ranges");
+const mm = series(L, { ind: "mama" }, "1h"), ff = series(L, { ind: "mama", out: "fama" }, "1h");
+ok(fin(mm[290]) && Math.abs(mm[290] - L[290].c) < 5 && mm[290] >= ff[290], "MAMA follows a rising line and stays above FAMA");
+ok(validateRule({ name: "w", pair: "SOL/USDC", timeframe: "5m", entry: { left: { ind: "rsi", tf: "30m" }, op: "<", right: 30 }, stopLossPct: 1, orderUsd: 10 }) && validateRule({ name: "w", pair: "SOL/USDC", timeframe: "8h", entry: { left: { ind: "ema", tf: "1w" }, op: "<", right: { ind: "price" } }, stopLossPct: 5, orderUsd: 10 }), "new rule timeframes 5m and 8h validate, with 30m and 1w filters");
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

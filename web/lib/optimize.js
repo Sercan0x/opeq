@@ -1,4 +1,4 @@
-import { validateRule, backtest } from "./bot.js";
+import { validateRule, backtest, makeCache } from "./bot.js";
 import { REGISTRY } from "./indicators.js";
 
 const MAX_KNOBS = 4, MAX_RUNS = 400, MIN_TRADES = 3;
@@ -57,6 +57,7 @@ export function optimize(rule, candles, { split = 0.65, startCash = 1000, onProg
   const cut = Math.floor(candles.length * split);
   if (cut < 100 || candles.length - cut < 50) throw new Error("not enough price history to split into a search part and a check part");
   const ks = knobs(rule), opts = ks.map(choices);
+  const get = makeCache(candles, rule.timeframe);
   let grid = [[]];
   for (const o of opts) grid = grid.flatMap((g) => o.map((v) => [...g, v]));
   let seed = 1;
@@ -70,13 +71,13 @@ export function optimize(rule, candles, { split = 0.65, startCash = 1000, onProg
     const r = clone(rule);
     vals.forEach((v, i) => setPath(r, ks[i].path, v));
     try { validateRule(r); } catch { return; }
-    const tr = backtest(r, candles, startCash, 0.3, 1, cut);
+    const tr = backtest(r, candles, startCash, 0.3, 1, cut, get);
     if (tr.trades >= MIN_TRADES) runs.push({ rule: r, vals, train: tr });
     if (onProgress && n % 20 === 0) onProgress(n / grid.length);
   });
   runs.sort((a, b) => b.train.returnPct - a.train.returnPct);
-  const top = runs.slice(0, 5).map((x) => ({ ...x, test: backtest(x.rule, candles, startCash, 0.3, cut, candles.length) }));
-  const base = { train: backtest(rule, candles, startCash, 0.3, 1, cut), test: backtest(rule, candles, startCash, 0.3, cut, candles.length) };
+  const top = runs.slice(0, 5).map((x) => ({ ...x, test: backtest(x.rule, candles, startCash, 0.3, cut, candles.length, get) }));
+  const base = { train: backtest(rule, candles, startCash, 0.3, 1, cut, get), test: backtest(rule, candles, startCash, 0.3, cut, candles.length, get) };
   const slim = (b) => ({ returnPct: b.returnPct, holdPct: b.holdPct, trades: b.trades, wins: b.wins, maxDrawdownPct: b.maxDrawdownPct });
   return {
     knobs: ks.map((k, i) => ({ label: k.label, value: k.value, tried: opts[i] })),

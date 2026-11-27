@@ -41,6 +41,7 @@ def deploy(db):
             {"type": "ratelimit", "name": "TOOL_LIMIT", "namespace_id": "4203", "simple": {"limit": 60, "period": 60}},
         ] + [{"type": "plain_text", "name": k, "text": v} for k, v in VARS.items()],
         "observability": {"enabled": True},
+        "limits": {"cpu_ms": 60000},
     }
     parts = [("metadata", None, "application/json", json.dumps(meta))]
     with open(os.path.join(DOKO, "worker.js"), "rb") as f:

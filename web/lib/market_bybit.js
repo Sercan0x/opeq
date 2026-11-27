@@ -1,6 +1,6 @@
 const API = "https://api.bybit.com/v5/market";
-const SECS = { "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
-const KLINE = { "15m": "15", "1h": "60", "4h": "240", "1d": "D" };
+const SECS = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200, "1d": 86400, "1w": 604800 };
+const KLINE = { "5m": "5", "15m": "15", "30m": "30", "1h": "60", "2h": "120", "4h": "240", "12h": "720", "1d": "D", "1w": "W" };
 const PERIOD = { "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1d" };
 
 async function get(path, params, fetchImpl) {
@@ -12,8 +12,8 @@ async function get(path, params, fetchImpl) {
 }
 
 export async function candles(symbol, interval, total = 1000, fetchImpl = fetch) {
-  if (!SECS[interval]) throw new Error("unsupported timeframe");
-  const want = Math.max(50, Math.min(3000, total));
+  if (!SECS[interval] || !KLINE[interval]) throw new Error("unsupported timeframe");
+  const want = Math.max(50, Math.min(5000, total));
   const step = SECS[interval] * 1000;
   let end = null, rows = [];
   while (rows.length < want) {
