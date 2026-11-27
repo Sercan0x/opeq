@@ -583,7 +583,9 @@ export function resample(C, base, tf) {
   return { candles: out, map };
 }
 
-export function series(C, ref, base) {
+export function series(C0, ref, base) {
+  const C = ref.asset ? C0.assets && C0.assets[ref.asset] : C0;
+  if (!C) throw new Error(`no price data loaded for ${ref.asset}`);
   const spec = REGISTRY[ref.ind];
   if (!spec) throw new Error(`unknown indicator "${ref.ind}"`);
   const params = {};

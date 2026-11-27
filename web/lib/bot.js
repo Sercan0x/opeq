@@ -8,13 +8,22 @@ const MAX_NODES = 24, MAX_DEPTH = 4;
 
 const num = (v) => typeof v === "number" && Number.isFinite(v);
 let ruleTf = null;
+let assetsSeen = null;
+export const ASSET_RE = /^k?[A-Z0-9]{2,12}$/;
+export const MAX_ASSETS = 3;
+export function assetsOf(rule) {
+  const out = new Set();
+  const walk = (x) => { if (!x || typeof x !== "object") return; if (Array.isArray(x)) { x.forEach(walk); return; } if (typeof x.asset === "string" && x.ind) out.add(x.asset); Object.values(x).forEach(walk); };
+  walk(rule.entry); walk(rule.exit);
+  return [...out];
+}
 
 function checkRef(r, path) {
   if (num(r)) return;
   if (!r || typeof r !== "object" || Array.isArray(r)) throw new Error(`${path}: expected a number or an indicator`);
   const spec = REGISTRY[r.ind];
   if (!spec) throw new Error(`${path}: unknown indicator "${r.ind}"`);
-  for (const k of Object.keys(r)) if (!["ind", "out", "tf"].includes(k) && !(k === "name" && spec.names) && !(k in spec.p)) throw new Error(`${path}: ${r.ind} has no setting "${k}"`);
+  for (const k of Object.keys(r)) if (!["ind", "out", "tf", "asset"].includes(k) && !(k === "name" && spec.names) && !(k in spec.p)) throw new Error(`${path}: ${r.ind} has no setting "${k}"`);
   for (const [k, d] of Object.entries(spec.p)) {
     if (r[k] === undefined) continue;
     const v = r[k];
@@ -25,6 +34,9 @@ function checkRef(r, path) {
   if ("fast" in spec.p && "slow" in spec.p && pick("fast") >= pick("slow")) throw new Error(`${path}: ${r.ind} fast must be below slow`);
   if (r.ind === "uo" && !(pick("short") < pick("mid") && pick("mid") < pick("long"))) throw new Error(`${path}: uo needs short < mid < long`);
   if (r.out !== undefined && !spec.out.includes(r.out)) throw new Error(`${path}: ${r.ind} outputs ${spec.out.join(", ")}`);
+  if (r.asset !== undefined && (typeof r.asset !== "string" || !ASSET_RE.test(r.asset))) throw new Error(`${path}: asset must be a coin ticker such as BTC, ETH or kPEPE`);
+  if (r.asset === "SOL") throw new Error(`${path}: leave asset out for SOL itself`);
+  if (r.asset !== undefined && assetsSeen) assetsSeen.add(r.asset);
   if (r.tf !== undefined) {
     if (!MTF_SECONDS[r.tf]) throw new Error(`${path}: tf must be one of ${Object.keys(MTF_SECONDS).join(", ")}`);
     if (ruleTf && (MTF_SECONDS[r.tf] < MTF_SECONDS[ruleTf] || MTF_SECONDS[r.tf] % MTF_SECONDS[ruleTf])) throw new Error(`${path}: tf ${r.tf} must be ${ruleTf} or a longer timeframe that is a multiple of it`);
@@ -62,6 +74,7 @@ export function validateRule(rule) {
   if (!PAIRS[rule.pair]) throw new Error(`pair must be one of ${Object.keys(PAIRS).join(", ")}`);
   if (!TIMEFRAMES[rule.timeframe]) throw new Error(`timeframe must be one of ${Object.keys(TIMEFRAMES).join(", ")}`);
   ruleTf = rule.timeframe;
+  assetsSeen = new Set();
   const count = { n: 0 };
   checkCond(rule.entry, "entry", 0, count);
   if (rule.exit !== undefined) checkCond(rule.exit, "exit", 0, count);
@@ -70,7 +83,9 @@ export function validateRule(rule) {
   if (rule.stopLossPct === undefined) throw new Error("stopLossPct is required: every strategy needs a stop loss");
   if (!num(rule.orderUsd) || rule.orderUsd < 1 || rule.orderUsd > 100000) throw new Error("orderUsd must be from 1 to 100000");
   if (rule.maxTradesPerDay !== undefined && (!Number.isInteger(rule.maxTradesPerDay) || rule.maxTradesPerDay < 1 || rule.maxTradesPerDay > 24)) throw new Error("maxTradesPerDay must be 1 to 24");
-  ruleTf = null;
+  const nAssets = assetsSeen.size;
+  ruleTf = null; assetsSeen = null;
+  if (nAssets > MAX_ASSETS) throw new Error(`a rule can watch at most ${MAX_ASSETS} other coins`);
   return true;
 }
 

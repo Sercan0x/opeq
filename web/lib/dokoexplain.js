@@ -6,6 +6,7 @@ export function label(ref) {
   if (typeof ref === "number") return String(ref);
   const spec = REGISTRY[ref.ind];
   if (!spec) return String(ref.ind);
+  if (ref.asset) return `${ref.asset} ${label({ ...ref, asset: undefined })}`;
   if (ref.ind === "pattern") return `${ref.name} candle${ref.tf ? ` on ${ref.tf}` : ""}`;
   const ps = Object.keys(spec.p).map((k) => (ref[k] !== undefined ? ref[k] : spec.p[k].def));
   const name = ref.ind === "price" ? "price" : ref.ind.toUpperCase();

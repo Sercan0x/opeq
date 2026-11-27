@@ -6,7 +6,7 @@ const DISCRETE = new Set(["supertrend:dir", "heikin:dir", "pattern:value", "sque
 const isDiscrete = (r) => r && typeof r === "object" && REGISTRY[r.ind] && DISCRETE.has(`${r.ind}:${r.out || REGISTRY[r.ind].out[0]}`);
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
-const refName = (r) => { if (!r || typeof r !== "object") return String(r); const spec = REGISTRY[r.ind]; const ps = spec ? Object.keys(spec.p).filter((k) => r[k] !== undefined).map((k) => r[k]) : []; return `${r.ind.toUpperCase()}${ps.length ? `(${ps.join(", ")})` : ""}${r.out && spec && r.out !== spec.out[0] ? ` ${r.out}` : ""}${r.tf ? ` on ${r.tf}` : ""}`; };
+const refName = (r) => { if (!r || typeof r !== "object") return String(r); const spec = REGISTRY[r.ind]; const ps = spec ? Object.keys(spec.p).filter((k) => r[k] !== undefined).map((k) => r[k]) : []; return `${r.asset ? `${r.asset} ` : ""}${r.ind.toUpperCase()}${ps.length ? `(${ps.join(", ")})` : ""}${r.out && spec && r.out !== spec.out[0] ? ` ${r.out}` : ""}${r.tf ? ` on ${r.tf}` : ""}`; };
 const verb = (p) => (p === "entry" ? "buy if" : "sell if");
 
 export function knobs(rule) {

@@ -1,10 +1,11 @@
 const API = "https://api.hyperliquid.xyz/info";
 const SECS = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200, "1d": 86400, "1w": 604800 };
 const COIN = { SOLUSDT: "SOL" };
+const coinOf = (symbol) => COIN[symbol] || (/^k?[A-Z0-9]{2,12}$/.test(symbol) ? symbol : null);
 
 async function info(body, fetchImpl) {
   const r = await fetchImpl(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error(`price data request failed (${r.status})`);
+  if (!r.ok) throw new Error(r.status === 500 && body.req ? `no Hyperliquid market for ${body.req.coin}` : `price data request failed (${r.status})`);
   return r.json();
 }
 
@@ -19,7 +20,7 @@ export async function candles(symbol, interval, total = 1000, fetchImpl = fetch)
 }
 async function fetchCandles(symbol, interval, total, fetchImpl) {
   if (!SECS[interval]) throw new Error("unsupported timeframe");
-  const coin = COIN[symbol];
+  const coin = coinOf(symbol);
   if (!coin) throw new Error("unsupported market");
   const want = Math.max(50, Math.min(5000, total));
   const step = SECS[interval] * 1000, now = Date.now();
@@ -58,9 +59,9 @@ export async function withMarketData(C, symbol, interval, need, fetchImpl = fetc
   if (!C.length) return C;
   if (need.oi || need.ls) throw new Error("open interest and long/short history are not available");
   if (need.funding) {
-    const coin = COIN[symbol], end = (C[C.length - 1].t + SECS[interval]) * 1000, from = C[0].t * 1000 - 8 * 3600 * 1000;
+    const coin = coinOf(symbol), end = (C[C.length - 1].t + SECS[interval]) * 1000, from = C[0].t * 1000 - 8 * 3600 * 1000;
     const first = Math.floor(from / WINDOW) * WINDOW, starts = [];
-    for (let t = first; t < end && starts.length < 40; t += WINDOW) starts.push(t);
+    for (let t = first; t < end && starts.length < 120; t += WINDOW) starts.push(t);
     const parts = await Promise.all(starts.map((t) => fundingWindow(coin, t, fetchImpl)));
     const seen = new Set(), all = [];
     for (const x of parts.flat()) { const k = Number(x.time); if (!seen.has(k)) { seen.add(k); all.push(x); } }

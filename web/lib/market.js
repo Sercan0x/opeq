@@ -71,11 +71,12 @@ export async function withMarketData(C, symbol, interval, need, fetchImpl = fetc
   return C;
 }
 
-export function marketNeeds(rule) {
+export function marketNeeds(rule, asset = undefined) {
   const need = { funding: false, oi: false, ls: false };
   const walk = (x) => {
     if (!x || typeof x !== "object") return;
     if (Array.isArray(x)) { x.forEach(walk); return; }
+    if (x.ind && x.asset !== asset) return;
     if (x.ind === "funding") need.funding = true;
     if (x.ind === "oi") need.oi = true;
     if (x.ind === "longshort") need.ls = true;

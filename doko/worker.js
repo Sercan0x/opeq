@@ -1,8 +1,9 @@
-import { validateRule, backtest, step, makeCache, PAIRS, TIMEFRAMES } from "./lib/bot.js";
+import { validateRule, backtest, step, makeCache, PAIRS, TIMEFRAMES, assetsOf, MAX_ASSETS } from "./lib/bot.js";
 import { REGISTRY, MTF_SECONDS, describe, series } from "./lib/indicators.js";
 import { marketNeeds } from "./lib/market.js";
 import * as bybit from "./lib/market_bybit.js";
 import * as hl from "./lib/market_hl.js";
+import * as bus from "./lib/market_binanceus.js";
 import { optimize } from "./lib/optimize.js";
 import { explain } from "./lib/dokoexplain.js";
 
@@ -53,7 +54,8 @@ A condition is one of:
 - a cross {"cross": "above" | "below", "a": indicator, "b": X}
 At most 24 conditions in total, nested at most 4 deep.
 
-An indicator is {"ind": name, ...settings, "out": output, "tf": timeframe}. Leave a setting out to use its default. "out" picks one output (default: the first). "tf" computes the indicator on a longer timeframe than the rule's (one of ${Object.keys(MTF_SECONDS).join(", ")}, a multiple of the rule's timeframe); its value only updates when that longer candle closes. Candle patterns use {"ind": "pattern", "name": ...} and give 1 or 0.
+An indicator is {"ind": name, ...settings, "out": output, "tf": timeframe, "asset": coin}. Leave a setting out to use its default. "out" picks one output (default: the first). "tf" computes the indicator on a longer timeframe than the rule's (one of ${Object.keys(MTF_SECONDS).join(", ")}, a multiple of the rule's timeframe); its value only updates when that longer candle closes. Candle patterns use {"ind": "pattern", "name": ...} and give 1 or 0.
+"asset" computes the indicator on another coin's candles instead of SOL, lined up candle by candle: any Hyperliquid perpetual ticker such as BTC, ETH, HYPE, DOGE or kPEPE (k means a thousand units). The agent still only trades SOL. A rule can watch up to ${MAX_ASSETS} other coins. Example: {"left":{"ind":"rsi","asset":"BTC","tf":"4h"},"op":"<","right":30}.
 
 Example: {"name":"SOL RSI dip with 4h trend","pair":"SOL/USDC","timeframe":"1h","entry":{"all":[{"left":{"ind":"rsi","period":14},"op":"<","right":35},{"left":{"ind":"supertrend","out":"dir","tf":"4h"},"op":">","right":0}]},"exit":{"left":{"ind":"rsi","period":14},"op":">","right":55},"stopLossPct":3,"orderUsd":100}
 
@@ -84,12 +86,35 @@ function warmup(rule) {
   walk(rule.entry); walk(rule.exit);
   return Math.min(need, 2500);
 }
-async function dataFor(rule, n) {
-  const feed = PAIRS[rule.pair].feed;
-  const C = await loadCandles(feed, rule.timeframe, n, spotFetch);
-  await withMarketData(C, feed, rule.timeframe, marketNeeds(rule));
+function align(C, A) {
+  const by = new Map(A.map((a) => [a.t, a]));
+  let last = null;
+  return C.map((c) => {
+    const a = by.get(c.t);
+    if (a) { last = a; return a; }
+    if (last) return { t: c.t, o: last.c, h: last.c, l: last.c, c: last.c, v: 0, tb: NaN, nt: 0 };
+    return { t: c.t, o: NaN, h: NaN, l: NaN, c: NaN, v: NaN, tb: NaN, nt: NaN };
+  });
+}
+async function loadAll(rule, n) {
+  const feed = PAIRS[rule.pair].feed, tf = rule.timeframe, deep = n > 5000;
+  const get = deep ? (s) => bus.candles(s === feed ? PAIRS[rule.pair].base : s, tf, n, spotFetch) : (s) => loadCandles(s, tf, n, spotFetch);
+  const C = await get(feed);
+  await withMarketData(C, feed, tf, marketNeeds(rule));
+  const assets = assetsOf(rule);
+  if (assets.length) {
+    C.assets = {};
+    await Promise.all(assets.map(async (a) => {
+      let A;
+      try { A = await get(a); } catch (x) { throw new ToolError(`No price data for ${a}${deep ? " this far back" : ""}: ${x.message}. Pick a coin listed on Hyperliquid${deep ? ", or use 5000 candles or fewer" : ""}.`); }
+      const al = align(C, A);
+      if (marketNeeds(rule, a).funding) await hl.withMarketData(al, a, tf, { funding: true }, spotFetch);
+      C.assets[a] = al;
+    }));
+  }
   return C;
 }
+const dataFor = loadAll;
 
 function freshPaper() { return { cash: START, pos: null, trades: 0, day: null, lastT: null, log: [], equity: START, wins: 0, closed: 0, curve: [] }; }
 const ruleOf = (d) => (d.cur >= 0 && d.versions[d.cur] ? d.versions[d.cur].rule : null);
@@ -280,7 +305,7 @@ class ToolError extends Error {}
 const S = (props, required = []) => ({ type: "object", properties: props, required, additionalProperties: false });
 const AGENT = { type: "string", description: "Agent id from list_agents" };
 const RULE = { type: "object", description: "A DOKO rule object, see rule_format" };
-const CANDLES = { type: "integer", minimum: 300, maximum: 5000, description: "How many candles of history to test on (default 3000, most 5000; 1h candles reach about 7 months back, 4h about 2 years)" };
+const CANDLES = { type: "integer", minimum: 300, maximum: 20000, description: "How many candles of history to test on (default 3000). Up to 5000 come from Hyperliquid (1h about 7 months, 4h about 2 years). From 5001 to 20000 the whole test uses Binance.US candles, which reach back to 2020 for SOL; other coins must then also be listed on Binance.US." };
 
 const TOOLS = [
   { name: "rule_format", description: "How to write a DOKO rule, with every indicator and its settings. Call this once before writing or changing a rule.", inputSchema: S({}), annotations: { readOnlyHint: true } },
@@ -326,7 +351,7 @@ async function ruleFor(env, account, args) {
   if (!rule) throw new ToolError("This agent has no rules yet.");
   return { rule, row };
 }
-const candlesArg = (v) => Math.max(300, Math.min(5000, Number.isInteger(v) ? v : 3000));
+const candlesArg = (v) => Math.max(300, Math.min(20000, Number.isInteger(v) ? v : 3000));
 
 async function callTool(name, args, env, account, base) {
   args = args && typeof args === "object" ? args : {};
@@ -503,30 +528,20 @@ async function siteApi(request, env, path) {
 
 export async function tickAll(env) {
   const { results } = await env.DB.prepare("SELECT id, name, running, data FROM agents WHERE running = 1 LIMIT 500").all();
-  const groups = new Map();
+  const writes = [];
   for (const row of results) {
     const d = JSON.parse(row.data), rule = ruleOf(d);
     if (!rule) continue;
-    const k = `${PAIRS[rule.pair].feed}|${rule.timeframe}`;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push({ row, d, rule });
-  }
-  const writes = [];
-  for (const [k, list] of groups) {
-    const [feed, tf] = k.split("|");
     let C;
-    try {
-      C = await loadCandles(feed, tf, Math.max(...list.map((x) => warmup(x.rule))) + 5, spotFetch);
-      const need = {};
-      for (const x of list) for (const [n, v] of Object.entries(marketNeeds(x.rule))) need[n] = need[n] || v;
-      await withMarketData(C, feed, tf, need);
-    } catch (x) {
-      for (const { row, d } of list) { if (!d.paper.lastErr || Date.now() - d.paper.lastErr > 3600000) { plog(d.paper, `Could not load prices: ${x.message}`); d.paper.lastErr = Date.now(); writes.push([row.id, d]); } }
+    try { C = await loadAll(rule, warmup(rule) + 5); }
+    catch (x) {
+      const p = d.paper || (d.paper = freshPaper());
+      if (!p.lastErr || Date.now() - p.lastErr > 3600000) { plog(p, `Could not load prices: ${x.message}`); p.lastErr = Date.now(); writes.push([row.id, d]); }
       continue;
     }
     if (!C.length) continue;
-    const cache = makeCache(C, tf), last = C[C.length - 1];
-    for (const { row, d, rule } of list) {
+    const cache = makeCache(C, rule.timeframe), last = C[C.length - 1];
+    {
       const p = d.paper || (d.paper = freshPaper());
       let moved = false;
       if (p.lastT == null) { p.lastT = last.t; plog(p, `Started. Waiting for the next ${rule.timeframe} candle to close.`); moved = true; }
@@ -542,7 +557,7 @@ export async function tickAll(env) {
         moved = true;
       }
       const eq = p.cash + (p.pos ? p.pos.qty * last.c : 0);
-      if (moved || Math.abs(eq - p.equity) > 0.005) { p.equity = eq; p.price = last.c; p.checked = Date.now(); writes.push([row.id, d]); }
+      if (moved || Math.abs(eq - p.equity) > 0.005) { p.equity = eq; p.price = last.c; p.checked = Date.now(); delete p.lastErr; writes.push([row.id, d]); }
     }
   }
   for (let i = 0; i < writes.length; i += 50) {
