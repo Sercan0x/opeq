@@ -466,6 +466,16 @@ async function ruleFor(env, account, args) {
   if (!rule) throw new ToolError("This agent has no rules yet.");
   return { rule, row };
 }
+async function ruleHash(rule) { const { name, ...rest } = rule; return sha(JSON.stringify(rest)); }
+async function lastBacktest(env, account, rule) {
+  try {
+    const hit = await env.DB.prepare("SELECT data FROM bt_cache WHERE account = ? AND hash = ? AND at > ?").bind(account, await ruleHash(rule), now() - 7 * 86400).first();
+    if (hit) return JSON.parse(hit.data);
+    const w = warmup(rule), data = await loadAll(env, rule, 3000 + w), main = data[rule.coins[0]], from = Math.min(w, main.length - 10);
+    const r = backtest(rule, data, START, from);
+    return { returnPct: +r.returnPct.toFixed(2), trades: r.trades, wins: r.wins, liquidations: r.liquidations, maxDrawdownPct: +r.maxDrawdownPct.toFixed(2), period: `${when(main[from].t).slice(0, 10)} to ${when(main[main.length - 1].t).slice(0, 10)}`, candles: main.length - from, at: new Date().toISOString() };
+  } catch { return null; }
+}
 const finiteNum = (v, d) => (typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 100000 ? v : d);
 const candlesArg = (v) => Math.max(300, Math.min(20000, Number.isInteger(v) ? v : 3000));
 
@@ -500,7 +510,9 @@ async function callTool(name, args, env, account, base) {
       months: (r.months.length > 72 ? r.months.slice(-72) : r.months).map((m) => `${m.month} ${m.pct >= 0 ? "+" : ""}${m.pct.toFixed(1)}%`), monthsShown: r.months.length > 72 ? "last 72" : "all", monthsUp: `${r.monthsUp} of ${r.months.length}`,
       lastTrades: closes.slice(-10).map((e) => `${when(e.t)} ${describeEvent(e)}`), openNow: r.open, equity: sample(r.curve.map((q) => +q.equity.toFixed(2)), 30),
     };
-    if (row && !args.rule) { const d = JSON.parse(row.data); d.bt = { returnPct: out.agentPct, holdPct: out.holdingPct, trades: r.trades, wins: r.wins, liquidations: r.liquidations, maxDrawdownPct: out.worstDropPct, period: out.period, at: new Date().toISOString() }; try { await saveAgent(env, row, d); } catch {} }
+    const btSummary = { returnPct: out.agentPct, holdPct: out.holdingPct, trades: r.trades, wins: r.wins, liquidations: r.liquidations, maxDrawdownPct: out.worstDropPct, period: out.period, candles: out.candles, at: new Date().toISOString() };
+    if (row && !args.rule) { const d = JSON.parse(row.data); d.bt = btSummary; try { await saveAgent(env, row, d); } catch {} }
+    if (args.rule) { try { await env.DB.prepare("INSERT OR REPLACE INTO bt_cache (account, hash, data, at) VALUES (?, ?, ?, ?)").bind(account, await ruleHash(rule), JSON.stringify(btSummary), now()).run(); } catch {} }
     if (marketNeeds(rule).funding) out.note = "This rule reads funding, whose history starts in May 2023, so earlier candles have no value there.";
     return out;
   }
@@ -553,13 +565,13 @@ async function callTool(name, args, env, account, base) {
     if (!p.agent) {
       const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ?").bind(account).first();
       if (c.n >= MAX_AGENTS) throw new ToolError(`The user already has ${MAX_AGENTS} agents.`);
-      const id = hexId(), d = { versions: [{ rule, at: Date.now() }], cur: 0, paper: freshPaper(rule), bt: null };
+      const id = hexId(), d = { versions: [{ rule, at: Date.now() }], cur: 0, paper: freshPaper(rule), bt: await lastBacktest(env, account, rule) };
       await env.DB.prepare("INSERT INTO agents_v2 (id, account, name, running, data, created, updated) VALUES (?, ?, ?, 0, ?, ?, ?)").bind(id, account, rule.name.slice(0, 60), JSON.stringify(d), now(), now()).run();
       return { created: id, name: rule.name, next: "Offer a backtest, then start_trading when the user wants it to run." };
     }
     const row = await loadAgent(env, account, p.agent), d = JSON.parse(row.data);
     d.versions.push({ rule, at: Date.now() }); d.versions = d.versions.slice(-20); d.cur = d.versions.length - 1;
-    d.paper = freshPaper(rule); d.bt = null;
+    d.paper = freshPaper(rule); d.bt = await lastBacktest(env, account, rule);
     if (row.running) plog(d.paper, `Switched to version ${d.cur + 1} and started again from 1,000 dollars.`);
     await saveAgent(env, row, d);
     return { updated: row.id, version: d.cur + 1, trading: !!row.running, note: "Paper trading restarted from 1,000 dollars with the new version." };
@@ -818,6 +830,7 @@ async function cleanup(env) {
     env.DB.prepare("DELETE FROM codes WHERE expires < ?").bind(t),
     env.DB.prepare("DELETE FROM tokens WHERE expires < ?").bind(t),
     env.DB.prepare("DELETE FROM proposals WHERE expires < ?").bind(t),
+    env.DB.prepare("DELETE FROM bt_cache WHERE at < ?").bind(t - 7 * 86400),
   ]);
 }
 
