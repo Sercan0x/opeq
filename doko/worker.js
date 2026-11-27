@@ -1,7 +1,8 @@
 import { validateRule, backtest, step, makeCache, PAIRS, TIMEFRAMES } from "./lib/bot.js";
 import { REGISTRY, MTF_SECONDS, describe, series } from "./lib/indicators.js";
 import { marketNeeds } from "./lib/market.js";
-import { candles as loadCandles, withMarketData } from "./lib/market_bybit.js";
+import * as bybit from "./lib/market_bybit.js";
+import * as hl from "./lib/market_hl.js";
 import { optimize } from "./lib/optimize.js";
 import { explain } from "./lib/dokoexplain.js";
 
@@ -24,8 +25,10 @@ const when = (t) => new Date(t * 1000).toISOString().slice(0, 16).replace("T", "
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 const spotFetch = (u, ...rest) => fetch(u, ...rest);
-const UNAVAILABLE = ["takerbuy", "cvd"];
-const INDICATORS = describe().split("\n").filter((l) => !UNAVAILABLE.some((n) => l.startsWith(`- ${n} [`))).join("\n").replace(/Binance account long\/short ratio/g, "Account long/short ratio").replace(/; Binance keeps only the last 30 days, so backtests that use it are short/g, "; history can be shorter than the price history").replace(/SOL perpetual/g, "SOL perpetual (Bybit)");
+const UNAVAILABLE = ["takerbuy", "cvd", "oi", "longshort"];
+async function loadCandles(symbol, interval, total, f) { try { return await hl.candles(symbol, interval, total, f); } catch (x) { try { return await bybit.candles(symbol, interval, total, f); } catch { throw x; } } }
+async function withMarketData(C, symbol, interval, need, f) { try { return await hl.withMarketData(C, symbol, interval, need, f); } catch (x) { try { return await bybit.withMarketData(C, symbol, interval, need, f); } catch { throw x; } } }
+const INDICATORS = describe().split("\n").filter((l) => !UNAVAILABLE.some((n) => l.startsWith(`- ${n} [`))).join("\n").replace(/Binance account long\/short ratio/g, "Account long/short ratio").replace(/; Binance keeps only the last 30 days, so backtests that use it are short/g, "; history can be shorter than the price history").replace(/SOL perpetual funding rate in percent per 8 hours/g, "SOL perpetual funding rate on Hyperliquid in percent per 8 hours");
 
 function json(obj, status = 200, headers = {}) {
   return new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
@@ -54,7 +57,7 @@ An indicator is {"ind": name, ...settings, "out": output, "tf": timeframe}. Leav
 
 Example: {"name":"SOL RSI dip with 4h trend","pair":"SOL/USDC","timeframe":"1h","entry":{"all":[{"left":{"ind":"rsi","period":14},"op":"<","right":35},{"left":{"ind":"supertrend","out":"dir","tf":"4h"},"op":">","right":0}]},"exit":{"left":{"ind":"rsi","period":14},"op":">","right":55},"stopLossPct":3,"orderUsd":100}
 
-Prices and market data come from Bybit (SOL/USDT spot candles, SOL perpetual funding, open interest and long/short ratio).
+Prices come from Hyperliquid SOL candles (very close to SOL/USDC spot), and funding from the Hyperliquid SOL perpetual. Open interest, long/short ratio and taker volume indicators are not available.
 
 Indicators:
 ${INDICATORS}`;
