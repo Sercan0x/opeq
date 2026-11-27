@@ -39,6 +39,7 @@ def deploy(db):
             {"type": "d1", "name": "DB", "id": db},
             {"type": "ratelimit", "name": "CONNECT_LIMIT", "namespace_id": "4202", "simple": {"limit": 10, "period": 60}},
             {"type": "ratelimit", "name": "TOOL_LIMIT", "namespace_id": "4203", "simple": {"limit": 60, "period": 60}},
+            {"type": "ratelimit", "name": "HEAVY_LIMIT", "namespace_id": "4204", "simple": {"limit": 8, "period": 60}},
             {"type": "durable_object_namespace", "name": "WATCHER", "class_name": "Watcher"},
         ] + [{"type": "plain_text", "name": k, "text": v} for k, v in VARS.items()],
         "observability": {"enabled": True},

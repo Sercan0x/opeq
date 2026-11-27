@@ -10,6 +10,8 @@ export const SLIP_PCT = 0.05;
 const MAX_NODES = 32, MAX_DEPTH = 4;
 
 const num = (v) => typeof v === "number" && Number.isFinite(v);
+const own = (o, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(o, k);
+
 let ruleTf = null, assetsSeen = null;
 export const ASSET_RE = /^k?[A-Z0-9]{2,12}$/;
 export const MAX_ASSETS = 3;
@@ -27,9 +29,9 @@ export const liqDistancePct = (lev) => Math.max(0, 100 / lev - MAINT_PCT);
 function checkRef(r, path) {
   if (num(r)) return;
   if (!r || typeof r !== "object" || Array.isArray(r)) throw new Error(`${path}: expected a number or an indicator`);
-  const spec = REGISTRY[r.ind];
-  if (!spec) throw new Error(`${path}: unknown indicator "${r.ind}"`);
-  for (const k of Object.keys(r)) if (!["ind", "out", "tf", "asset"].includes(k) && !(k === "name" && spec.names) && !(k in spec.p)) throw new Error(`${path}: ${r.ind} has no setting "${k}"`);
+  const spec = own(REGISTRY, r.ind) ? REGISTRY[r.ind] : null;
+  if (!spec) throw new Error(`${path}: unknown indicator "${String(r.ind).slice(0, 40)}"`);
+  for (const k of Object.keys(r)) if (!["ind", "out", "tf", "asset"].includes(k) && !(k === "name" && spec.names) && !own(spec.p, k)) throw new Error(`${path}: ${r.ind} has no setting "${k}"`);
   for (const [k, d] of Object.entries(spec.p)) {
     if (r[k] === undefined) continue;
     const v = r[k];
@@ -37,13 +39,13 @@ function checkRef(r, path) {
   }
   if (spec.names && !spec.names.includes(r.name)) throw new Error(`${path}: pattern name must be one of ${spec.names.join(", ")}`);
   const pick = (k) => (r[k] !== undefined ? r[k] : spec.p[k] && spec.p[k].def);
-  if ("fast" in spec.p && "slow" in spec.p && pick("fast") >= pick("slow")) throw new Error(`${path}: ${r.ind} fast must be below slow`);
+  if (own(spec.p, "fast") && own(spec.p, "slow") && pick("fast") >= pick("slow")) throw new Error(`${path}: ${r.ind} fast must be below slow`);
   if (r.ind === "uo" && !(pick("short") < pick("mid") && pick("mid") < pick("long"))) throw new Error(`${path}: uo needs short < mid < long`);
-  if (r.out !== undefined && !spec.out.includes(r.out)) throw new Error(`${path}: ${r.ind} outputs ${spec.out.join(", ")}`);
+  if (r.out !== undefined && (typeof r.out !== "string" || !spec.out.includes(r.out))) throw new Error(`${path}: ${r.ind} outputs ${spec.out.join(", ")}`);
   if (r.asset !== undefined && (typeof r.asset !== "string" || !ASSET_RE.test(r.asset))) throw new Error(`${path}: asset must be a coin ticker such as BTC, ETH or kPEPE`);
   if (r.asset !== undefined && assetsSeen) assetsSeen.add(r.asset);
   if (r.tf !== undefined) {
-    if (!MTF_SECONDS[r.tf]) throw new Error(`${path}: tf must be one of ${Object.keys(MTF_SECONDS).join(", ")}`);
+    if (!own(MTF_SECONDS, r.tf)) throw new Error(`${path}: tf must be one of ${Object.keys(MTF_SECONDS).join(", ")}`);
     if (ruleTf && (MTF_SECONDS[r.tf] < MTF_SECONDS[ruleTf] || MTF_SECONDS[r.tf] % MTF_SECONDS[ruleTf])) throw new Error(`${path}: tf ${r.tf} must be ${ruleTf} or a longer timeframe that is a multiple of it`);
   }
 }
@@ -82,7 +84,7 @@ export function validateRule(rule) {
   for (const k of Object.keys(rule)) if (!allowed.includes(k)) throw new Error(`unknown rule field "${k}"`);
   if (typeof rule.name !== "string" || !rule.name.trim() || rule.name.length > 60) throw new Error("name: 1 to 60 characters");
   if (!Array.isArray(rule.coins) || !rule.coins.length || rule.coins.length > MAX_COINS || !rule.coins.every((c) => typeof c === "string" && ASSET_RE.test(c)) || new Set(rule.coins).size !== rule.coins.length) throw new Error(`coins must be a list of 1 to ${MAX_COINS} different tickers such as ["SOL", "ETH"]`);
-  if (!TIMEFRAMES[rule.timeframe]) throw new Error(`timeframe must be one of ${Object.keys(TIMEFRAMES).join(", ")}`);
+  if (!own(TIMEFRAMES, rule.timeframe)) throw new Error(`timeframe must be one of ${Object.keys(TIMEFRAMES).join(", ")}`);
   if (!Number.isInteger(rule.leverage) || rule.leverage < 1 || rule.leverage > MAX_LEVERAGE) throw new Error(`leverage must be a whole number from 1 to ${MAX_LEVERAGE}`);
   if (!num(rule.marginUsd) || rule.marginUsd < 1 || rule.marginUsd > 100000) throw new Error("marginUsd must be from 1 to 100000");
   if (!rule.long && !rule.short) throw new Error("the rule needs a long side, a short side, or both");

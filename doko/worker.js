@@ -27,6 +27,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 
 const spotFetch = (u, ...rest) => fetch(u, ...rest);
 const UNAVAILABLE = ["takerbuy", "cvd", "oi", "longshort"];
+const own = (o, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(o, k);
+const HEAVY = new Set(["backtest", "search_settings", "discover_strategies"]);
+const MAX_TICK = 150, MAX_RUNNING_ALL = 400, MAX_BODY = 262144, MAX_BATCH = 20;
 async function loadCandles(symbol, interval, total, f) { try { return await hl.candles(symbol, interval, total, f); } catch (x) { try { return await bybit.candles(symbol, interval, total, f); } catch { throw x; } } }
 async function withMarketData(C, symbol, interval, need, f) { try { return await hl.withMarketData(C, symbol, interval, need, f); } catch (x) { try { return await bybit.withMarketData(C, symbol, interval, need, f); } catch { throw x; } } }
 const INDICATORS = describe().split("\n").filter((l) => !UNAVAILABLE.some((n) => l.startsWith(`- ${n} [`))).join("\n").replace(/Binance account long\/short ratio/g, "Account long/short ratio").replace(/; Binance keeps only the last 30 days, so backtests that use it are short/g, "; history can be shorter than the price history").replace(/SOL perpetual funding rate in percent per 8 hours/g, "perpetual funding rate on Hyperliquid in percent per 8 hours").replace(/history goes back about a year/g, "history starts in May 2023, so earlier candles have no value");
@@ -79,11 +82,11 @@ function warmup(rule) {
   const walk = (x) => {
     if (!x || typeof x !== "object") return;
     if (Array.isArray(x)) { x.forEach(walk); return; }
-    if (x.ind && REGISTRY[x.ind]) {
+    if (x.ind && own(REGISTRY, x.ind)) {
       const spec = REGISTRY[x.ind];
       let biggest = 1;
       for (const k of Object.keys(spec.p)) { const v = x[k] !== undefined ? x[k] : spec.p[k].def; if (spec.p[k].int && v > biggest) biggest = v; }
-      const mult = x.tf ? MTF_SECONDS[x.tf] / MTF_SECONDS[rule.timeframe] : 1;
+      const mult = x.tf && own(MTF_SECONDS, x.tf) ? MTF_SECONDS[x.tf] / MTF_SECONDS[rule.timeframe] : 1;
       need = Math.max(need, Math.ceil(biggest * 3 * mult + 2 * mult));
     }
     Object.values(x).forEach(walk);
@@ -169,7 +172,7 @@ export function hoursTo(rows, tf) {
 }
 
 async function deepCandles(env, coin, tf, n) {
-  const product = CB_PRODUCTS[coin];
+  const product = own(CB_PRODUCTS, coin) ? CB_PRODUCTS[coin] : null;
   if (!product) throw new ToolError(`Long history beyond 5000 candles is kept for SOL, BTC and ETH only, not ${coin}. Use 5000 candles or fewer for rules that watch ${coin}.`);
   const st = await env.DB.prepare("SELECT next FROM cb_state WHERE product = ?").bind(product).first();
   const first = Number(env.CB_START) || CB_START;
@@ -185,6 +188,7 @@ async function deepCandles(env, coin, tf, n) {
 
 async function loadAll(env, rule, n) {
   const tf = rule.timeframe, deep = n > 5000;
+  if (deep && rule.coins.length + assetsOf(rule).filter((a) => !rule.coins.includes(a)).length > 4) throw new ToolError("Beyond 5000 candles a test can load at most 4 coins in total (traded and watched). Use fewer coins or 5000 candles or fewer.");
   if (deep && TIMEFRAMES[tf] < HOUR) throw new ToolError("More than 5000 candles works on 1h or longer timeframes. Use 5000 candles or fewer on 5m, 15m and 30m.");
   const get = async (coin) => {
     try { return deep ? await deepCandles(env, coin, tf, n) : await loadCandles(coin, tf, n, spotFetch); }
@@ -290,11 +294,13 @@ function metadata(base) {
     token_endpoint_auth_methods_supported: ["none"],
   };
 }
-function okRedirect(u) {
+const REDIRECT_HOSTS = ["claude.ai", "claude.com"];
+function okRedirect(u, env) {
   if (typeof u !== "string" || u.length > 500) return false;
   let x; try { x = new URL(u); } catch { return false; }
-  if (x.hash) return false;
-  if (x.protocol === "https:") return true;
+  if (x.hash || x.username || x.password) return false;
+  const extra = String((env && env.EXTRA_REDIRECT_HOSTS) || "").split(",").filter(Boolean);
+  if (x.protocol === "https:") return [...REDIRECT_HOSTS, ...extra].some((h) => x.hostname === h || x.hostname.endsWith(`.${h}`));
   return x.protocol === "http:" && (x.hostname === "localhost" || x.hostname === "127.0.0.1");
 }
 const TRUSTED_HOSTS = ["claude.ai", "claude.com", "localhost", "127.0.0.1"];
@@ -303,7 +309,7 @@ async function register(request, env) {
   if (env.CONNECT_LIMIT) { const { success } = await env.CONNECT_LIMIT.limit({ key: `reg:${request.headers.get("cf-connecting-ip") || "x"}` }); if (!success) return oauthError("slow_down", "too many registrations", 429); }
   let body; try { body = await request.json(); } catch { return oauthError("invalid_client_metadata", "body must be JSON"); }
   const uris = body && body.redirect_uris;
-  if (!Array.isArray(uris) || !uris.length || uris.length > 5 || !uris.every(okRedirect)) return oauthError("invalid_redirect_uri", "redirect_uris must be 1 to 5 https URLs (or http on localhost)");
+  if (!Array.isArray(uris) || !uris.length || uris.length > 5 || !uris.every((u) => okRedirect(u, env))) return oauthError("invalid_redirect_uri", "DOKO connects to Claude only: redirect_uris must be claude.ai or claude.com addresses, or http on localhost");
   if (body.token_endpoint_auth_method && body.token_endpoint_auth_method !== "none") return oauthError("invalid_client_metadata", "only public clients (token_endpoint_auth_method none) are supported");
   const name = String(body.client_name || "MCP client").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
   const id = rand(18);
@@ -403,7 +409,7 @@ async function token(request, env) {
     const h = await sha(String(f.refresh_token || ""));
     const row = await env.DB.prepare("SELECT client, account, expires FROM tokens WHERE hash = ? AND kind = 'refresh'").bind(h).first();
     if (!row || row.expires < now()) return oauthError("invalid_grant", "refresh token expired or unknown");
-    if (f.client_id && f.client_id !== row.client) return oauthError("invalid_grant", "refresh token was issued to another client");
+    if (f.client_id !== row.client) return oauthError("invalid_grant", "refresh token was issued to another client");
     await env.DB.prepare("DELETE FROM tokens WHERE hash = ?").bind(h).run();
     return issue(env, row.client, row.account);
   }
@@ -537,7 +543,7 @@ async function callTool(name, args, env, account, base) {
     const coins = Array.isArray(args.coins) && args.coins.length ? args.coins : ["SOL"];
     const watch = (Array.isArray(args.watch) ? args.watch : ["BTC", "ETH"]).filter((a) => typeof a === "string" && /^k?[A-Z0-9]{2,12}$/.test(a) && !coins.includes(a)).slice(0, 3);
     if (!coins.every((c) => typeof c === "string" && /^k?[A-Z0-9]{2,12}$/.test(c)) || new Set(coins).size !== coins.length || coins.length > MAX_COINS) throw new ToolError(`coins must be 1 to ${MAX_COINS} different tickers.`);
-    if (!TIMEFRAMES[args.timeframe]) throw new ToolError(`timeframe must be one of ${Object.keys(TIMEFRAMES).join(", ")}.`);
+    if (!own(TIMEFRAMES, args.timeframe)) throw new ToolError(`timeframe must be one of ${Object.keys(TIMEFRAMES).join(", ")}.`);
     if (!Number.isInteger(args.leverage) || args.leverage < 1 || args.leverage > MAX_LEVERAGE) throw new ToolError(`leverage must be a whole number from 1 to ${MAX_LEVERAGE}.`);
     const probe = { name: "probe", coins, timeframe: args.timeframe, leverage: args.leverage, marginUsd: 100, long: { entry: { all: [{ left: { ind: "price" }, op: ">", right: 0 }, ...watch.map((a) => ({ left: { ind: "price", asset: a }, op: ">", right: 0 }))] } }, stopLossPct: 1 };
     const n = Number.isInteger(args.candles) ? candlesArg(args.candles) : 5000;
@@ -588,6 +594,8 @@ async function callTool(name, args, env, account, base) {
     if (row.running) return { trading: true, note: "Already trading." };
     const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ? AND running = 1").bind(account).first();
     if (c.n >= MAX_RUNNING) throw new ToolError(`At most ${MAX_RUNNING} agents can trade at once. Pause one first.`);
+    const all = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE running = 1").first();
+    if (all.n >= MAX_RUNNING_ALL) throw new ToolError("DOKO is at its limit of agents trading at once during the beta. Try again later.");
     if (!d.paper || !d.paper.pos || Array.isArray(d.paper.pos) || ruleOf(d).coins.some((c) => !(c in d.paper.pos))) d.paper = freshPaper(ruleOf(d));
     await saveAgent(env, row, d, { running: true });
     return { trading: true, note: `It waits for the next ${ruleOf(d).timeframe} candle to close, then acts on every closed candle.` };
@@ -655,8 +663,11 @@ async function mcp(request, env, base) {
   }
   if (!account) return json({ error: "invalid_token" }, 401, { "www-authenticate": `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"` });
   if (request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
-  let msg; try { msg = await request.json(); } catch { return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400); }
+  const raw = await request.text();
+  if (raw.length > MAX_BODY) return json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Request too large" } }, 413);
+  let msg; try { msg = JSON.parse(raw); } catch { return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400); }
   const batch = Array.isArray(msg), list = batch ? msg : [msg];
+  if (list.length > MAX_BATCH) return json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `At most ${MAX_BATCH} calls in one request` } }, 400);
   const out = [];
   for (const m of list) {
     if (!m || m.jsonrpc !== "2.0" || typeof m.method !== "string") { out.push({ jsonrpc: "2.0", id: m && m.id !== undefined ? m.id : null, error: { code: -32600, message: "Invalid request" } }); continue; }
@@ -671,6 +682,7 @@ async function mcp(request, env, base) {
       const name = m.params && m.params.name;
       if (!TOOLS.some((t) => t.name === name)) { out.push({ jsonrpc: "2.0", id: m.id, error: { code: -32602, message: `Unknown tool: ${name}` } }); continue; }
       if (env.TOOL_LIMIT) { const { success } = await env.TOOL_LIMIT.limit({ key: account }); if (!success) { reply({ content: [{ type: "text", text: "Too many DOKO calls in a minute. Wait a moment and try again." }], isError: true }); continue; } }
+      if (HEAVY.has(name) && env.HEAVY_LIMIT) { const { success } = await env.HEAVY_LIMIT.limit({ key: account }); if (!success) { reply({ content: [{ type: "text", text: "Backtests and searches are limited to 8 a minute. Wait a moment and try again." }], isError: true }); continue; } }
       try {
         const r = await callTool(name, m.params.arguments, env, account, base);
         reply(typeof r === "string" ? { content: [{ type: "text", text: r }] } : { content: [{ type: "text", text: JSON.stringify(r, null, 1) }], structuredContent: r });
@@ -709,7 +721,7 @@ async function siteApi(request, env, path) {
 }
 
 export async function tickAll(env) {
-  const { results } = await env.DB.prepare("SELECT id, name, running, data, ver FROM agents_v2 WHERE running = 1 LIMIT 500").all();
+  const { results } = await env.DB.prepare("SELECT id, name, running, data, ver FROM agents_v2 WHERE running = 1 ORDER BY updated ASC LIMIT ?").bind(MAX_TICK).all();
   let written = 0;
   for (const row of results) {
     const d = JSON.parse(row.data), rule = ruleOf(d);
@@ -736,9 +748,10 @@ export async function tickAll(env) {
     } catch (x) {
       if (!p.lastErr || Date.now() - p.lastErr > 3600000) { plog(p, `Could not load prices: ${x.message}`); p.lastErr = Date.now(); changed = true; }
     }
-    if (!changed) continue;
+    if (!changed) { await env.DB.prepare("UPDATE agents_v2 SET updated = ? WHERE id = ? AND ver = ?").bind(now(), row.id, row.ver).run(); continue; }
     const res = await env.DB.prepare("UPDATE agents_v2 SET data = ?, updated = ?, ver = ver + 1 WHERE id = ? AND ver = ? AND running = 1").bind(JSON.stringify(d), now(), row.id, row.ver).run();
     if (res.meta && res.meta.changes === 1) written++;
+    else await env.DB.prepare("UPDATE agents_v2 SET updated = ? WHERE id = ? AND ver = ?").bind(now(), row.id, row.ver).run();
   }
   return { running: results.length, written };
 }
@@ -839,6 +852,7 @@ async function cleanup(env) {
     env.DB.prepare("DELETE FROM tokens WHERE expires < ?").bind(t),
     env.DB.prepare("DELETE FROM proposals WHERE expires < ?").bind(t),
     env.DB.prepare("DELETE FROM bt_cache WHERE at < ?").bind(t - 7 * 86400),
+    env.DB.prepare("DELETE FROM clients WHERE created < ? AND id NOT IN (SELECT DISTINCT client FROM tokens)").bind(t - 30 * 86400),
   ]);
 }
 

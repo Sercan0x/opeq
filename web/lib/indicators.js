@@ -566,7 +566,7 @@ export const REGISTRY = {
 export const MTF_SECONDS = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600, "8h": 28800, "12h": 43200, "1d": 86400, "1w": 604800 };
 
 export function resample(C, base, tf) {
-  const bs = MTF_SECONDS[base], ts = MTF_SECONDS[tf];
+  const bs = own(MTF_SECONDS, base) ? MTF_SECONDS[base] : 0, ts = own(MTF_SECONDS, tf) ? MTF_SECONDS[tf] : 0;
   if (!bs || !ts || ts < bs || ts % bs) throw new Error(`timeframe ${tf} cannot be built from ${base} candles`);
   if (ts === bs) return { candles: C, map: C.map((_, i) => i) };
   const out = [], map = nan(C.length), per = ts / bs, bucket = (t) => (tf === "1w" ? Math.floor((t - 345600) / ts) : Math.floor(t / ts));
@@ -583,11 +583,12 @@ export function resample(C, base, tf) {
   return { candles: out, map };
 }
 
+const own = (o, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(o, k);
 export function series(C0, ref, base) {
-  const C = ref.asset ? C0.assets && C0.assets[ref.asset] : C0;
+  const C = ref.asset ? C0.assets && own(C0.assets, ref.asset) ? C0.assets[ref.asset] : null : C0;
   if (!C) throw new Error(`no price data loaded for ${ref.asset}`);
-  const spec = REGISTRY[ref.ind];
-  if (!spec) throw new Error(`unknown indicator "${ref.ind}"`);
+  const spec = own(REGISTRY, ref.ind) ? REGISTRY[ref.ind] : null;
+  if (!spec) throw new Error("unknown indicator");
   const params = {};
   for (const [k, s] of Object.entries(spec.p)) params[k] = ref[k] ?? s.def;
   if (spec.names) params.name = ref.name;

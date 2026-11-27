@@ -129,7 +129,7 @@ const slim = (b) => ({ returnPct: +b.returnPct.toFixed(2), trades: b.trades, lon
 
 export function discover(data, opts) {
   const { coins, timeframe, leverage, marginUsd = 100, sides = "both", tries = 1000, seed = 1, watch = [], unavailable = [], split = 0.65, minTrades = 10, keep = 20, startCash = 1000, poolSize = 60 } = opts;
-  if (!TIMEFRAMES[timeframe]) throw new Error("unknown timeframe");
+  if (!Object.prototype.hasOwnProperty.call(TIMEFRAMES, timeframe)) throw new Error("unknown timeframe");
   const main = data[coins[0]], len = main.length, cut = Math.floor(len * split);
   if (cut < 200 || len - cut < 100) throw new Error("not enough history: use more candles");
   const r = rng(seed);

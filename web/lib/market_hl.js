@@ -1,7 +1,7 @@
 const API = "https://api.hyperliquid.xyz/info";
 const SECS = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200, "1d": 86400, "1w": 604800 };
 const COIN = { SOLUSDT: "SOL" };
-const coinOf = (symbol) => COIN[symbol] || (/^k?[A-Z0-9]{2,12}$/.test(symbol) ? symbol : null);
+const coinOf = (symbol) => (Object.prototype.hasOwnProperty.call(COIN, symbol) ? COIN[symbol] : null) || (/^k?[A-Z0-9]{2,12}$/.test(symbol) ? symbol : null);
 
 async function info(body, fetchImpl) {
   let r;
@@ -25,7 +25,7 @@ export async function candles(symbol, interval, total = 1000, fetchImpl = fetch)
   return rows.slice(-total).map((c) => ({ ...c }));
 }
 async function fetchCandles(symbol, interval, total, fetchImpl) {
-  if (!SECS[interval]) throw new Error("unsupported timeframe");
+  if (!Object.prototype.hasOwnProperty.call(SECS, interval)) throw new Error("unsupported timeframe");
   const coin = coinOf(symbol);
   if (!coin) throw new Error("unsupported market");
   const want = Math.max(50, Math.min(5000, total));

@@ -14,7 +14,7 @@ async function get(path, params, fetchImpl) {
 const pair = (s) => (/USDT$/.test(s) ? s : `${s}USDT`);
 export async function candles(symbol, interval, total = 1000, fetchImpl = fetch) {
   symbol = pair(symbol);
-  if (!SECS[interval] || !KLINE[interval]) throw new Error("unsupported timeframe");
+  if (!Object.prototype.hasOwnProperty.call(SECS, interval) || !Object.prototype.hasOwnProperty.call(KLINE, interval)) throw new Error("unsupported timeframe");
   const want = Math.max(50, Math.min(5000, total));
   const step = SECS[interval] * 1000;
   let end = null, rows = [];
