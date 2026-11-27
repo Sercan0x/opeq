@@ -42,7 +42,7 @@ ok(crossBars.length === 1 && crossBars[0] > 40 && crossBars[0] < 55, `an EMA cro
 const bt = backtest({ ...base, entry: { left: { ind: "rsi", period: 14 }, op: "<", right: 35 }, exit: { left: { ind: "rsi", period: 14 }, op: ">", right: 65 } }, zig, 1000);
 ok(bt.trades > 0 && Number.isFinite(bt.equity), `a backtest on a wave trades (${bt.trades} trades, ${bt.returnPct.toFixed(1)}%)`);
 const sl = backtest({ ...base, entry: { left: { ind: "price" }, op: ">", right: 0 }, stopLossPct: 2 }, mk(Array.from({ length: 30 }, (_, i) => 100 - i * 3)), 1000);
-ok(sl.log.some((x) => x.why === "stop loss") && sl.log.filter((x) => x.kind === "sell").every((x) => x.pnl < 0), "the stop loss closes a losing position");
+ok(sl.log.some((x) => x.kind === "sell" && x.why.startsWith("stop loss")) && sl.log.filter((x) => x.kind === "sell").every((x) => x.pnl < 0), "the stop loss closes a losing position");
 const capped = backtest({ ...base, entry: { left: { ind: "price" }, op: ">", right: 0 }, takeProfitPct: 0.5, stopLossPct: 0.5, maxTradesPerDay: 2 }, zig, 1000);
 const perDay = {}; for (const x of capped.log.filter((x) => x.kind === "buy")) { const d = Math.floor(x.t / 86400); perDay[d] = (perDay[d] || 0) + 1; }
 ok(Object.values(perDay).every((n) => n <= 2), "maxTradesPerDay caps the buys per day");
@@ -55,6 +55,22 @@ if (process.argv[2] === "live") {
   const rule = { name: "RSI dip with trend", pair: "SOL/USDC", timeframe: "1h", entry: { all: [{ left: { ind: "rsi", period: 14 }, op: "<", right: 32 }, { left: { ind: "price" }, op: ">", right: { ind: "sma", period: 200 } }] }, exit: { left: { ind: "rsi", period: 14 }, op: ">", right: 60 }, takeProfitPct: 4, stopLossPct: 2.5, orderUsd: 200, maxTradesPerDay: 2 };
   const res = backtest(rule, candles, 1000);
   console.log(`live: ${candles.length} hourly SOL candles, ${res.trades} trades, ${res.wins} wins, strategy ${res.returnPct.toFixed(2)}% vs hold ${res.holdPct.toFixed(2)}%`);
+}
+
+{
+  const bar = (t, o, h, l, c) => ({ t: 1700000000 + t * 3600, o, h, l, c, v: 1 });
+  const always = { name: "t", pair: "SOL/USDC", timeframe: "1h", entry: { left: { ind: "price" }, op: ">", right: 0 }, stopLossPct: 10, takeProfitPct: 20, orderUsd: 100 };
+  const sellOf = (bars, rule = always) => backtest(rule, bars, 1000, 0, 1, bars.length).log.find((x) => x.kind === "sell");
+  const a1 = sellOf([bar(0, 100, 100, 100, 100), bar(1, 100, 100, 100, 100), bar(2, 99, 101, 70, 98)]);
+  ok(a1 && a1.why === "stop loss" && Math.abs(a1.price - 90) < 1e-9 && Math.abs(a1.pnl + 10) < 1e-9, "a wick through the stop sells at the stop price, not at the close");
+  const a2 = sellOf([bar(0, 100, 100, 100, 100), bar(1, 100, 100, 100, 100), bar(2, 80, 85, 75, 84)]);
+  ok(a2 && a2.why === "stop loss, opened below it" && a2.price === 80, "a gap below the stop sells at the open");
+  const a3 = sellOf([bar(0, 100, 100, 100, 100), bar(1, 100, 100, 100, 100), bar(2, 101, 125, 99, 102)]);
+  ok(a3 && a3.why === "take profit" && Math.abs(a3.price - 120) < 1e-9, "a wick through the take profit sells at the take profit price");
+  const a4 = sellOf([bar(0, 100, 100, 100, 100), bar(1, 100, 100, 100, 100), bar(2, 100, 130, 60, 100)]);
+  ok(a4 && a4.why === "stop loss" && Math.abs(a4.price - 90) < 1e-9, "when one candle touches both, the stop is assumed first (the cautious choice)");
+  const a5 = sellOf([bar(0, 100, 100, 100, 100), bar(1, 100, 100, 100, 100), bar(2, 100, 105, 95, 104)]);
+  ok(!a5, "a candle that stays inside both levels keeps the position open");
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

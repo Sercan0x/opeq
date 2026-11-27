@@ -126,11 +126,17 @@ export function step(rule, state, candles, i, get, feePct = 0.3) {
   const sig = signalAt(rule, candles, i, get);
   const events = [];
   if (s.pos) {
-    const chg = (c.c / s.pos.entry - 1) * 100;
-    const why = chg <= -rule.stopLossPct ? "stop loss" : rule.takeProfitPct !== undefined && chg >= rule.takeProfitPct ? "take profit" : sig.exit ? "exit rule" : null;
+    const stopAt = s.pos.entry * (1 - rule.stopLossPct / 100);
+    const takeAt = rule.takeProfitPct !== undefined ? s.pos.entry * (1 + rule.takeProfitPct / 100) : Infinity;
+    let why = null, price = c.c;
+    if (c.o <= stopAt) { why = "stop loss, opened below it"; price = c.o; }
+    else if (c.l <= stopAt) { why = "stop loss"; price = stopAt; }
+    else if (c.o >= takeAt) { why = "take profit, opened above it"; price = c.o; }
+    else if (c.h >= takeAt) { why = "take profit"; price = takeAt; }
+    else if (sig.exit) { why = "exit rule"; price = c.c; }
     if (why) {
-      const value = s.pos.qty * c.c * (1 - feePct / 100);
-      s.cash += value; events.push({ t: c.t, kind: "sell", price: c.c, why, pnl: value - s.pos.cost });
+      const value = s.pos.qty * price * (1 - feePct / 100);
+      s.cash += value; events.push({ t: c.t, kind: "sell", price, why, pnl: value - s.pos.cost });
       s.pos = null;
     }
   } else if (sig.entry && (!rule.maxTradesPerDay || s.trades < rule.maxTradesPerDay)) {
