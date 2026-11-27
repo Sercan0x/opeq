@@ -87,9 +87,9 @@ ok(b4 && b4.o === W[first].o && b4.c === W[first + 3].c && b4.h === Math.max(...
 ok(H4[map[first + 2]] !== b4 && H4[map[first + 3]] === b4, "a 4h value is used only after its 4h candle has closed");
 ok((() => { try { resample(W, "4h", "1h"); return false; } catch { return true; } })(), "a shorter timeframe cannot be built from longer candles");
 
-const base = { name: "t", pair: "SOL/USDC", timeframe: "1h", stopLossPct: 3, orderUsd: 100 };
-const bad = (entry, re, n) => { try { validateRule({ ...base, entry }); ok(false, n); } catch (e) { ok(re.test(e.message), `${n} (${e.message})`); } };
-ok(validateRule({ ...base, entry: { all: [{ left: { ind: "rsi", period: 14, tf: "4h" }, op: "<", right: 40 }, { left: { ind: "supertrend", out: "dir" }, op: ">", right: 0 }, { left: { ind: "pattern", name: "hammer" }, op: ">=", right: 1 }] } }), "a rule mixing 4h RSI, SuperTrend and a candle pattern is valid");
+const base = { name: "t", coins: ["SOL"], timeframe: "1h", leverage: 3, marginUsd: 100, stopLossPct: 3 };
+const bad = (entry, re, n) => { try { validateRule({ ...base, long: { entry } }); ok(false, n); } catch (e) { ok(re.test(e.message), `${n} (${e.message})`); } };
+ok(validateRule({ ...base, long: { entry: { all: [{ left: { ind: "rsi", period: 14, tf: "4h" }, op: "<", right: 40 }, { left: { ind: "supertrend", out: "dir" }, op: ">", right: 0 }, { left: { ind: "pattern", name: "hammer" }, op: ">=", right: 1 }] } } }), "a rule mixing 4h RSI, SuperTrend and a candle pattern is valid");
 bad({ left: { ind: "rsi", tf: "15m" }, op: "<", right: 30 }, /must be 1h or a longer/, "a timeframe shorter than the rule's is refused");
 bad({ left: { ind: "rsi", tf: "3h" }, op: "<", right: 30 }, /tf must be one of/, "an unknown timeframe is refused");
 bad({ left: { ind: "pattern", name: "dragon" }, op: ">", right: 0 }, /pattern name/, "an unknown candle pattern is refused");
@@ -98,7 +98,7 @@ bad({ left: { ind: "uo", short: 20, mid: 10, long: 28 }, op: ">", right: 50 }, /
 bad({ left: { ind: "alma", offset: 3 }, op: ">", right: 0 }, /offset must be a number from 0 to 1/, "out-of-range decimal settings are refused");
 const rows = W.map((c) => [c.t * 1000, c.o, c.h, c.l, c.c, c.v, 0, 0, 0, c.tb, 0, 0]);
 ok(near(parseKlines(rows)[5].tb, W[5].tb), "taker buy volume is read from the price data");
-const bt = backtest({ ...base, entry: { all: [{ left: { ind: "rsi", tf: "4h" }, op: "<", right: 45 }, { left: { ind: "cmf" }, op: ">", right: 0 }] }, exit: { left: { ind: "rsi" }, op: ">", right: 60 } }, W, 1000);
+const bt = backtest({ ...base, long: { entry: { all: [{ left: { ind: "rsi", tf: "4h" }, op: "<", right: 45 }, { left: { ind: "cmf" }, op: ">", right: 0 }] }, exit: { left: { ind: "rsi" }, op: ">", right: 60 } }, short: { entry: { left: { ind: "rsi", tf: "4h" }, op: ">", right: 60 } } }, { SOL: W }, 1000);
 ok(fin(bt.equity), `a multi-timeframe backtest runs (${bt.trades} trades)`);
 ok(describe().split("\n").length === Object.keys(REGISTRY).length, `the indicator guide for Claude lists all ${Object.keys(REGISTRY).length} indicators`);
 
@@ -121,6 +121,6 @@ ok(gk.length && pk.length && yz.length && [gk, pk, yz].every((a) => a.every((v) 
 ok(["laguerrersi", "stc", "imi", "psy", "tii", "rvix"].every((k) => series(RW, { ind: k }, "1h").filter(fin).every((v) => v >= -1e-9 && v <= 100 + 1e-9)) && ["demarker", "er", "entropy"].every((k) => series(RW, { ind: k }, "1h").filter(fin).every((v) => v >= -1e-9 && v <= 1 + 1e-9)), "new bounded indicators stay inside their ranges");
 const mm = series(L, { ind: "mama" }, "1h"), ff = series(L, { ind: "mama", out: "fama" }, "1h");
 ok(fin(mm[290]) && Math.abs(mm[290] - L[290].c) < 5 && mm[290] >= ff[290], "MAMA follows a rising line and stays above FAMA");
-ok(validateRule({ name: "w", pair: "SOL/USDC", timeframe: "5m", entry: { left: { ind: "rsi", tf: "30m" }, op: "<", right: 30 }, stopLossPct: 1, orderUsd: 10 }) && validateRule({ name: "w", pair: "SOL/USDC", timeframe: "8h", entry: { left: { ind: "ema", tf: "1w" }, op: "<", right: { ind: "price" } }, stopLossPct: 5, orderUsd: 10 }), "new rule timeframes 5m and 8h validate, with 30m and 1w filters");
+ok(validateRule({ name: "w", coins: ["SOL"], timeframe: "5m", leverage: 5, marginUsd: 10, long: { entry: { left: { ind: "rsi", tf: "30m" }, op: "<", right: 30 } }, stopLossPct: 1 }) && validateRule({ name: "w", coins: ["BTC"], timeframe: "8h", leverage: 1, marginUsd: 10, short: { entry: { left: { ind: "ema", tf: "1w" }, op: "<", right: { ind: "price" } } }, stopLossPct: 5 }), "rule timeframes 5m and 8h validate, with 30m and 1w filters");
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

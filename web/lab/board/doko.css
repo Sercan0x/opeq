@@ -121,3 +121,8 @@ select { padding: 9px 10px; font-size: 13.5px; }
 .dk-copy code { padding: 8px 12px; border-radius: 8px; background: #070b11; border: 1px solid var(--rule-2); color: #fff; font-size: 13.5px; overflow-wrap: anywhere; }
 .dk-foot { margin-top: 14px; }
 #load-err:empty { display: none; }
+.dk-poslist { list-style: none; margin: 8px 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.dk-pos { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 10px 12px; border-radius: 8px; background: #0a1119; border: 1px solid var(--rule); font-size: 13.5px; color: var(--text-2); }
+.dk-pos b { font-family: var(--mono); font-size: 13px; }
+.dk-pos.long b { color: var(--green); }
+.dk-pos.short b { color: var(--red); }

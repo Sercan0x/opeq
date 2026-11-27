@@ -68,7 +68,7 @@ function paintList() {
     const card = el("a", `dk-agent ${st}`); card.href = `#agent=${a.id}`;
     const top = el("div", "dk-atop");
     const cv = el("canvas", "dk-ava"); cv.width = 40; cv.height = 40; avatar(cv, a.id); top.append(cv);
-    const nm = el("div", "dk-grow"); nm.append(el("h3", null, a.name)); nm.append(el("p", "dk-sub", a.pair ? `${a.pair}, ${a.timeframe}` : "No rules yet")); top.append(nm);
+    const nm = el("div", "dk-grow"); nm.append(el("h3", null, a.name)); nm.append(el("p", "dk-sub", a.coins && a.coins.length ? `${a.coins.join(", ")}, ${a.timeframe}, ${a.leverage}x ${a.sides.join(" and ")}` : "No rules yet")); top.append(nm);
     top.append(el("span", `dk-pill ${st}`, stText));
     card.append(top);
     const big = el("div", "dk-big");
@@ -81,8 +81,8 @@ function paintList() {
     const add = (k, v) => { const d = el("div"); d.append(el("dt", null, k)); d.append(el("dd", null, v)); meta.append(d); };
     add("Win rate", winRate(p));
     add("Trades", String(p ? p.closedTrades : 0));
-    add("Backtest", a.backtest ? pct(a.backtest.returnPct) : "Not run");
-    add("Position", p && p.position ? `SOL from ${p.position.entry.toFixed(2)}` : "Waiting");
+    add("Liquidated", String(p ? p.liquidations || 0 : 0));
+    add("Open", p && p.positions && p.positions.length ? p.positions.map((x) => `${x.side === "long" ? "L" : "S"} ${x.coin}`).join(", ") : "None");
     card.append(meta);
     box.append(card);
   }
@@ -100,7 +100,7 @@ async function paintAgent(id) {
   const p = a.paper, [st, stText] = STATUS[a.status] || ["idle", a.status];
   avatar($("a-ava"), a.id);
   $("a-name").textContent = a.name; $("a-name2").textContent = a.name;
-  $("a-sub").textContent = a.pair ? `${a.pair}, ${a.timeframe} candles, version ${a.version}` : "No rules yet";
+  $("a-sub").textContent = a.coins && a.coins.length ? `${a.coins.join(", ")} perpetuals, ${a.timeframe} candles, ${a.leverage}x leverage, ${a.sides.join(" and ")}, version ${a.version}` : "No rules yet";
   $("a-pill").className = `dk-pill ${st}`; $("a-pill").textContent = stText;
   const ran = !!(p && p.started);
   stat($("a-tiles"), [
@@ -108,9 +108,18 @@ async function paintAgent(id) {
     ["Result", ran ? pct(p.resultPct) : "0.00%", ran ? tone(p.resultPct) : null],
     ["Win rate", winRate(p)],
     ["Trades", `${p ? p.closedTrades : 0} closed`],
-    ["Position", p && p.position ? `${p.position.qty} SOL from ${p.position.entry.toFixed(2)}` : "Waiting"],
+    ["Liquidations", String(p ? p.liquidations || 0 : 0), p && p.liquidations ? "down" : null],
     ["Backtest", a.backtest ? pct(a.backtest.returnPct) : "Not run", a.backtest ? tone(a.backtest.returnPct) : null],
   ]);
+  const ps = $("pos-list"); ps.textContent = "";
+  const open = (p && p.positions) || [];
+  $("pos-card").classList.toggle("hidden", !open.length);
+  for (const x of open) {
+    const li = el("li", `dk-pos ${x.side}`);
+    li.append(el("b", null, `${x.side.toUpperCase()} ${x.coin} ${x.leverage}x`));
+    li.append(el("span", null, `entry ${x.entry}, margin ${usd(x.margin)}, stop ${x.stop}${x.takeProfit ? `, take profit ${x.takeProfit}` : ""}, liquidation ${x.liquidation}${x.funding ? `, funding ${usd(x.funding)}` : ""}`));
+    ps.append(li);
+  }
   const curve = a.curve && a.curve.length > 1 ? a.curve : null;
   $("eq-chart").classList.toggle("hidden", !curve);
   $("eq-legend").textContent = curve ? `since ${new Date(curve[0].t).toLocaleString()}` : "";

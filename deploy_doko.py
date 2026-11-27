@@ -10,7 +10,7 @@ LIB = os.path.join(ROOT, "web", "lib")
 SCRIPT = "opeq-doko"
 DATABASE = "opeq-doko"
 HOST = "doko.opeq.io"
-MODULES = ["bot.js", "indicators.js", "market.js", "market_bybit.js", "market_hl.js", "market_binanceus.js", "optimize.js", "dokoexplain.js"]
+MODULES = ["bot.js", "indicators.js", "market.js", "market_bybit.js", "market_hl.js", "optimize.js", "dokoexplain.js"]
 VARS = {
     "BASE": f"https://{HOST}",
     "SITE_PAGE": "https://opeq.io/doko",
@@ -39,10 +39,15 @@ def deploy(db):
             {"type": "d1", "name": "DB", "id": db},
             {"type": "ratelimit", "name": "CONNECT_LIMIT", "namespace_id": "4202", "simple": {"limit": 10, "period": 60}},
             {"type": "ratelimit", "name": "TOOL_LIMIT", "namespace_id": "4203", "simple": {"limit": 60, "period": 60}},
+            {"type": "durable_object_namespace", "name": "WATCHER", "class_name": "Watcher"},
         ] + [{"type": "plain_text", "name": k, "text": v} for k, v in VARS.items()],
         "observability": {"enabled": True},
         "limits": {"cpu_ms": 60000},
     }
+    scripts = call("GET", f"/accounts/{ACCOUNT}/workers/scripts")["result"]
+    tag = next((x.get("migration_tag") for x in scripts if x.get("id") == SCRIPT), None)
+    if tag != "v1":
+        meta["migrations"] = {"new_tag": "v1", "new_sqlite_classes": ["Watcher"]}
     parts = [("metadata", None, "application/json", json.dumps(meta))]
     with open(os.path.join(DOKO, "worker.js"), "rb") as f:
         parts.append(("worker.js", "worker.js", "application/javascript+module", f.read()))

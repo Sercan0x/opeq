@@ -58,14 +58,25 @@ async function fundingWindow(coin, start, fetchImpl) {
 export async function withMarketData(C, symbol, interval, need, fetchImpl = fetch) {
   if (!C.length) return C;
   if (need.oi || need.ls) throw new Error("open interest and long/short history are not available");
-  if (need.funding) {
-    const coin = coinOf(symbol), end = (C[C.length - 1].t + SECS[interval]) * 1000, from = C[0].t * 1000 - 8 * 3600 * 1000;
+  if (need.funding || need.fs) {
+    const coin = coinOf(symbol), step = SECS[interval] * 1000, end = C[C.length - 1].t * 1000 + step, from = C[0].t * 1000 - 8 * 3600 * 1000;
     const first = Math.floor(from / WINDOW) * WINDOW, starts = [];
     for (let t = first; t < end && starts.length < 120; t += WINDOW) starts.push(t);
     const parts = await Promise.all(starts.map((t) => fundingWindow(coin, t, fetchImpl)));
     const seen = new Set(), all = [];
-    for (const x of parts.flat()) { const k = Number(x.time); if (!seen.has(k)) { seen.add(k); all.push(x); } }
-    stepAlign(C, all.map((x) => ({ t: Number(x.time), v: Number(x.fundingRate) * 100 * 8 })), "fr", interval);
+    for (const x of parts.flat()) { const k = Number(x.time); if (!seen.has(k)) { seen.add(k); all.push({ t: k, r: Number(x.fundingRate) }); } }
+    all.sort((a, b) => a.t - b.t);
+    if (need.funding) stepAlign(C, all.map((x) => ({ t: x.t, v: x.r * 100 * 8 })), "fr", interval);
+    if (need.fs) {
+      let j = 0;
+      for (const c of C) {
+        const a = c.t * 1000, b = a + step;
+        while (j < all.length && all[j].t <= a) j++;
+        let sum = 0, k = j;
+        while (k < all.length && all[k].t <= b) { if (Number.isFinite(all[k].r)) sum += all[k].r; k++; }
+        c.fs = sum;
+      }
+    }
   }
   return C;
 }

@@ -82,6 +82,6 @@ export function marketNeeds(rule, asset = undefined) {
     if (x.ind === "longshort") need.ls = true;
     Object.values(x).forEach(walk);
   };
-  walk(rule.entry); walk(rule.exit);
+  for (const side of [rule.long, rule.short]) if (side) { walk(side.entry); walk(side.exit); }
   return need;
 }
