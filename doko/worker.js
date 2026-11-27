@@ -97,7 +97,7 @@ function align(C, A) {
   });
 }
 async function loadAll(rule, n) {
-  const feed = PAIRS[rule.pair].feed, tf = rule.timeframe, deep = n > 5000;
+  const feed = PAIRS[rule.pair].feed, tf = rule.timeframe, deep = false;
   const get = deep ? (s) => bus.candles(s === feed ? PAIRS[rule.pair].base : s, tf, n, spotFetch) : (s) => loadCandles(s, tf, n, spotFetch);
   const C = await get(feed);
   await withMarketData(C, feed, tf, marketNeeds(rule));
@@ -305,7 +305,7 @@ class ToolError extends Error {}
 const S = (props, required = []) => ({ type: "object", properties: props, required, additionalProperties: false });
 const AGENT = { type: "string", description: "Agent id from list_agents" };
 const RULE = { type: "object", description: "A DOKO rule object, see rule_format" };
-const CANDLES = { type: "integer", minimum: 300, maximum: 20000, description: "How many candles of history to test on (default 3000). Up to 5000 come from Hyperliquid (1h about 7 months, 4h about 2 years). From 5001 to 20000 the whole test uses Binance.US candles, which reach back to 2020 for SOL; other coins must then also be listed on Binance.US." };
+const CANDLES = { type: "integer", minimum: 300, maximum: 5000, description: "How many candles of history to test on (default 3000, most 5000, from Hyperliquid: 1h about 7 months, 4h about 2 years, 1d back to 2020)." };
 
 const TOOLS = [
   { name: "rule_format", description: "How to write a DOKO rule, with every indicator and its settings. Call this once before writing or changing a rule.", inputSchema: S({}), annotations: { readOnlyHint: true } },
@@ -351,7 +351,7 @@ async function ruleFor(env, account, args) {
   if (!rule) throw new ToolError("This agent has no rules yet.");
   return { rule, row };
 }
-const candlesArg = (v) => Math.max(300, Math.min(20000, Number.isInteger(v) ? v : 3000));
+const candlesArg = (v) => Math.max(300, Math.min(5000, Number.isInteger(v) ? v : 3000));
 
 async function callTool(name, args, env, account, base) {
   args = args && typeof args === "object" ? args : {};
