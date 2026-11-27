@@ -4,19 +4,25 @@ const COIN = { SOLUSDT: "SOL" };
 const coinOf = (symbol) => COIN[symbol] || (/^k?[A-Z0-9]{2,12}$/.test(symbol) ? symbol : null);
 
 async function info(body, fetchImpl) {
-  const r = await fetchImpl(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    r = await fetchImpl(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (r.status !== 429) break;
+    await new Promise((ok) => setTimeout(ok, 700 * (attempt + 1)));
+  }
   if (!r.ok) throw new Error(r.status === 500 && body.req ? `no Hyperliquid market for ${body.req.coin}` : `price data request failed (${r.status})`);
   return r.json();
 }
 
 const candleCache = new Map();
 export async function candles(symbol, interval, total = 1000, fetchImpl = fetch) {
-  const key = `${symbol}|${interval}|${total}`, hit = candleCache.get(key);
-  if (hit && Date.now() - hit.at < 20000) return hit.rows.map((c) => ({ ...c }));
-  const rows = await fetchCandles(symbol, interval, total, fetchImpl);
-  if (candleCache.size > 50) candleCache.clear();
+  const size = Math.min(5000, total <= 500 ? 500 : Math.ceil(total / 1000) * 1000);
+  const key = `${symbol}|${interval}|${size}`, hit = candleCache.get(key);
+  if (hit && Date.now() - hit.at < 25000) return hit.rows.slice(-total).map((c) => ({ ...c }));
+  const rows = await fetchCandles(symbol, interval, size, fetchImpl);
+  if (candleCache.size > 80) candleCache.clear();
   candleCache.set(key, { at: Date.now(), rows });
-  return rows.map((c) => ({ ...c }));
+  return rows.slice(-total).map((c) => ({ ...c }));
 }
 async function fetchCandles(symbol, interval, total, fetchImpl) {
   if (!SECS[interval]) throw new Error("unsupported timeframe");

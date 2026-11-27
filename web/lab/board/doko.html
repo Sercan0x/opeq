@@ -52,39 +52,49 @@
 
   <section id="v-agent" class="hidden">
     <button class="dk-link dk-backlink" type="button" id="to-list">All agents</button>
-    <div class="dk-ahead">
+    <div class="ag-head">
       <canvas class="dk-ava dk-ava-lg" id="a-ava" width="56" height="56" aria-hidden="true"></canvas>
       <div class="dk-grow">
-        <h1 id="a-name"></h1>
+        <div class="ag-title"><h1 id="a-name"></h1><span class="dk-pill" id="a-pill"></span></div>
+        <div class="ag-chips" id="a-chips"></div>
         <p class="dk-sub" id="a-sub"></p>
       </div>
-      <span class="dk-pill" id="a-pill"></span>
     </div>
-    <div class="dk-tiles" id="a-tiles"></div>
-    <section class="dk-card">
-      <div class="dk-row dk-between"><h2>Paper balance</h2><span class="dk-legend" id="eq-legend"></span></div>
-      <canvas id="eq-chart" width="1060" height="240" aria-label="Paper balance over time"></canvas>
+
+    <div class="ag-stats" id="a-stats"></div>
+    <div class="ag-wl" id="a-wl"><span class="ag-wl-w" id="a-wl-w"></span><span class="ag-wl-l" id="a-wl-l"></span></div>
+    <p class="ag-wl-text" id="a-wl-text"></p>
+
+    <section class="ag-chart">
+      <div class="dk-row dk-between"><h2>PnL history</h2><span class="dk-legend" id="eq-legend"></span></div>
+      <canvas id="eq-chart" width="1060" height="220" aria-label="Paper balance over time"></canvas>
       <p class="dk-hint" id="eq-hint"></p>
+      <p class="ag-bt" id="a-bt"></p>
     </section>
-    <section class="dk-card hidden" id="pos-card">
-      <h2>Open positions</h2>
-      <ul class="dk-poslist" id="pos-list"></ul>
-      <p class="dk-hint">Stops, take profits and liquidations are watched live from the Hyperliquid order book.</p>
-    </section>
-    <div class="dk-grid">
-      <section class="dk-card dk-rule">
-        <h2>Rules</h2>
-        <p class="dk-tag mono" id="cur-tag"></p>
-        <ul class="dk-lines" id="cur-lines"></ul>
-        <details class="dk-json" id="cur-json-box"><summary>Rule as JSON</summary><pre id="cur-json"></pre></details>
-        <details class="dk-hist hidden" id="hist-box"><summary>All versions</summary><ul id="hist"></ul></details>
-      </section>
-      <section class="dk-card">
-        <h2>Recent activity</h2>
-        <ul class="dk-plog" id="pp-log"></ul>
-      </section>
+
+    <div class="ag-tabs" role="tablist">
+      <button type="button" role="tab" class="ag-tab on" data-tab="positions">Positions</button>
+      <button type="button" role="tab" class="ag-tab" data-tab="trades">Trades</button>
+      <button type="button" role="tab" class="ag-tab" data-tab="rules">Strategy and rules</button>
+      <button type="button" role="tab" class="ag-tab" data-tab="activity">Activity</button>
     </div>
-    <p class="dk-hint">To change this agent, ask Claude, for example: “Add a 6% take profit to <span id="a-name2"></span> and backtest it.” Claude shows you the new version before anything changes.</p>
+    <div class="ag-pane" id="tab-positions">
+      <div class="ag-scroll"><table class="ag-table"><thead><tr><th>Coin</th><th>Side</th><th>Lev</th><th>Entry</th><th>Mark</th><th>PnL</th><th>Stop</th><th>Take profit</th><th>Liquidation</th><th>Opened</th></tr></thead><tbody id="pos-rows"></tbody></table></div>
+      <p class="dk-hint">Stops, take profits and liquidations are watched live from the Hyperliquid order book.</p>
+    </div>
+    <div class="ag-pane hidden" id="tab-trades">
+      <div class="ag-scroll"><table class="ag-table"><thead><tr><th>Coin</th><th>Side</th><th>Lev</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Status</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="trade-rows"></tbody></table></div>
+    </div>
+    <div class="ag-pane hidden" id="tab-rules">
+      <p class="dk-tag mono" id="cur-tag"></p>
+      <ul class="dk-lines" id="cur-lines"></ul>
+      <details class="dk-json" id="cur-json-box"><summary>Rule as JSON</summary><pre id="cur-json"></pre></details>
+      <details class="dk-hist hidden" id="hist-box"><summary>All versions</summary><ul id="hist"></ul></details>
+      <p class="dk-hint">To change this agent, ask Claude, for example: “Add a trailing exit to <span id="a-name2"></span> and backtest it.” Claude shows you the new version before anything changes.</p>
+    </div>
+    <div class="ag-pane hidden" id="tab-activity">
+      <ul class="dk-plog" id="pp-log"></ul>
+    </div>
   </section>
 
   <section class="notes">

@@ -160,7 +160,8 @@ export function closePosition(s, price, why, t) {
   if (liquidated) pnl = -p.margin;
   s.cash += p.margin + pnl;
   s.pos = null;
-  return { t, kind: "close", side: p.side > 0 ? "long" : "short", price, why, pnl: pnl - p.openFee + p.funding, fees: (liquidated ? 0 : fee) + p.openFee, funding: p.funding, liquidated };
+  const net = pnl - p.openFee + p.funding;
+  return { t, kind: "close", side: p.side > 0 ? "long" : "short", price, why, pnl: net, pnlPct: (net / p.margin) * 100, entry: p.entry, opened: p.t, margin: p.margin, lev: p.lev, fees: (liquidated ? 0 : fee) + p.openFee, funding: p.funding, liquidated };
 }
 
 export function touch(rule, s, coin, price, t) {

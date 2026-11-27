@@ -219,13 +219,18 @@ function describeEvent(e) {
 }
 function record(p, e) {
   plog(p, describeEvent(e));
-  if (e.kind === "close") { p.closed = (p.closed || 0) + 1; if (e.pnl > 0) p.wins = (p.wins || 0) + 1; if (e.liquidated) p.liqs = (p.liqs || 0) + 1; }
+  if (e.kind === "close") {
+    p.closed = (p.closed || 0) + 1; if (e.pnl > 0) p.wins = (p.wins || 0) + 1; if (e.liquidated) p.liqs = (p.liqs || 0) + 1;
+    p.hist = [{ coin: e.coin, side: e.side, lev: e.lev, entry: e.entry, exit: e.price, margin: +(e.margin || 0).toFixed(2), pnl: +e.pnl.toFixed(2), pnlPct: +(e.pnlPct || 0).toFixed(2), why: e.why, opened: e.opened, closed: e.t, liquidated: !!e.liquidated }, ...(p.hist || [])].slice(0, 300);
+  }
 }
 function positionsOf(rule, p) {
   if (!p || !p.pos) return [];
   return Object.entries(p.pos).filter(([, x]) => x).map(([coin, x]) => {
     const L = levels(rule, x);
-    return { coin, side: x.side > 0 ? "long" : "short", leverage: x.lev, entry: x.entry, margin: +x.margin.toFixed(2), stop: +L.stop.toPrecision(6), liquidation: +L.liq.toPrecision(6), takeProfit: Number.isFinite(L.take) ? +L.take.toPrecision(6) : null, funding: +x.funding.toFixed(2) };
+    const mark = p.prices && Number.isFinite(p.prices[coin]) ? p.prices[coin] : null;
+    const upnl = mark ? x.side * x.qty * (mark - x.entry) + x.funding - x.openFee : null;
+    return { coin, side: x.side > 0 ? "long" : "short", leverage: x.lev, entry: x.entry, mark, margin: +x.margin.toFixed(2), pnl: upnl === null ? null : +upnl.toFixed(2), pnlPct: upnl === null ? null : +((upnl / x.margin) * 100).toFixed(2), stop: +L.stop.toPrecision(6), liquidation: +L.liq.toPrecision(6), takeProfit: Number.isFinite(L.take) ? +L.take.toPrecision(6) : null, funding: +x.funding.toFixed(2), opened: x.t };
   });
 }
 
@@ -236,7 +241,7 @@ function summary(row) {
     id: row.id, name: row.name, running: !!row.running,
     status: !r ? "no rules" : row.running ? "trading" : ran ? "paused" : "not started",
     coins: r ? r.coins : [], timeframe: r ? r.timeframe : null, leverage: r ? r.leverage : null, sides: r ? [r.long ? "long" : null, r.short ? "short" : null].filter(Boolean) : [], version: r ? d.cur + 1 : 0,
-    paper: p ? { balance: +p.equity.toFixed(2), resultPct: +((p.equity / START - 1) * 100).toFixed(2), closedTrades: p.closed || 0, wins: p.wins || 0, liquidations: p.liqs || 0, winRatePct: p.closed ? Math.round((p.wins / p.closed) * 100) : null, positions: r ? positionsOf(r, p) : [], started: ran } : null,
+    paper: p ? { balance: +p.equity.toFixed(2), resultPct: +((p.equity / START - 1) * 100).toFixed(2), pnlUsd: +(p.equity - START).toFixed(2), closedTrades: p.closed || 0, wins: p.wins || 0, losses: (p.closed || 0) - (p.wins || 0), liquidations: p.liqs || 0, since: p.startedAt || null, winRatePct: p.closed ? Math.round((p.wins / p.closed) * 100) : null, positions: r ? positionsOf(r, p) : [], started: ran } : null,
     backtest: d.bt || null,
   };
 }
@@ -247,7 +252,8 @@ function detail(row) {
     rules: r ? Object.fromEntries(explain(r)) : null,
     rule: r,
     versions: d.versions.map((v, i) => ({ version: i + 1, name: v.rule.name, at: new Date(v.at).toISOString(), current: i === d.cur })),
-    recent: d.paper ? d.paper.log.slice(0, 30).map((l) => ({ at: new Date(l.t).toISOString(), text: l.text })) : [],
+    recent: d.paper ? d.paper.log.slice(0, 60).map((l) => ({ at: new Date(l.t).toISOString(), text: l.text })) : [],
+    trades: d.paper && d.paper.hist ? d.paper.hist.slice(0, 150) : [],
     curve: d.paper ? d.paper.curve : [],
   };
 }
@@ -715,7 +721,7 @@ export async function tickAll(env) {
       const data = await loadAll(env, rule, warmup(rule) + 5), main = data[rule.coins[0]];
       if (!main.length) continue;
       const gets = cachesFor(rule, data), lastI = main.length - 1;
-      if (p.lastT == null) { p.lastT = main[lastI].t; plog(p, `Started. Waiting for the next ${rule.timeframe} candle to close.`); changed = true; }
+      if (p.lastT == null) { p.lastT = main[lastI].t; if (!p.startedAt) p.startedAt = Date.now(); plog(p, `Started. Waiting for the next ${rule.timeframe} candle to close.`); changed = true; }
       for (let i = 1; i < main.length; i++) {
         if (main[i].t <= p.lastT) continue;
         const r = step(rule, { cash: p.cash, pos: p.pos, trades: p.trades, day: p.day }, data, i, gets);
@@ -724,7 +730,8 @@ export async function tickAll(env) {
         p.curve = [...(p.curve || []), { t: main[i].t * 1000, e: +equityOf(p, pricesAt(rule, data, i)).toFixed(2) }].slice(-720);
         changed = true;
       }
-      const eq = equityOf(p, pricesAt(rule, data, lastI));
+      p.prices = pricesAt(rule, data, lastI);
+      const eq = equityOf(p, p.prices);
       if (changed || Math.abs(eq - p.equity) > 0.005) { p.equity = eq; p.checked = Date.now(); delete p.lastErr; changed = true; }
     } catch (x) {
       if (!p.lastErr || Date.now() - p.lastErr > 3600000) { plog(p, `Could not load prices: ${x.message}`); p.lastErr = Date.now(); changed = true; }
@@ -742,7 +749,8 @@ export function closePositionNow(box, price, why) {
   const liquidated = pnl <= -x.margin;
   if (liquidated) pnl = -x.margin;
   box.cash += x.margin + pnl; box.pos = null;
-  return { t: now(), kind: "close", side: x.side > 0 ? "long" : "short", price: adj, why: liquidated ? "liquidated" : why, pnl: pnl - x.openFee + x.funding, fees: fee + x.openFee, funding: x.funding, liquidated };
+  const net = pnl - x.openFee + x.funding;
+  return { t: now(), kind: "close", side: x.side > 0 ? "long" : "short", price: adj, why: liquidated ? "liquidated" : why, pnl: net, pnlPct: (net / x.margin) * 100, entry: x.entry, opened: x.t, margin: x.margin, lev: x.lev, fees: fee + x.openFee, funding: x.funding, liquidated };
 }
 
 export class Watcher {

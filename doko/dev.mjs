@@ -43,12 +43,22 @@ async function demo() {
   const rules = [
     { name: "SOL RSI both ways 10x", coins: ["SOL"], timeframe: "1h", leverage: 10, marginUsd: 100, long: { entry: { all: [{ left: { ind: "rsi", period: 14 }, op: "<", right: 35 }, { left: { ind: "supertrend", out: "dir", tf: "4h" }, op: ">", right: 0 }] }, exit: { left: { ind: "rsi", period: 14 }, op: ">", right: 55 } }, short: { entry: { left: { ind: "rsi", period: 14 }, op: ">", right: 70 } }, stopLossPct: 3, takeProfitPct: 6 },
     { name: "BTC ETH SOL trend rider 5x", coins: ["BTC", "ETH", "SOL"], timeframe: "4h", leverage: 5, marginUsd: 200, long: { entry: { cross: "above", a: { ind: "ema", period: 9 }, b: { ind: "ema", period: 21 } } }, short: { entry: { cross: "below", a: { ind: "ema", period: 9 }, b: { ind: "ema", period: 21 } } }, stopLossPct: 5 },
-    { name: "Aggro 50x scalper", coins: ["ETH", "SOL"], timeframe: "15m", leverage: 50, marginUsd: 50, long: { entry: { atLeast: 2, of: [{ left: { ind: "bb", out: "pctb" }, op: "<", right: 0 }, { left: { ind: "rsi", period: 7 }, op: "<", right: 25 }, { left: { ind: "rsi", asset: "BTC" }, op: ">", right: 45 }] } }, short: { entry: { atLeast: 2, of: [{ left: { ind: "bb", out: "pctb" }, op: ">", right: 1 }, { left: { ind: "rsi", period: 7 }, op: ">", right: 75 }, { left: { ind: "rsi", asset: "BTC" }, op: "<", right: 55 }] } }, stopLossPct: 0.8, takeProfitPct: 1.6 },
+    { name: "Fast flip 20x", coins: ["SOL"], timeframe: "15m", leverage: 20, marginUsd: 100, maxTradesPerDay: 48, long: { entry: { left: { ind: "price" }, op: ">", right: { ind: "ema", period: 8 } } }, short: { entry: { left: { ind: "price" }, op: "<", right: { ind: "ema", period: 8 } } }, stopLossPct: 0.6, takeProfitPct: 1 },
+    { name: "Aggro 50x scalper", coins: ["ETH", "SOL"], timeframe: "15m", leverage: 50, marginUsd: 50, maxTradesPerDay: 48, long: { entry: { atLeast: 2, of: [{ left: { ind: "bb", out: "pctb" }, op: "<", right: 0 }, { left: { ind: "rsi", period: 7 }, op: "<", right: 25 }, { left: { ind: "rsi", asset: "BTC" }, op: ">", right: 45 }] } }, short: { entry: { atLeast: 2, of: [{ left: { ind: "bb", out: "pctb" }, op: ">", right: 1 }, { left: { ind: "rsi", period: 7 }, op: ">", right: 75 }, { left: { ind: "rsi", asset: "BTC" }, op: "<", right: 55 }] } }, stopLossPct: 0.8, takeProfitPct: 1.6 },
   ];
   const ids = [];
   for (const rule of rules) { const p = await tool("propose_agent", { rule }); const a = await tool("apply_proposal", { proposal_id: p.proposal_id }); ids.push(a.created); await tool("backtest", { agent_id: a.created }); }
   await tool("start_trading", { agent_id: ids[0] });
   await tool("start_trading", { agent_id: ids[2] });
+  await tool("start_trading", { agent_id: ids[1] });
+  await tool("start_trading", { agent_id: ids[3] });
+  await tickAll(env);
+  const TF = { "15m": 900, "1h": 3600, "4h": 14400 };
+  for (const row of db.prepare("SELECT id, data FROM agents_v2 WHERE running = 1").all()) {
+    const d = JSON.parse(row.data), r = d.versions[d.cur].rule;
+    d.paper.lastT -= 40 * (TF[r.timeframe] || 3600);
+    db.prepare("UPDATE agents_v2 SET data = ?, ver = ver + 1 WHERE id = ?").run(JSON.stringify(d), row.id);
+  }
   await tickAll(env);
   return cookie;
 }

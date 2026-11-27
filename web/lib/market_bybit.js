@@ -11,7 +11,9 @@ async function get(path, params, fetchImpl) {
   return j.result;
 }
 
+const pair = (s) => (/USDT$/.test(s) ? s : `${s}USDT`);
 export async function candles(symbol, interval, total = 1000, fetchImpl = fetch) {
+  symbol = pair(symbol);
   if (!SECS[interval] || !KLINE[interval]) throw new Error("unsupported timeframe");
   const want = Math.max(50, Math.min(5000, total));
   const step = SECS[interval] * 1000;
@@ -60,6 +62,7 @@ async function history(path, params, rowsOf, start, fetchImpl, pages = 12) {
 }
 
 export async function withMarketData(C, symbol, interval, need, fetchImpl = fetch) {
+  symbol = pair(symbol);
   if (!C.length) return C;
   const start = C[0].t * 1000;
   if (need.funding) {

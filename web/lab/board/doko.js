@@ -94,37 +94,67 @@ function paintList() {
   }
 }
 
+const fmtPx = (v) => (v == null || !Number.isFinite(v) ? "-" : v >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 1 }) : v >= 1 ? v.toFixed(v >= 100 ? 2 : 3) : v.toPrecision(4));
+const fmtT = (s) => { if (!s) return "-"; const d = new Date(s * 1000); return `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} ${d.toTimeString().slice(0, 5)}`; };
+const STATUS_OF = (why) => (why.startsWith("liquidated") ? ["LIQ", "liq"] : why.startsWith("take profit") ? ["TP HIT", "tp"] : why.startsWith("stop loss") ? ["SL HIT", "sl"] : why.startsWith("opposite") ? ["REVERSED", "ex"] : why.startsWith("paused") ? ["PAUSED", "ex"] : ["EXIT", "ex"]);
+function td(text, cls) { return el("td", cls || null, text); }
+let tab = "positions";
+for (const b of document.querySelectorAll(".ag-tab")) b.addEventListener("click", () => { tab = b.dataset.tab; for (const x of document.querySelectorAll(".ag-tab")) x.classList.toggle("on", x === b); for (const k of ["positions", "trades", "rules", "activity"]) $(`tab-${k}`).classList.toggle("hidden", k !== tab); });
+
 async function paintAgent(id) {
   const a = await api(`/api/agent?id=${encodeURIComponent(id)}`);
   if (a.error) { location.hash = ""; return; }
-  const p = a.paper, [st, stText] = STATUS[a.status] || ["idle", a.status];
+  const p = a.paper || {}, [st, stText] = STATUS[a.status] || ["idle", a.status];
   avatar($("a-ava"), a.id);
   $("a-name").textContent = a.name; $("a-name2").textContent = a.name;
-  $("a-sub").textContent = a.coins && a.coins.length ? `${a.coins.join(", ")} perpetuals, ${a.timeframe} candles, ${a.leverage}x leverage, ${a.sides.join(" and ")}, version ${a.version}` : "No rules yet";
   $("a-pill").className = `dk-pill ${st}`; $("a-pill").textContent = stText;
-  const ran = !!(p && p.started);
-  stat($("a-tiles"), [
-    ["Paper balance", usd(p ? p.balance : START), ran ? tone(p.resultPct) : null],
-    ["Result", ran ? pct(p.resultPct) : "0.00%", ran ? tone(p.resultPct) : null],
-    ["Win rate", winRate(p)],
-    ["Trades", `${p ? p.closedTrades : 0} closed`],
-    ["Liquidations", String(p ? p.liquidations || 0 : 0), p && p.liquidations ? "down" : null],
-    ["Backtest", a.backtest ? pct(a.backtest.returnPct) : "Not run", a.backtest ? tone(a.backtest.returnPct) : null],
-  ]);
-  const ps = $("pos-list"); ps.textContent = "";
-  const open = (p && p.positions) || [];
-  $("pos-card").classList.toggle("hidden", !open.length);
-  for (const x of open) {
-    const li = el("li", `dk-pos ${x.side}`);
-    li.append(el("b", null, `${x.side.toUpperCase()} ${x.coin} ${x.leverage}x`));
-    li.append(el("span", null, `entry ${x.entry}, margin ${usd(x.margin)}, stop ${x.stop}${x.takeProfit ? `, take profit ${x.takeProfit}` : ""}, liquidation ${x.liquidation}${x.funding ? `, funding ${usd(x.funding)}` : ""}`));
-    ps.append(li);
-  }
+  const chips = $("a-chips"); chips.textContent = "";
+  for (const c of a.coins || []) chips.append(el("span", "ag-chip coin", c));
+  if (a.timeframe) chips.append(el("span", "ag-chip", a.timeframe.toUpperCase()));
+  if (a.leverage) chips.append(el("span", "ag-chip lev", `${a.leverage}x`));
+  for (const sd of a.sides || []) chips.append(el("span", `ag-chip ${sd}`, sd.toUpperCase()));
+  $("a-sub").textContent = `Version ${a.version}${p.since ? `, trading since ${new Date(p.since).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}. Paper money, 1,000 dollars to start.`;
+  const open = p.positions || [];
+  const stats = $("a-stats"); stats.textContent = "";
+  const box = (label, value, cls) => { const d = el("div", "ag-stat"); d.append(el("b", cls || null, value)); d.append(el("small", null, label)); stats.append(d); };
+  box("Win rate", p.winRatePct != null ? `${p.winRatePct}%` : "-", "ice");
+  box("Wins", String(p.wins || 0), "up");
+  box("Losses", String(p.losses || 0), "down");
+  box("Total PnL", p.started ? pct(p.resultPct || 0) : "0.00%", tone(p.resultPct));
+  box("Balance", usd(p.balance != null ? p.balance : START));
+  box("Open positions", String(open.length));
+  const w = p.wins || 0, l = p.losses || 0, n = w + l;
+  $("a-wl-w").style.width = n ? `${(100 * w) / n}%` : "50%"; $("a-wl-l").style.width = n ? `${(100 * l) / n}%` : "50%";
+  $("a-wl").classList.toggle("empty", !n);
+  $("a-wl-text").textContent = n ? `${w} wins (${Math.round((100 * w) / n)}%), ${l} losses (${Math.round((100 * l) / n)}%)${p.liquidations ? `, ${p.liquidations} liquidated` : ""}` : "No closed trades yet.";
   const curve = a.curve && a.curve.length > 1 ? a.curve : null;
   $("eq-chart").classList.toggle("hidden", !curve);
   $("eq-legend").textContent = curve ? `since ${new Date(curve[0].t).toLocaleString()}` : "";
-  $("eq-hint").textContent = curve ? "One point per closed candle. The dashed line is the 1,000 dollars it started with." : a.running ? "Trading. The chart fills in as candles close." : "The chart fills in once the agent is trading. Ask Claude to start it.";
+  $("eq-hint").textContent = curve ? "" : a.running ? "The chart fills in as candles close." : "The chart fills in once the agent is trading. Ask Claude to start it.";
   if (curve) lineChart($("eq-chart"), curve.map((q) => q.e));
+  const bt = a.backtest;
+  $("a-bt").textContent = bt ? `Backtest: ${pct(bt.returnPct)} over ${bt.candles ? `${bt.candles.toLocaleString("en-US")} candles, ` : ""}${bt.period}, ${bt.trades} trades, ${bt.liquidations || 0} liquidations, worst drop ${pct(bt.maxDrawdownPct)}.` : "No backtest on file. Ask Claude to backtest this agent.";
+  const pr = $("pos-rows"); pr.textContent = "";
+  if (!open.length) { const tr = el("tr"), c = td(a.running ? "No open position. Waiting for a signal." : "No open position.", "ag-empty"); c.colSpan = 10; tr.append(c); pr.append(tr); }
+  for (const x of open) {
+    const tr = el("tr");
+    tr.append(td(x.coin, "b")); tr.append(td(x.side.toUpperCase(), x.side)); tr.append(td(`${x.leverage}x`, "ice"));
+    tr.append(td(fmtPx(x.entry))); tr.append(td(fmtPx(x.mark)));
+    tr.append(td(x.pnl == null ? "-" : `${x.pnl >= 0 ? "+" : ""}${usd(x.pnl)} (${pct(x.pnlPct)})`, tone(x.pnl)));
+    tr.append(td(fmtPx(x.stop), "down")); tr.append(td(x.takeProfit ? fmtPx(x.takeProfit) : "-", "up")); tr.append(td(fmtPx(x.liquidation), "liq")); tr.append(td(fmtT(x.opened), "dim"));
+    pr.append(tr);
+  }
+  const trs = $("trade-rows"); trs.textContent = "";
+  if (!a.trades || !a.trades.length) { const tr = el("tr"), c = td("No closed trades yet.", "ag-empty"); c.colSpan = 9; tr.append(c); trs.append(tr); }
+  for (const x of a.trades || []) {
+    const tr = el("tr"), [label, cls] = STATUS_OF(x.why || "");
+    tr.append(td(x.coin, "b")); tr.append(td(x.side.toUpperCase(), x.side)); tr.append(td(`${x.lev}x`, "ice"));
+    tr.append(td(fmtPx(x.entry))); tr.append(td(fmtPx(x.exit)));
+    tr.append(td(`${x.pnl >= 0 ? "+" : ""}${usd(x.pnl)} (${pct(x.pnlPct)})`, tone(x.pnl)));
+    const sc = td(""); sc.append(el("span", `ag-status ${cls}`, label)); tr.append(sc);
+    tr.append(td(fmtT(x.opened), "dim")); tr.append(td(fmtT(x.closed), "dim"));
+    trs.append(tr);
+  }
   $("cur-tag").textContent = a.rule ? `APPROVED, VERSION ${a.version}` : "NO RULES YET";
   const ul = $("cur-lines"); ul.textContent = "";
   for (const [k, v] of Object.entries(a.rules || {})) { const li = el("li"); li.append(el("b", null, `${k}: `)); li.append(el("span", "dk-pre", v)); ul.append(li); }
@@ -135,7 +165,7 @@ async function paintAgent(id) {
   for (const v of a.versions) h.append(el("li", null, `Version ${v.version}: ${v.name} (${new Date(v.at).toLocaleString()})${v.current ? ", in use" : ""}`));
   const log = $("pp-log"); log.textContent = "";
   if (!a.recent.length) log.append(el("li", null, "Nothing yet."));
-  for (const l of a.recent) log.append(el("li", null, `${new Date(l.at).toLocaleString()}  ${l.text}`));
+  for (const x of a.recent) log.append(el("li", null, `${new Date(x.at).toLocaleString()}  ${x.text}`));
 }
 
 async function route() {
