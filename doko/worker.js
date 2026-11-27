@@ -1,9 +1,8 @@
-import { validateRule, backtest, step, makeCache, PAIRS, TIMEFRAMES, assetsOf, MAX_ASSETS } from "./lib/bot.js";
+import { validateRule, backtest, step, TIMEFRAMES, assetsOf, MAX_ASSETS, MAX_COINS, MAX_LEVERAGE, FEE_PCT, SLIP_PCT, freshState, cachesFor, equityOf, pricesAt, touch, levels, liqDistancePct } from "./lib/bot.js";
 import { REGISTRY, MTF_SECONDS, describe, series } from "./lib/indicators.js";
 import { marketNeeds } from "./lib/market.js";
 import * as bybit from "./lib/market_bybit.js";
 import * as hl from "./lib/market_hl.js";
-import * as bus from "./lib/market_binanceus.js";
 import { optimize } from "./lib/optimize.js";
 import { explain } from "./lib/dokoexplain.js";
 
@@ -36,38 +35,43 @@ function json(obj, status = 200, headers = {}) {
 }
 function oauthError(code, desc, status = 400) { return json({ error: code, error_description: desc }, status); }
 
-const RULE_FORMAT = `A DOKO rule is JSON with these fields:
+const RULE_FORMAT = `A DOKO agent trades perpetual futures with paper money: it can go long, short, or both, with leverage. Its rule is JSON with these fields:
 - name: 1 to 60 characters
-- pair: one of ${Object.keys(PAIRS).join(", ")}
+- coins: 1 to ${MAX_COINS} Hyperliquid perpetual tickers it trades, such as ["SOL"] or ["BTC", "ETH", "SOL"]. The same rule runs on each coin separately, each with its own position, all from one shared balance of ${START} paper dollars.
 - timeframe: one of ${Object.keys(TIMEFRAMES).join(", ")}
-- entry: a condition (required)
-- exit: a condition (optional)
-- stopLossPct: required, 0.2 to 50
-- takeProfitPct: optional, 0.2 to 100
-- orderUsd: dollars per trade, 1 to 100000 (the agent starts with ${START} paper dollars)
-- maxTradesPerDay: optional, 1 to 24
-No other fields. There is no leverage and no shorting: the agent buys, then sells.
+- leverage: whole number 1 to ${MAX_LEVERAGE}, chosen by the user
+- marginUsd: margin per trade in dollars, 1 to 100000. Position size is marginUsd times leverage.
+- long: {"entry": condition, "exit": condition (optional)} to go long
+- short: {"entry": condition, "exit": condition (optional)} to go short
+  At least one of long or short. With both, an opposite signal closes the position and opens the other side.
+- stopLossPct: required, price move against the position in percent (0.05 to 50). At 20x a 1% stop loses about 20% of the margin.
+- takeProfitPct: optional, price move in favour in percent (0.05 to 500)
+- maxTradesPerDay: optional, 1 to 48 new positions a day across all coins
+No other fields.
+
+How a trade is simulated: signals are read on closed candles and the position opens at that close. Stop loss, take profit and liquidation fire inside a candle at their level (live, from the order book stream; in backtests, from the candle high and low, assuming the worse one first). Liquidation happens after a price move of (100 / leverage - 0.5)% against the position, for example 1.5% at 50x and 0.3% at 125x, and loses the whole margin. Costs: ${FEE_PCT}% fee and ${SLIP_PCT}% slippage per side on the position size, and hourly funding while a position is open (longs pay when funding is positive, shorts receive it). Funding history starts in May 2023.
 
 A condition is one of:
 - {"all": [conditions]} or {"any": [conditions]} (1 to 8 items), or {"not": condition}
+- {"atLeast": n, "of": [conditions]}: true when at least n of 2 to 8 conditions hold
 - a comparison {"left": X, "op": "<" | "<=" | ">" | ">=", "right": Y}, where X and Y are a number or an indicator, and at least one is an indicator
 - a cross {"cross": "above" | "below", "a": indicator, "b": X}
-At most 24 conditions in total, nested at most 4 deep.
+At most 32 conditions in total, nested at most 4 deep.
 
 An indicator is {"ind": name, ...settings, "out": output, "tf": timeframe, "asset": coin}. Leave a setting out to use its default. "out" picks one output (default: the first). "tf" computes the indicator on a longer timeframe than the rule's (one of ${Object.keys(MTF_SECONDS).join(", ")}, a multiple of the rule's timeframe); its value only updates when that longer candle closes. Candle patterns use {"ind": "pattern", "name": ...} and give 1 or 0.
-"asset" computes the indicator on another coin's candles instead of SOL, lined up candle by candle: any Hyperliquid perpetual ticker such as BTC, ETH, HYPE, DOGE or kPEPE (k means a thousand units). The agent still only trades SOL. A rule can watch up to ${MAX_ASSETS} other coins. Example: {"left":{"ind":"rsi","asset":"BTC","tf":"4h"},"op":"<","right":30}.
+Without "asset" an indicator reads the coin being traded. "asset" reads another coin's candles instead, lined up candle by candle: any Hyperliquid perpetual ticker such as BTC, ETH, HYPE, DOGE or kPEPE (k means a thousand units). A rule can watch up to ${MAX_ASSETS} other coins. Example BTC filter: {"left":{"ind":"rsi","asset":"BTC","tf":"4h"},"op":"<","right":30}.
 
-Example: {"name":"SOL RSI dip with 4h trend","pair":"SOL/USDC","timeframe":"1h","entry":{"all":[{"left":{"ind":"rsi","period":14},"op":"<","right":35},{"left":{"ind":"supertrend","out":"dir","tf":"4h"},"op":">","right":0}]},"exit":{"left":{"ind":"rsi","period":14},"op":">","right":55},"stopLossPct":3,"orderUsd":100}
+Example: {"name":"SOL and ETH 4h trend, both ways","coins":["SOL","ETH"],"timeframe":"4h","leverage":5,"marginUsd":200,"long":{"entry":{"all":[{"cross":"above","a":{"ind":"ema","period":20},"b":{"ind":"ema","period":50}},{"left":{"ind":"price","asset":"BTC","tf":"1d"},"op":">","right":{"ind":"sma","period":50,"asset":"BTC","tf":"1d"}}]}},"short":{"entry":{"all":[{"cross":"below","a":{"ind":"ema","period":20},"b":{"ind":"ema","period":50}},{"left":{"ind":"adx"},"op":">","right":20}]}},"stopLossPct":4,"takeProfitPct":12}
 
-Prices come from Hyperliquid SOL candles (very close to SOL/USDC spot), and funding from the Hyperliquid SOL perpetual. Open interest, long/short ratio and taker volume indicators are not available.
+Prices come from Hyperliquid perpetual candles. Open interest, long/short ratio and taker volume indicators are not available.
 
 Indicators:
 ${INDICATORS}`;
 
-const INSTRUCTIONS = `DOKO by OPEQ lets the user build trading agents for SOL/USDC that run on paper money (1,000 paper dollars each). An agent is a fixed rule: once approved it runs as math on closed candles, with no AI in the loop, every minute on our side even when the user is away.
-Talk with the user in their language. Before writing a rule, call rule_format once. Use backtest and search_settings to show how a rule would have done, and say plainly that past results are no promise. Never promise profits.
+const INSTRUCTIONS = `DOKO by OPEQ lets the user build AI trading agents for perpetual futures on Hyperliquid coins, run with paper money (1,000 paper dollars each). An agent can go long, short or both, with leverage from 1x to 125x that the user chooses. Once approved it runs as fixed math on closed candles, with no AI in the loop; stops, take profits and liquidations are watched live from the order book stream, even when the user is away.
+Talk with the user in their language. Before writing a rule, call rule_format once. Ask the user for the leverage if they have not said it. Use backtest and search_settings to show how a rule would have done, including liquidations, and say plainly that past results are no promise and that high leverage can wipe the margin in a small move. Never promise profits.
 Changing anything is two steps: propose_agent or propose_change returns a summary; show it to the user, and call apply_proposal only after the user says yes in this conversation.
-If the user asks for something rules cannot express (shorting, leverage, other coins, news), say so. Nothing here touches a wallet or real money.`;
+If the user asks for something rules cannot express (news, sentiment, order book data), say so. Nothing here touches a wallet or real money.`;
 
 function warmup(rule) {
   let need = 50;
@@ -83,7 +87,7 @@ function warmup(rule) {
     }
     Object.values(x).forEach(walk);
   };
-  walk(rule.entry); walk(rule.exit);
+  for (const side of [rule.long, rule.short]) if (side) { walk(side.entry); walk(side.exit); }
   return Math.min(need, 2500);
 }
 function align(C, A) {
@@ -96,30 +100,133 @@ function align(C, A) {
     return { t: c.t, o: NaN, h: NaN, l: NaN, c: NaN, v: NaN, tb: NaN, nt: NaN };
   });
 }
-async function loadAll(rule, n) {
-  const feed = PAIRS[rule.pair].feed, tf = rule.timeframe, deep = false;
-  const get = deep ? (s) => bus.candles(s === feed ? PAIRS[rule.pair].base : s, tf, n, spotFetch) : (s) => loadCandles(s, tf, n, spotFetch);
-  const C = await get(feed);
-  await withMarketData(C, feed, tf, marketNeeds(rule));
-  const assets = assetsOf(rule);
-  if (assets.length) {
-    C.assets = {};
-    await Promise.all(assets.map(async (a) => {
-      let A;
-      try { A = await get(a); } catch (x) { throw new ToolError(`No price data for ${a}${deep ? " this far back" : ""}: ${x.message}. Pick a coin listed on Hyperliquid${deep ? ", or use 5000 candles or fewer" : ""}.`); }
-      const al = align(C, A);
-      if (marketNeeds(rule, a).funding) await hl.withMarketData(al, a, tf, { funding: true }, spotFetch);
-      C.assets[a] = al;
-    }));
-  }
-  return C;
-}
-const dataFor = loadAll;
+const CB_PRODUCTS = { SOL: "SOL-USD", BTC: "BTC-USD", ETH: "ETH-USD" };
+const CB_START = Date.UTC(2021, 5, 17) / 1000;
+const HOUR = 3600, PAGE = 300;
+const hourNow = () => Math.floor(Date.now() / 1000 / HOUR) * HOUR;
+const iso = (s) => new Date(s * 1000).toISOString();
 
-function freshPaper() { return { cash: START, pos: null, trades: 0, day: null, lastT: null, log: [], equity: START, wins: 0, closed: 0, curve: [] }; }
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+async function cbPage(product, start, end) {
+  const url = `https://api.exchange.coinbase.com/products/${product}/candles?${new URLSearchParams({ granularity: String(HOUR), start: iso(start), end: iso(end - HOUR) })}`;
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    r = await fetch(url, { headers: { "user-agent": "opeq-doko", accept: "application/json" } });
+    if (r.status !== 429) break;
+    await pause(1500 * (attempt + 1));
+  }
+  if (!r.ok) throw new Error(`coinbase ${r.status} ${(await r.text()).slice(0, 120)}`);
+  const rows = await r.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+export async function backfill(env, pagesPerProduct = 2) {
+  const first = Number(env.CB_START) || CB_START, out = {};
+  for (const product of Object.values(CB_PRODUCTS)) {
+    const st = await env.DB.prepare("SELECT next FROM cb_state WHERE product = ?").bind(product).first();
+    let next = st ? st.next : first, pages = 0;
+    const closedEnd = hourNow();
+    while (pages < pagesPerProduct && next < closedEnd) {
+      const end = Math.min(next + PAGE * HOUR, closedEnd);
+      let rows;
+      try { rows = await cbPage(product, next, end); } catch (x) { await env.DB.prepare("INSERT OR REPLACE INTO cb_err (product, at, msg) VALUES (?, ?, ?)").bind(product, now(), String(x.message).slice(0, 300)).run(); out.stopped = true; break; }
+      pages++;
+      await pause(250);
+      const keep = rows.filter((r) => Number(r[0]) >= next && Number(r[0]) + HOUR <= closedEnd && [1, 2, 3, 4, 5].every((k) => Number.isFinite(Number(r[k]))));
+      for (let i = 0; i < keep.length; i += 100) {
+        await env.DB.batch(keep.slice(i, i + 100).map((r) => env.DB.prepare("INSERT OR REPLACE INTO cb_candles (product, t, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(product, Number(r[0]), Number(r[3]), Number(r[2]), Number(r[1]), Number(r[4]), Number(r[5]))));
+      }
+      next = end >= closedEnd ? Math.max(first, closedEnd - 3 * HOUR) : end;
+    }
+    await env.DB.prepare("INSERT INTO cb_state (product, next, updated) VALUES (?, ?, ?) ON CONFLICT(product) DO UPDATE SET next = MAX(next, excluded.next), updated = excluded.updated").bind(product, next, now()).run();
+    out[product] = { pages, done: next >= hourNow() - 4 * HOUR, progressPct: Math.min(100, Math.round(((next - first) / (hourNow() - first)) * 100)) };
+    if (out.stopped) break;
+  }
+  return out;
+}
+
+function bucketOf(t, secs) { return secs === 604800 ? Math.floor((t - 345600) / secs) : Math.floor(t / secs); }
+export function hoursTo(rows, tf) {
+  const filled = [];
+  for (const r of rows) {
+    const prev = filled[filled.length - 1];
+    if (prev) for (let t = prev.t + HOUR; t < r.t; t += HOUR) filled.push({ t, o: prev.c, h: prev.c, l: prev.c, c: prev.c, v: 0 });
+    filled.push({ t: r.t, o: r.o, h: r.h, l: r.l, c: r.c, v: r.v });
+  }
+  const secs = TIMEFRAMES[tf];
+  if (secs === HOUR) return filled.map((c) => ({ ...c, tb: NaN, nt: NaN }));
+  const out = [];
+  let cur = null, b = null;
+  for (const c of filled) {
+    const k = bucketOf(c.t, secs);
+    if (k !== b) { if (cur) out.push(cur); cur = { t: secs === 604800 ? k * secs + 345600 : k * secs, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, tb: NaN, nt: NaN, n: 1 }; b = k; }
+    else { cur.h = Math.max(cur.h, c.h); cur.l = Math.min(cur.l, c.l); cur.c = c.c; cur.v += c.v; cur.n++; }
+  }
+  if (cur) out.push(cur);
+  const full = secs / HOUR;
+  return out.filter((c, i) => (i === 0 ? c.n === full : true) && c.t + secs <= hourNow()).map(({ n, ...c }) => c);
+}
+
+async function deepCandles(env, coin, tf, n) {
+  const product = CB_PRODUCTS[coin];
+  if (!product) throw new ToolError(`Long history beyond 5000 candles is kept for SOL, BTC and ETH only, not ${coin}. Use 5000 candles or fewer for rules that watch ${coin}.`);
+  const st = await env.DB.prepare("SELECT next FROM cb_state WHERE product = ?").bind(product).first();
+  const first = Number(env.CB_START) || CB_START;
+  if (!st || st.next < hourNow() - 6 * HOUR) {
+    const pct = st ? Math.round(((st.next - first) / (hourNow() - first)) * 100) : 0;
+    throw new ToolError(`DOKO is still loading the long ${coin} history (${pct}% done). Try again in a little while, or use 5000 candles or fewer.`);
+  }
+  const per = TIMEFRAMES[tf] / HOUR, hours = Math.min((n + 2) * per, 80000);
+  const { results } = await env.DB.prepare("SELECT t, o, h, l, c, v FROM cb_candles WHERE product = ? AND t >= ? ORDER BY t").bind(product, hourNow() - hours * HOUR).all();
+  if (!results.length) throw new ToolError(`No stored history for ${coin} yet.`);
+  return hoursTo(results, tf).slice(-n);
+}
+
+async function loadAll(env, rule, n) {
+  const tf = rule.timeframe, deep = n > 5000;
+  if (deep && TIMEFRAMES[tf] < HOUR) throw new ToolError("More than 5000 candles works on 1h or longer timeframes. Use 5000 candles or fewer on 5m, 15m and 30m.");
+  const get = async (coin) => {
+    try { return deep ? await deepCandles(env, coin, tf, n) : await loadCandles(coin, tf, n, spotFetch); }
+    catch (x) { if (x instanceof ToolError) throw x; throw new ToolError(`No price data for ${coin}: ${x.message}. Pick a coin listed on Hyperliquid.`); }
+  };
+  const raw = {};
+  await Promise.all(rule.coins.map(async (c) => { raw[c] = await get(c); }));
+  const main = raw[rule.coins[0]];
+  const data = { [rule.coins[0]]: main };
+  for (const c of rule.coins.slice(1)) data[c] = align(main, raw[c]);
+  const extra = {};
+  const assets = assetsOf(rule).filter((a) => !rule.coins.includes(a));
+  await Promise.all(assets.map(async (a) => { extra[a] = align(main, await get(a)); }));
+  await Promise.all(rule.coins.map((c) => withMarketData(data[c], c, tf, { ...marketNeeds(rule), fs: true }, spotFetch).catch(() => data[c])));
+  await Promise.all(assets.map((a) => (marketNeeds(rule, a).funding ? hl.withMarketData(extra[a], a, tf, { funding: true }, spotFetch) : null)));
+  for (const c of rule.coins) {
+    const own = {};
+    for (const a of assetsOf(rule)) own[a] = rule.coins.includes(a) ? data[a] : extra[a];
+    data[c].assets = own;
+  }
+  return data;
+}
+
+function freshPaper(rule) { return { ...freshState(rule, START), lastT: null, log: [], equity: START, wins: 0, closed: 0, liqs: 0, curve: [] }; }
 const ruleOf = (d) => (d.cur >= 0 && d.versions[d.cur] ? d.versions[d.cur].rule : null);
 function plog(p, text) { p.log.unshift({ t: Date.now(), text }); p.log = p.log.slice(0, 200); }
 function sample(arr, n) { if (arr.length <= n) return arr; const out = []; for (let i = 0; i < n; i++) out.push(arr[Math.round((i / (n - 1)) * (arr.length - 1))]); return out; }
+const fmtPx = (v) => (v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toPrecision(5));
+function describeEvent(e) {
+  if (e.kind === "open") return `Opened ${e.side} ${e.coin} ${e.lev}x at ${fmtPx(e.price)} with ${usd(e.margin)} margin`;
+  return `Closed ${e.side} ${e.coin} at ${fmtPx(e.price)}: ${e.why}, ${e.pnl >= 0 ? "+" : ""}${usd(e.pnl)}${e.funding ? ` (funding ${e.funding >= 0 ? "+" : ""}${usd(e.funding)})` : ""}`;
+}
+function record(p, e) {
+  plog(p, describeEvent(e));
+  if (e.kind === "close") { p.closed = (p.closed || 0) + 1; if (e.pnl > 0) p.wins = (p.wins || 0) + 1; if (e.liquidated) p.liqs = (p.liqs || 0) + 1; }
+}
+function positionsOf(rule, p) {
+  if (!p || !p.pos) return [];
+  return Object.entries(p.pos).filter(([, x]) => x).map(([coin, x]) => {
+    const L = levels(rule, x);
+    return { coin, side: x.side > 0 ? "long" : "short", leverage: x.lev, entry: x.entry, margin: +x.margin.toFixed(2), stop: +L.stop.toPrecision(6), liquidation: +L.liq.toPrecision(6), takeProfit: Number.isFinite(L.take) ? +L.take.toPrecision(6) : null, funding: +x.funding.toFixed(2) };
+  });
+}
 
 function summary(row) {
   const d = JSON.parse(row.data), r = ruleOf(d), p = d.paper;
@@ -127,8 +234,8 @@ function summary(row) {
   return {
     id: row.id, name: row.name, running: !!row.running,
     status: !r ? "no rules" : row.running ? "trading" : ran ? "paused" : "not started",
-    pair: r ? r.pair : null, timeframe: r ? r.timeframe : null, version: r ? d.cur + 1 : 0,
-    paper: p ? { balance: +p.equity.toFixed(2), resultPct: +((p.equity / START - 1) * 100).toFixed(2), closedTrades: p.closed || 0, wins: p.wins || 0, winRatePct: p.closed ? Math.round((p.wins / p.closed) * 100) : null, position: p.pos ? { qty: +p.pos.qty.toFixed(4), entry: p.pos.entry } : null, started: ran } : null,
+    coins: r ? r.coins : [], timeframe: r ? r.timeframe : null, leverage: r ? r.leverage : null, sides: r ? [r.long ? "long" : null, r.short ? "short" : null].filter(Boolean) : [], version: r ? d.cur + 1 : 0,
+    paper: p ? { balance: +p.equity.toFixed(2), resultPct: +((p.equity / START - 1) * 100).toFixed(2), closedTrades: p.closed || 0, wins: p.wins || 0, liquidations: p.liqs || 0, winRatePct: p.closed ? Math.round((p.wins / p.closed) * 100) : null, positions: r ? positionsOf(r, p) : [], started: ran } : null,
     backtest: d.bt || null,
   };
 }
@@ -305,20 +412,20 @@ class ToolError extends Error {}
 const S = (props, required = []) => ({ type: "object", properties: props, required, additionalProperties: false });
 const AGENT = { type: "string", description: "Agent id from list_agents" };
 const RULE = { type: "object", description: "A DOKO rule object, see rule_format" };
-const CANDLES = { type: "integer", minimum: 300, maximum: 5000, description: "How many candles of history to test on (default 3000, most 5000, from Hyperliquid: 1h about 7 months, 4h about 2 years, 1d back to 2020)." };
+const CANDLES = { type: "integer", minimum: 300, maximum: 20000, description: "How many candles of history to test on (default 3000). Up to 5000 come from Hyperliquid (1h about 7 months, 4h about 2 years, 1d back to 2020). From 5001 to 20000, on 1h or longer timeframes, the whole test uses Coinbase hourly candles that DOKO stores (SOL, BTC and ETH from June 2021), with longer timeframes built from them; other coins in the rule must then be BTC or ETH." };
 
 const TOOLS = [
   { name: "rule_format", description: "How to write a DOKO rule, with every indicator and its settings. Call this once before writing or changing a rule.", inputSchema: S({}), annotations: { readOnlyHint: true } },
   { name: "list_agents", description: "The user's agents with status, paper balance, win rate and last backtest.", inputSchema: S({}), annotations: { readOnlyHint: true } },
   { name: "get_agent", description: "One agent in full: its rules in plain words, versions, paper trading results and recent trades.", inputSchema: S({ agent_id: AGENT }, ["agent_id"]), annotations: { readOnlyHint: true } },
-  { name: "market", description: "Current SOL/USDC price and a few readings (24h change, RSI, trend) to talk about the market.", inputSchema: S({}), annotations: { readOnlyHint: true } },
-  { name: "backtest", description: "Test a rule (or an agent's current rule) on real past SOL prices with 1,000 paper dollars and 0.3% cost per trade. Returns the result next to simply holding SOL. Past results are no promise.", inputSchema: S({ agent_id: AGENT, rule: RULE, candles: CANDLES }), annotations: { readOnlyHint: true } },
+  { name: "market", description: "Current price of a coin's perpetual and a few readings (24h change, RSI, trend, funding) to talk about the market.", inputSchema: S({ coin: { type: "string", description: "Ticker such as SOL, BTC, ETH (default SOL)" } }), annotations: { readOnlyHint: true } },
+  { name: "backtest", description: "Test a rule (or an agent's current rule) on real past perpetual prices with 1,000 paper dollars, with fees, slippage, hourly funding and liquidations. Returns the result, monthly returns and liquidations next to simply holding the coins. Past results are no promise.", inputSchema: S({ agent_id: AGENT, rule: RULE, candles: CANDLES }), annotations: { readOnlyHint: true } },
   { name: "search_settings", description: "Try up to 400 combinations of the rule's numbers on the first 65% of the history and check the best five on the last 35% it never saw. Use it to show whether a rule only fits the past.", inputSchema: S({ agent_id: AGENT, rule: RULE, candles: CANDLES }), annotations: { readOnlyHint: true } },
   { name: "propose_agent", description: "Check a rule for a new agent and get a summary to show the user. Nothing is created until the user agrees and you call apply_proposal.", inputSchema: S({ rule: RULE }, ["rule"]) },
   { name: "propose_change", description: "Check a new version of an agent's rule and get a summary to show the user. Nothing changes until the user agrees and you call apply_proposal.", inputSchema: S({ agent_id: AGENT, rule: RULE }, ["agent_id", "rule"]) },
   { name: "apply_proposal", description: "Create the agent or save the new version from a proposal. Only call this after the user said yes to that exact proposal. A new version restarts paper trading from 1,000 dollars.", inputSchema: S({ proposal_id: { type: "string" } }, ["proposal_id"]) },
   { name: "start_trading", description: "Start paper trading for an agent. It runs every minute on our side and acts on closed candles, even when the user is away.", inputSchema: S({ agent_id: AGENT }, ["agent_id"]) },
-  { name: "pause_trading", description: "Pause paper trading for an agent. An open position stays open until it is started again.", inputSchema: S({ agent_id: AGENT }, ["agent_id"]) },
+  { name: "pause_trading", description: "Pause paper trading for an agent. Open positions are closed at the current price when it pauses.", inputSchema: S({ agent_id: AGENT }, ["agent_id"]) },
   { name: "reset_paper", description: "Reset an agent's paper money to 1,000 dollars and clear its trades. Ask the user first.", inputSchema: S({ agent_id: AGENT }, ["agent_id"]), annotations: { destructiveHint: true } },
   { name: "revert_version", description: "Go back to an earlier version of an agent's rule. Paper trading restarts from 1,000 dollars. Ask the user first.", inputSchema: S({ agent_id: AGENT, version: { type: "integer", minimum: 1 } }, ["agent_id", "version"]), annotations: { destructiveHint: true } },
   { name: "rename_agent", description: "Rename an agent.", inputSchema: S({ agent_id: AGENT, name: { type: "string", minLength: 1, maxLength: 60 } }, ["agent_id", "name"]) },
@@ -327,19 +434,25 @@ const TOOLS = [
 ];
 
 async function loadAgent(env, account, id) {
-  const row = await env.DB.prepare("SELECT id, name, running, data FROM agents WHERE id = ? AND account = ?").bind(String(id || ""), account).first();
+  const row = await env.DB.prepare("SELECT id, name, running, data, ver FROM agents_v2 WHERE id = ? AND account = ?").bind(String(id || ""), account).first();
   if (!row) throw new ToolError("No agent with that id. Call list_agents to see the user's agents.");
   return row;
 }
 async function saveAgent(env, row, d, extra = {}) {
   const name = extra.name !== undefined ? extra.name : row.name;
   const running = extra.running !== undefined ? (extra.running ? 1 : 0) : row.running;
-  await env.DB.prepare("UPDATE agents SET name = ?, running = ?, data = ?, updated = ? WHERE id = ?").bind(name, running, JSON.stringify(d), now(), row.id).run();
+  const r = await env.DB.prepare("UPDATE agents_v2 SET name = ?, running = ?, data = ?, updated = ?, ver = ver + 1 WHERE id = ? AND ver = ?").bind(name, running, JSON.stringify(d), now(), row.id, row.ver).run();
+  if (!r.meta || r.meta.changes !== 1) throw new ToolError("The agent changed at the same moment (a trade just happened). Call the tool again.");
+  await poke(env);
+}
+async function poke(env) {
+  if (!env.WATCHER) return;
+  try { await env.WATCHER.get(env.WATCHER.idFromName("main")).fetch("https://watcher/refresh"); } catch {}
 }
 function checkRule(rule) {
   if (!rule || typeof rule !== "object") throw new ToolError("Pass the rule as an object. Call rule_format to see the format.");
   try { validateRule(rule); } catch (x) { throw new ToolError(`The rule does not pass the checks: ${x.message}. Fix it and try again.`); }
-  const used = JSON.stringify([rule.entry, rule.exit || null]);
+  const used = JSON.stringify([rule.long || null, rule.short || null]);
   for (const n of UNAVAILABLE) if (used.includes(`"ind":"${n}"`)) throw new ToolError(`The ${n} indicator is not available in DOKO yet. Use a different volume indicator.`);
   return rule;
 }
@@ -351,40 +464,51 @@ async function ruleFor(env, account, args) {
   if (!rule) throw new ToolError("This agent has no rules yet.");
   return { rule, row };
 }
-const candlesArg = (v) => Math.max(300, Math.min(5000, Number.isInteger(v) ? v : 3000));
+const candlesArg = (v) => Math.max(300, Math.min(20000, Number.isInteger(v) ? v : 3000));
 
 async function callTool(name, args, env, account, base) {
   args = args && typeof args === "object" ? args : {};
   if (name === "rule_format") return RULE_FORMAT;
   if (name === "list_agents") {
-    const { results } = await env.DB.prepare("SELECT id, name, running, data FROM agents WHERE account = ? ORDER BY created").bind(account).all();
+    const { results } = await env.DB.prepare("SELECT id, name, running, data FROM agents_v2 WHERE account = ? ORDER BY created").bind(account).all();
     return { agents: results.map(summary), limits: { maxAgents: MAX_AGENTS, maxTradingAtOnce: MAX_RUNNING }, dashboard: `${env.SITE_PAGE || "https://opeq.io/doko"}` };
   }
   if (name === "get_agent") return detail(await loadAgent(env, account, args.agent_id));
   if (name === "market") {
-    const C1 = await loadCandles("SOLUSDT", "1h", 300, spotFetch), C4 = await loadCandles("SOLUSDT", "4h", 300, spotFetch);
+    const coin = typeof args.coin === "string" && /^k?[A-Z0-9]{2,12}$/.test(args.coin) ? args.coin : "SOL";
+    let C1, C4;
+    try { [C1, C4] = await Promise.all([loadCandles(coin, "1h", 300, spotFetch), loadCandles(coin, "4h", 300, spotFetch)]); } catch (x) { throw new ToolError(`No Hyperliquid market for ${coin}.`); }
+    await hl.withMarketData(C1, coin, "1h", { funding: true }, spotFetch).catch(() => null);
     const last = C1[C1.length - 1], day = C1[C1.length - 25];
     const rsi = series(C1, { ind: "rsi", period: 14 }, "1h"), st = series(C4, { ind: "supertrend", out: "dir" }, "4h");
-    return { pair: "SOL/USDC", price: last.c, at: when(last.t), change24hPct: +((last.c / day.c - 1) * 100).toFixed(2), rsi14_1h: +rsi[rsi.length - 1].toFixed(1), supertrend_4h: st[st.length - 1] > 0 ? "up" : "down" };
+    return { coin, price: last.c, at: when(last.t), change24hPct: +((last.c / day.c - 1) * 100).toFixed(2), rsi14_1h: +rsi[rsi.length - 1].toFixed(1), supertrend_4h: st[st.length - 1] > 0 ? "up" : "down", fundingPer8hPct: Number.isFinite(last.fr) ? +last.fr.toFixed(4) : null };
   }
   if (name === "backtest") {
     const { rule, row } = await ruleFor(env, account, args);
-    const w = warmup(rule), C = await dataFor(rule, candlesArg(args.candles) + w);
-    const from = Math.min(w, C.length - 10);
-    const r = backtest(rule, C, START, 0.3, from);
-    const out = { rule: rule.name, period: `${when(C[from].t).slice(0, 10)} to ${when(C[C.length - 1].t).slice(0, 10)}`, candles: C.length - from, agentPct: +r.returnPct.toFixed(2), holdingSolPct: +r.holdPct.toFixed(2), trades: r.trades, wins: r.wins, worstDropPct: +r.maxDrawdownPct.toFixed(2), endBalance: +r.equity.toFixed(2), lastTrades: r.log.filter((e) => e.kind === "sell").slice(-10).map((e) => `${when(e.t)} sold at ${e.price.toFixed(3)} (${e.why}) ${e.pnl >= 0 ? "+" : ""}${e.pnl.toFixed(2)} USD`), equity: sample(r.curve.map((q) => +q.equity.toFixed(2)), 30) };
-    if (row && !args.rule) { const d = JSON.parse(row.data); d.bt = { returnPct: out.agentPct, holdPct: out.holdingSolPct, trades: r.trades, wins: r.wins, maxDrawdownPct: out.worstDropPct, period: out.period, at: new Date().toISOString() }; await saveAgent(env, row, d); }
-    if (Object.values(marketNeeds(rule)).some(Boolean)) out.note = "This rule uses futures market data, whose history can be shorter than the price history, so early candles may have no value.";
+    const w = warmup(rule), data = await loadAll(env, rule, candlesArg(args.candles) + w), main = data[rule.coins[0]];
+    const from = Math.min(w, main.length - 10);
+    const r = backtest(rule, data, START, from);
+    const closes = r.log.filter((e) => e.kind === "close");
+    const out = {
+      rule: rule.name, coins: rule.coins, leverage: rule.leverage, period: `${when(main[from].t).slice(0, 10)} to ${when(main[main.length - 1].t).slice(0, 10)}`, candles: main.length - from,
+      agentPct: +r.returnPct.toFixed(2), holdingPct: Object.fromEntries(Object.entries(r.holdByCoin).map(([k, v]) => [k, Number.isFinite(v) ? +v.toFixed(2) : null])),
+      trades: r.trades, wins: r.wins, longs: r.longs, shorts: r.shorts, liquidations: r.liquidations, worstDropPct: +r.maxDrawdownPct.toFixed(2), endBalance: +r.equity.toFixed(2),
+      feesPaid: +r.fees.toFixed(2), fundingNet: +r.funding.toFixed(2),
+      months: r.months.slice(-24).map((m) => `${m.month} ${m.pct >= 0 ? "+" : ""}${m.pct.toFixed(1)}%`), monthsUp: `${r.monthsUp} of ${r.months.length}`,
+      lastTrades: closes.slice(-10).map((e) => `${when(e.t)} ${describeEvent(e)}`), openNow: r.open, equity: sample(r.curve.map((q) => +q.equity.toFixed(2)), 30),
+    };
+    if (row && !args.rule) { const d = JSON.parse(row.data); d.bt = { returnPct: out.agentPct, holdPct: out.holdingPct, trades: r.trades, wins: r.wins, liquidations: r.liquidations, maxDrawdownPct: out.worstDropPct, period: out.period, at: new Date().toISOString() }; try { await saveAgent(env, row, d); } catch {} }
+    if (marketNeeds(rule).funding) out.note = "This rule reads funding, whose history starts in May 2023, so earlier candles have no value there.";
     return out;
   }
   if (name === "search_settings") {
     const { rule } = await ruleFor(env, account, args);
-    const C = await dataFor(rule, candlesArg(args.candles) + warmup(rule));
-    const r = optimize(rule, C);
+    const data = await loadAll(env, rule, candlesArg(args.candles) + warmup(rule));
+    const r = optimize(rule, data);
     return {
       tried: r.runs, knobs: r.knobs.map((k) => k.label), splitPct: Math.round(r.split * 100),
-      current: { searchPartPct: +r.current.train.returnPct.toFixed(2), checkPartPct: +r.current.test.returnPct.toFixed(2) },
-      best: r.best.map((b) => ({ settings: Object.fromEntries(b.vals.map((v, i) => [r.knobs[i].label, v])), searchPartPct: +b.train.returnPct.toFixed(2), searchTrades: b.train.trades, checkPartPct: +b.test.returnPct.toFixed(2), checkTrades: b.test.trades, rule: b.rule })),
+      current: { searchPartPct: +r.current.train.returnPct.toFixed(2), checkPartPct: +r.current.test.returnPct.toFixed(2), checkLiquidations: r.current.test.liquidations },
+      best: r.best.map((b) => ({ settings: Object.fromEntries(b.vals.map((v, i) => [r.knobs[i].label, v])), searchPartPct: +b.train.returnPct.toFixed(2), searchTrades: b.train.trades, checkPartPct: +b.test.returnPct.toFixed(2), checkTrades: b.test.trades, checkLiquidations: b.test.liquidations, rule: b.rule })),
       howToRead: "A setting that wins the search part but loses the check part only fits the past. To use one, pass its rule to propose_change.",
     };
   }
@@ -392,7 +516,7 @@ async function callTool(name, args, env, account, base) {
     const rule = checkRule(args.rule);
     let agent = null;
     if (name === "propose_change") agent = (await loadAgent(env, account, args.agent_id)).id;
-    else { const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents WHERE account = ?").bind(account).first(); if (c.n >= MAX_AGENTS) throw new ToolError(`The user already has ${MAX_AGENTS} agents, the most allowed. Delete one first.`); }
+    else { const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ?").bind(account).first(); if (c.n >= MAX_AGENTS) throw new ToolError(`The user already has ${MAX_AGENTS} agents, the most allowed. Delete one first.`); }
     const id = `p_${rand(9)}`;
     await env.DB.prepare("INSERT INTO proposals (id, account, agent, rule, expires) VALUES (?, ?, ?, ?, ?)").bind(id, account, agent, JSON.stringify(rule), now() + 3600).run();
     return { proposal_id: id, kind: agent ? "new version" : "new agent", name: rule.name, rules: Object.fromEntries(explain(rule)), next: "Show these rules to the user in plain words and ask if they want it. Call apply_proposal only after they say yes. The proposal expires in an hour." };
@@ -403,15 +527,15 @@ async function callTool(name, args, env, account, base) {
     await env.DB.prepare("DELETE FROM proposals WHERE id = ?").bind(String(args.proposal_id)).run();
     const rule = checkRule(JSON.parse(p.rule));
     if (!p.agent) {
-      const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents WHERE account = ?").bind(account).first();
+      const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ?").bind(account).first();
       if (c.n >= MAX_AGENTS) throw new ToolError(`The user already has ${MAX_AGENTS} agents.`);
-      const id = hexId(), d = { versions: [{ rule, at: Date.now() }], cur: 0, paper: freshPaper(), bt: null };
-      await env.DB.prepare("INSERT INTO agents (id, account, name, running, data, created, updated) VALUES (?, ?, ?, 0, ?, ?, ?)").bind(id, account, rule.name.slice(0, 60), JSON.stringify(d), now(), now()).run();
+      const id = hexId(), d = { versions: [{ rule, at: Date.now() }], cur: 0, paper: freshPaper(rule), bt: null };
+      await env.DB.prepare("INSERT INTO agents_v2 (id, account, name, running, data, created, updated) VALUES (?, ?, ?, 0, ?, ?, ?)").bind(id, account, rule.name.slice(0, 60), JSON.stringify(d), now(), now()).run();
       return { created: id, name: rule.name, next: "Offer a backtest, then start_trading when the user wants it to run." };
     }
     const row = await loadAgent(env, account, p.agent), d = JSON.parse(row.data);
     d.versions.push({ rule, at: Date.now() }); d.versions = d.versions.slice(-20); d.cur = d.versions.length - 1;
-    d.paper = freshPaper(); d.bt = null;
+    d.paper = freshPaper(rule); d.bt = null;
     if (row.running) plog(d.paper, `Switched to version ${d.cur + 1} and started again from 1,000 dollars.`);
     await saveAgent(env, row, d);
     return { updated: row.id, version: d.cur + 1, trading: !!row.running, note: "Paper trading restarted from 1,000 dollars with the new version." };
@@ -420,22 +544,37 @@ async function callTool(name, args, env, account, base) {
     const row = await loadAgent(env, account, args.agent_id), d = JSON.parse(row.data);
     if (!ruleOf(d)) throw new ToolError("This agent has no rules yet.");
     if (row.running) return { trading: true, note: "Already trading." };
-    const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents WHERE account = ? AND running = 1").bind(account).first();
+    const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ? AND running = 1").bind(account).first();
     if (c.n >= MAX_RUNNING) throw new ToolError(`At most ${MAX_RUNNING} agents can trade at once. Pause one first.`);
-    if (!d.paper) d.paper = freshPaper();
+    if (!d.paper || !d.paper.pos || Array.isArray(d.paper.pos) || ruleOf(d).coins.some((c) => !(c in d.paper.pos))) d.paper = freshPaper(ruleOf(d));
     await saveAgent(env, row, d, { running: true });
     return { trading: true, note: `It waits for the next ${ruleOf(d).timeframe} candle to close, then acts on every closed candle.` };
   }
   if (name === "pause_trading") {
-    const row = await loadAgent(env, account, args.agent_id), d = JSON.parse(row.data);
-    if (d.paper && row.running) plog(d.paper, "Paused.");
-    if (d.paper) d.paper.lastT = null;
+    const row = await loadAgent(env, account, args.agent_id), d = JSON.parse(row.data), rule = ruleOf(d);
+    const p = d.paper;
+    if (p && p.pos && rule) {
+      const open = Object.entries(p.pos).filter(([, x]) => x);
+      if (open.length) {
+        const data = await loadAll(env, rule, warmup(rule) + 5).catch(() => null);
+        for (const [coin] of open) {
+          const C = data && data[coin], px = C && C[C.length - 1].c;
+          if (!Number.isFinite(px)) continue;
+          const box = { cash: p.cash, pos: p.pos[coin] };
+          const ev = closePositionNow(box, px, "paused");
+          p.cash = box.cash; p.pos[coin] = null; ev.coin = coin; record(p, ev);
+        }
+        p.equity = p.cash + Object.values(p.pos).reduce((a, x) => a + (x ? x.margin : 0), 0);
+      }
+    }
+    if (p && row.running) plog(p, "Paused.");
+    if (p) p.lastT = null;
     await saveAgent(env, row, d, { running: false });
     return { trading: false };
   }
   if (name === "reset_paper") {
     const row = await loadAgent(env, account, args.agent_id), d = JSON.parse(row.data);
-    d.paper = freshPaper();
+    d.paper = freshPaper(ruleOf(d) || { coins: [] });
     await saveAgent(env, row, d);
     return { reset: true, balance: START };
   }
@@ -443,7 +582,7 @@ async function callTool(name, args, env, account, base) {
     const row = await loadAgent(env, account, args.agent_id), d = JSON.parse(row.data);
     const i = Number(args.version) - 1;
     if (!Number.isInteger(i) || !d.versions[i]) throw new ToolError(`This agent has versions 1 to ${d.versions.length}.`);
-    d.cur = i; d.paper = freshPaper(); d.bt = null;
+    d.cur = i; d.paper = freshPaper(d.versions[i].rule); d.bt = null;
     await saveAgent(env, row, d);
     return { version: i + 1, name: d.versions[i].rule.name };
   }
@@ -457,7 +596,8 @@ async function callTool(name, args, env, account, base) {
   if (name === "delete_agent") {
     const row = await loadAgent(env, account, args.agent_id);
     if (args.confirm_name !== row.name) throw new ToolError(`confirm_name must be exactly "${row.name}".`);
-    await env.DB.prepare("DELETE FROM agents WHERE id = ? AND account = ?").bind(row.id, account).run();
+    await env.DB.prepare("DELETE FROM agents_v2 WHERE id = ? AND account = ?").bind(row.id, account).run();
+    await poke(env);
     return { deleted: row.id };
   }
   if (name === "dashboard") return { url: env.SITE_PAGE || "https://opeq.io/doko", note: "It shows the agents in the browser the user connected DOKO from." };
@@ -508,12 +648,12 @@ async function siteApi(request, env, path) {
   const account = await accountFromCookie(request, env);
   if (path === "/api/me") {
     if (!account) return json({ connected: false }, 200, h);
-    const { results } = await env.DB.prepare("SELECT id, name, running, data FROM agents WHERE account = ? ORDER BY created").bind(account).all();
+    const { results } = await env.DB.prepare("SELECT id, name, running, data FROM agents_v2 WHERE account = ? ORDER BY created").bind(account).all();
     return json({ connected: true, agents: results.map((r) => ({ ...summary(r), spark: sample((JSON.parse(r.data).paper || { curve: [] }).curve.map((q) => q.e), 60) })) }, 200, h);
   }
   if (path === "/api/agent") {
     if (!account) return json({ error: "not connected" }, 401, h);
-    const row = await env.DB.prepare("SELECT id, name, running, data FROM agents WHERE id = ? AND account = ?").bind(new URL(request.url).searchParams.get("id") || "", account).first();
+    const row = await env.DB.prepare("SELECT id, name, running, data FROM agents_v2 WHERE id = ? AND account = ?").bind(new URL(request.url).searchParams.get("id") || "", account).first();
     if (!row) return json({ error: "not found" }, 404, h);
     return json(detail(row), 200, h);
   }
@@ -527,43 +667,124 @@ async function siteApi(request, env, path) {
 }
 
 export async function tickAll(env) {
-  const { results } = await env.DB.prepare("SELECT id, name, running, data FROM agents WHERE running = 1 LIMIT 500").all();
-  const writes = [];
+  const { results } = await env.DB.prepare("SELECT id, name, running, data, ver FROM agents_v2 WHERE running = 1 LIMIT 500").all();
+  let written = 0;
   for (const row of results) {
     const d = JSON.parse(row.data), rule = ruleOf(d);
     if (!rule) continue;
-    let C;
-    try { C = await loadAll(rule, warmup(rule) + 5); }
-    catch (x) {
-      const p = d.paper || (d.paper = freshPaper());
-      if (!p.lastErr || Date.now() - p.lastErr > 3600000) { plog(p, `Could not load prices: ${x.message}`); p.lastErr = Date.now(); writes.push([row.id, d]); }
-      continue;
-    }
-    if (!C.length) continue;
-    const cache = makeCache(C, rule.timeframe), last = C[C.length - 1];
-    {
-      const p = d.paper || (d.paper = freshPaper());
-      let moved = false;
-      if (p.lastT == null) { p.lastT = last.t; plog(p, `Started. Waiting for the next ${rule.timeframe} candle to close.`); moved = true; }
-      for (let i = 1; i < C.length; i++) {
-        if (C[i].t <= p.lastT) continue;
-        const r = step(rule, { cash: p.cash, pos: p.pos, trades: p.trades, day: p.day }, C, i, cache);
-        Object.assign(p, { cash: r.state.cash, pos: r.state.pos, trades: r.state.trades, day: r.state.day, lastT: C[i].t });
-        for (const ev of r.events) {
-          if (ev.kind === "buy") plog(p, `Bought ${usd(ev.spend)} of SOL at ${ev.price.toFixed(3)} (candle ${when(ev.t)})`);
-          else { p.closed = (p.closed || 0) + 1; if (ev.pnl > 0) p.wins = (p.wins || 0) + 1; plog(p, `Sold at ${ev.price.toFixed(3)}: ${ev.why}, ${ev.pnl >= 0 ? "+" : ""}${usd(ev.pnl)}`); }
-        }
-        p.curve = [...(p.curve || []), { t: C[i].t * 1000, e: +(p.cash + (p.pos ? p.pos.qty * C[i].c : 0)).toFixed(2) }].slice(-720);
-        moved = true;
+    if (!d.paper || !d.paper.pos || Array.isArray(d.paper.pos)) d.paper = freshPaper(rule);
+    const p = d.paper;
+    let changed = false;
+    try {
+      const data = await loadAll(env, rule, warmup(rule) + 5), main = data[rule.coins[0]];
+      if (!main.length) continue;
+      const gets = cachesFor(rule, data), lastI = main.length - 1;
+      if (p.lastT == null) { p.lastT = main[lastI].t; plog(p, `Started. Waiting for the next ${rule.timeframe} candle to close.`); changed = true; }
+      for (let i = 1; i < main.length; i++) {
+        if (main[i].t <= p.lastT) continue;
+        const r = step(rule, { cash: p.cash, pos: p.pos, trades: p.trades, day: p.day }, data, i, gets);
+        Object.assign(p, { cash: r.state.cash, pos: r.state.pos, trades: r.state.trades, day: r.state.day, lastT: main[i].t });
+        for (const e of r.events) record(p, e);
+        p.curve = [...(p.curve || []), { t: main[i].t * 1000, e: +equityOf(p, pricesAt(rule, data, i)).toFixed(2) }].slice(-720);
+        changed = true;
       }
-      const eq = p.cash + (p.pos ? p.pos.qty * last.c : 0);
-      if (moved || Math.abs(eq - p.equity) > 0.005) { p.equity = eq; p.price = last.c; p.checked = Date.now(); delete p.lastErr; writes.push([row.id, d]); }
+      const eq = equityOf(p, pricesAt(rule, data, lastI));
+      if (changed || Math.abs(eq - p.equity) > 0.005) { p.equity = eq; p.checked = Date.now(); delete p.lastErr; changed = true; }
+    } catch (x) {
+      if (!p.lastErr || Date.now() - p.lastErr > 3600000) { plog(p, `Could not load prices: ${x.message}`); p.lastErr = Date.now(); changed = true; }
+    }
+    if (!changed) continue;
+    const res = await env.DB.prepare("UPDATE agents_v2 SET data = ?, updated = ?, ver = ver + 1 WHERE id = ? AND ver = ? AND running = 1").bind(JSON.stringify(d), now(), row.id, row.ver).run();
+    if (res.meta && res.meta.changes === 1) written++;
+  }
+  return { running: results.length, written };
+}
+
+export function closePositionNow(box, price, why) {
+  const x = box.pos, adj = price * (1 - (x.side * SLIP_PCT) / 100), fee = (x.qty * adj * FEE_PCT) / 100;
+  let pnl = x.side * x.qty * (adj - x.entry) - fee;
+  const liquidated = pnl <= -x.margin;
+  if (liquidated) pnl = -x.margin;
+  box.cash += x.margin + pnl; box.pos = null;
+  return { t: now(), kind: "close", side: x.side > 0 ? "long" : "short", price: adj, why: liquidated ? "liquidated" : why, pnl: pnl - x.openFee + x.funding, fees: fee + x.openFee, funding: x.funding, liquidated };
+}
+
+export class Watcher {
+  constructor(state, env) { this.state = state; this.env = env; this.ws = null; this.subscribed = new Set(); this.watch = new Map(); this.busy = new Set(); this.lastMsg = 0; this.lastPing = 0; this.connecting = null; }
+  async fetch(request) {
+    const path = new URL(request.url).pathname;
+    if (path === "/tick") { const r = await tickAll(this.env); await this.reload(); return json(r); }
+    if (path === "/refresh") { await this.reload(); return json({ ok: true }); }
+    if (path === "/status") { await this.reload(); return json({ connected: !!this.ws, coins: [...this.subscribed], positions: this.watch.size, lastMessageAgoMs: this.lastMsg ? Date.now() - this.lastMsg : null }); }
+    return json({ error: "not found" }, 404);
+  }
+  async alarm() { await this.reload(); }
+  async reload() {
+    const { results } = await this.env.DB.prepare("SELECT id, data FROM agents_v2 WHERE running = 1").all();
+    const watch = new Map();
+    for (const row of results) {
+      const d = JSON.parse(row.data), rule = ruleOf(d), p = d.paper;
+      if (!rule || !p || !p.pos || Array.isArray(p.pos)) continue;
+      for (const [coin, x] of Object.entries(p.pos)) if (x) { const L = levels(rule, x); watch.set(`${row.id}|${coin}`, { id: row.id, coin, side: x.side, t: x.t, adverse: L.adverse, take: L.take }); }
+    }
+    this.watch = watch;
+    const coins = new Set([...watch.values()].map((w) => w.coin));
+    if (coins.size) await this.ensureSocket();
+    if (this.ws) {
+      for (const c of coins) if (!this.subscribed.has(c)) { this.ws.send(JSON.stringify({ method: "subscribe", subscription: { type: "bbo", coin: c } })); this.subscribed.add(c); }
+      for (const c of [...this.subscribed]) if (!coins.has(c)) { this.ws.send(JSON.stringify({ method: "unsubscribe", subscription: { type: "bbo", coin: c } })); this.subscribed.delete(c); }
+      if (Date.now() - this.lastPing > 30000) { this.ws.send(JSON.stringify({ method: "ping" })); this.lastPing = Date.now(); }
+      if (!coins.size) { try { this.ws.close(1000, "idle"); } catch {} this.ws = null; this.subscribed = new Set(); }
+    }
+    if (coins.size) await this.state.storage.setAlarm(Date.now() + 30000);
+  }
+  async ensureSocket() {
+    if (this.ws && Date.now() - this.lastMsg < 90000) return;
+    if (this.ws) { try { this.ws.close(1000, "stale"); } catch {} this.ws = null; }
+    if (this.connecting) return this.connecting;
+    this.connecting = (async () => {
+      try {
+        const resp = await fetch("https://api.hyperliquid.xyz/ws", { headers: { Upgrade: "websocket" } });
+        const ws = resp.webSocket;
+        if (!ws) return;
+        ws.accept();
+        ws.addEventListener("message", (e) => this.onMessage(e.data));
+        ws.addEventListener("close", () => { if (this.ws === ws) { this.ws = null; this.subscribed = new Set(); } });
+        ws.addEventListener("error", () => { if (this.ws === ws) { this.ws = null; this.subscribed = new Set(); } });
+        this.ws = ws; this.subscribed = new Set(); this.lastMsg = Date.now();
+      } finally { this.connecting = null; }
+    })();
+    return this.connecting;
+  }
+  onMessage(raw) {
+    let m; try { m = JSON.parse(raw); } catch { return; }
+    this.lastMsg = Date.now();
+    if (m.channel !== "bbo" || !m.data || !Array.isArray(m.data.bbo)) return;
+    const coin = m.data.coin, bid = Number(m.data.bbo[0] && m.data.bbo[0].px), ask = Number(m.data.bbo[1] && m.data.bbo[1].px);
+    for (const [key, w] of this.watch) {
+      if (w.coin !== coin || this.busy.has(key)) continue;
+      const px = w.side > 0 ? bid : ask;
+      if (!Number.isFinite(px)) continue;
+      if (w.side * (px - w.adverse) <= 0 || w.side * (px - w.take) >= 0) { this.busy.add(key); this.state.waitUntil ? this.state.waitUntil(this.closeLive(key, w, px)) : this.closeLive(key, w, px); }
     }
   }
-  for (let i = 0; i < writes.length; i += 50) {
-    await env.DB.batch(writes.slice(i, i + 50).map(([id, d]) => env.DB.prepare("UPDATE agents SET data = ?, updated = ? WHERE id = ? AND running = 1").bind(JSON.stringify(d), now(), id)));
+  async closeLive(key, w, px) {
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const row = await this.env.DB.prepare("SELECT data, ver FROM agents_v2 WHERE id = ? AND running = 1").bind(w.id).first();
+        if (!row) break;
+        const d = JSON.parse(row.data), rule = ruleOf(d), p = d.paper;
+        if (!rule || !p || !p.pos || !p.pos[w.coin] || p.pos[w.coin].t !== w.t) break;
+        const e = touch(rule, p, w.coin, px, now());
+        if (!e) break;
+        e.why = `${e.why} (live)`;
+        record(p, e);
+        p.equity = p.cash + Object.values(p.pos).reduce((a, x) => a + (x ? x.margin : 0), 0);
+        const res = await this.env.DB.prepare("UPDATE agents_v2 SET data = ?, updated = ?, ver = ver + 1 WHERE id = ? AND ver = ?").bind(JSON.stringify(d), now(), w.id, row.ver).run();
+        if (res.meta && res.meta.changes === 1) break;
+      }
+    } finally { this.watch.delete(key); this.busy.delete(key); }
   }
-  return { running: results.length, written: writes.length };
 }
 
 async function cleanup(env) {
@@ -597,6 +818,10 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil((async () => { await tickAll(env); if (new Date(event.scheduledTime).getUTCMinutes() === 0) await cleanup(env); })());
+    ctx.waitUntil((async () => {
+      if (env.WATCHER) { try { await env.WATCHER.get(env.WATCHER.idFromName("main")).fetch("https://watcher/tick"); } catch {} } else await tickAll(env);
+      try { await backfill(env); } catch {}
+      if (new Date(event.scheduledTime).getUTCMinutes() === 0) await cleanup(env);
+    })());
   },
 };

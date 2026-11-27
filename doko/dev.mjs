@@ -21,9 +21,10 @@ const env = {
   DB: { prepare: (sql) => new Stmt(sql), batch: async (list) => { db.exec("BEGIN"); try { const out = []; for (const s of list) out.push(await s.run()); db.exec("COMMIT"); return out; } catch (e) { db.exec("ROLLBACK"); throw e; } } },
   SITE_ORIGINS: "http://127.0.0.1:8798,http://localhost:8798",
   SITE_PAGE: "http://127.0.0.1:8798/lab/board/doko.html",
+  CB_START: process.env.CB_START || "",
 };
 const worker = (await import(pathToFileURL(join(here, "worker.js")).href)).default;
-const { tickAll } = await import(pathToFileURL(join(here, "worker.js")).href);
+const { tickAll, backfill } = await import(pathToFileURL(join(here, "worker.js")).href);
 
 async function demo() {
   const B = `http://127.0.0.1:${port}`, CB = "http://127.0.0.1:8798/cb";
@@ -40,9 +41,9 @@ async function demo() {
   let id = 0;
   const tool = async (name, args = {}) => { const x = await (await call("/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tok.access_token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } }) })).json(); return x.result.structuredContent; };
   const rules = [
-    { name: "SOL RSI dip with 4h trend", pair: "SOL/USDC", timeframe: "1h", entry: { all: [{ left: { ind: "rsi", period: 14 }, op: "<", right: 35 }, { left: { ind: "supertrend", out: "dir", tf: "4h" }, op: ">", right: 0 }] }, exit: { left: { ind: "rsi", period: 14 }, op: ">", right: 55 }, stopLossPct: 3, orderUsd: 100 },
-    { name: "EMA cross trend rider", pair: "SOL/USDC", timeframe: "4h", entry: { cross: "above", a: { ind: "ema", period: 9 }, b: { ind: "ema", period: 21 } }, exit: { cross: "below", a: { ind: "ema", period: 9 }, b: { ind: "ema", period: 21 } }, stopLossPct: 5, orderUsd: 200 },
-    { name: "Fast 15m bounce", pair: "SOL/USDC", timeframe: "15m", entry: { all: [{ left: { ind: "bb", out: "pctb" }, op: "<", right: 0 }, { left: { ind: "rsi", period: 7 }, op: "<", right: 25 }] }, exit: { left: { ind: "bb", out: "pctb" }, op: ">", right: 0.5 }, stopLossPct: 2, takeProfitPct: 3, orderUsd: 150 },
+    { name: "SOL RSI both ways 10x", coins: ["SOL"], timeframe: "1h", leverage: 10, marginUsd: 100, long: { entry: { all: [{ left: { ind: "rsi", period: 14 }, op: "<", right: 35 }, { left: { ind: "supertrend", out: "dir", tf: "4h" }, op: ">", right: 0 }] }, exit: { left: { ind: "rsi", period: 14 }, op: ">", right: 55 } }, short: { entry: { left: { ind: "rsi", period: 14 }, op: ">", right: 70 } }, stopLossPct: 3, takeProfitPct: 6 },
+    { name: "BTC ETH SOL trend rider 5x", coins: ["BTC", "ETH", "SOL"], timeframe: "4h", leverage: 5, marginUsd: 200, long: { entry: { cross: "above", a: { ind: "ema", period: 9 }, b: { ind: "ema", period: 21 } } }, short: { entry: { cross: "below", a: { ind: "ema", period: 9 }, b: { ind: "ema", period: 21 } } }, stopLossPct: 5 },
+    { name: "Aggro 50x scalper", coins: ["ETH", "SOL"], timeframe: "15m", leverage: 50, marginUsd: 50, long: { entry: { atLeast: 2, of: [{ left: { ind: "bb", out: "pctb" }, op: "<", right: 0 }, { left: { ind: "rsi", period: 7 }, op: "<", right: 25 }, { left: { ind: "rsi", asset: "BTC" }, op: ">", right: 45 }] } }, short: { entry: { atLeast: 2, of: [{ left: { ind: "bb", out: "pctb" }, op: ">", right: 1 }, { left: { ind: "rsi", period: 7 }, op: ">", right: 75 }, { left: { ind: "rsi", asset: "BTC" }, op: "<", right: 55 }] } }, stopLossPct: 0.8, takeProfitPct: 1.6 },
   ];
   const ids = [];
   for (const rule of rules) { const p = await tool("propose_agent", { rule }); const a = await tool("apply_proposal", { proposal_id: p.proposal_id }); ids.push(a.created); await tool("backtest", { agent_id: a.created }); }
@@ -57,6 +58,7 @@ createServer(async (req, res) => {
   for await (const c of req) chunks.push(c);
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
   if (req.url === "/__tick") { const r = await tickAll(env); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(r)); return; }
+  if (req.url.startsWith("/__backfill")) { const n = Number(new URL(req.url, "http://x").searchParams.get("pages") || 4); const r = await backfill(env, n); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(r)); return; }
   if (req.url === "/__demo") { const cookie = await demo(); res.writeHead(302, { location: env.SITE_PAGE, "set-cookie": cookie }); res.end(); return; }
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
