@@ -69,7 +69,9 @@ function makeCondition(r, ctx) {
       if (prof.levels.length < 2) continue;
       const v = pick(r, prof.levels);
       const op = v === prof.levels[0] ? "<=" : v === prof.levels[prof.levels.length - 1] ? ">=" : pick(r, ["<=", ">="]);
-      return { left: ref, op, right: v };
+      const c = { left: ref, op, right: v };
+      if (ctx.fires(c)) return c;
+      continue;
     }
     if (prof.kind === "price") {
       const priceRef = ref.asset ? { ind: "price", asset: ref.asset } : { ind: "price" };
@@ -90,7 +92,8 @@ function makeCondition(r, ctx) {
     const th = lowSide ? pick(r, prof.q.slice(0, 3)) : pick(r, prof.q.slice(3));
     if (!finite(th)) continue;
     const round = (x) => (Math.abs(x) >= 100 ? Math.round(x) : Math.abs(x) >= 1 ? Math.round(x * 100) / 100 : Number(x.toPrecision(3)));
-    return { left: ref, op: lowSide ? "<" : ">", right: round(th) };
+    const c = { left: ref, op: lowSide ? "<" : ">", right: round(th) };
+    if (ctx.fires(c)) return c;
   }
   return null;
 }
@@ -122,7 +125,7 @@ export function warmupOf(rule) {
   return need;
 }
 
-const slim = (b) => ({ returnPct: +b.returnPct.toFixed(2), trades: b.trades, winRatePct: b.trades ? Math.round((b.wins / b.trades) * 100) : null, liquidations: b.liquidations, worstDropPct: +b.maxDrawdownPct.toFixed(2), monthsUp: `${b.monthsUp} of ${b.months.length}` });
+const slim = (b) => ({ returnPct: +b.returnPct.toFixed(2), trades: b.trades, longs: b.longs, shorts: b.shorts, winRatePct: b.trades ? Math.round((b.wins / b.trades) * 100) : null, liquidations: b.liquidations, worstDropPct: +b.maxDrawdownPct.toFixed(2), monthsUp: `${b.monthsUp} of ${b.months.length}` });
 
 export function discover(data, opts) {
   const { coins, timeframe, leverage, marginUsd = 100, sides = "both", tries = 1000, seed = 1, watch = [], unavailable = [], split = 0.65, minTrades = 10, keep = 20, startCash = 1000, poolSize = 60 } = opts;
@@ -135,6 +138,12 @@ export function discover(data, opts) {
   const closes = main.map((c) => c.c), profiles = new Map();
   const ctx = {
     tf: timeframe, watch, unavailable, pool: [],
+    fires(c) {
+      const v = gets[coins[0]](c.left), t = c.right;
+      let n = 0, yes = 0;
+      for (let i = 300; i < cut; i++) { const x = v[i]; if (!finite(x)) continue; n++; if (c.op === "<" ? x < t : c.op === "<=" ? x <= t : c.op === ">" ? x > t : x >= t) yes++; }
+      return n > 100 && yes / n >= 0.03 && yes / n <= 0.7;
+    },
     profileOf(ref) {
       const k = JSON.stringify(ref);
       if (!profiles.has(k)) { let p = null; try { p = classify(ref, profile(gets[coins[0]](ref), closes, 300, cut)); } catch {} profiles.set(k, p); }
@@ -160,7 +169,7 @@ export function discover(data, opts) {
     valid++;
     const from = Math.min(Math.max(warmupOf(rule), 300), cut - 50);
     const tr = backtest(rule, data, startCash, from, cut, gets);
-    if (tr.trades >= minTrades) tried.push({ rule, train: tr });
+    if (tr.trades >= minTrades && (sides !== "both" || (rule.long && rule.short && tr.longs >= 3 && tr.shorts >= 3))) tried.push({ rule, train: tr });
   }
   tried.sort((a, b) => b.train.returnPct - a.train.returnPct);
   const top = tried.slice(0, keep).map((x) => ({ ...x, test: backtest(x.rule, data, startCash, cut, len, gets) }));

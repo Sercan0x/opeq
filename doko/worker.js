@@ -533,7 +533,7 @@ async function callTool(name, args, env, account, base) {
       ...r,
       survivors: r.survivors.map((x) => ({ ...x, rules: Object.fromEntries(explain(x.rule)) })),
       triesCap: maxTries,
-      howToRead: `Tried ${r.built} random rules (at most ${maxTries} per call for this much history; run more seeds for more), ${r.enoughTrades} made at least 10 trades in the search part, the best ${r.testedOnCheck} were checked on the part they never saw, and ${r.survivorsCount} made money in both. Many tries mean some survivors are luck: prefer ones with many trades in both parts and few liquidations, then run search_settings on a survivor or watch it with paper money. To use one, pass its rule (rename it first) to propose_agent.`,
+      howToRead: `Tried ${r.built} random rules (at most ${maxTries} per call for this much history; run more seeds for more), ${r.enoughTrades} made at least 10 trades in the search part${args.sides === "long" || args.sides === "short" ? "" : " with at least 3 longs and 3 shorts"}, the best ${r.testedOnCheck} were checked on the part they never saw, and ${r.survivorsCount} made money in both. Many tries mean some survivors are luck: prefer ones with many trades in both parts and few liquidations, then run search_settings on a survivor or watch it with paper money. To use one, pass its rule (rename it first) to propose_agent.`,
     };
   }
   if (name === "propose_agent" || name === "propose_change") {

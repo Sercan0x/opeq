@@ -1,0 +1,25 @@
+import { createHash, randomBytes } from "node:crypto";
+const B = process.argv[2] || "https://doko.opeq.io", CB = "https://claude.ai/api/mcp/auth_callback";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const reg = await (await fetch(`${B}/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "live test", redirect_uris: [CB] }) })).json();
+const verifier = randomBytes(32).toString("base64url"), challenge = createHash("sha256").update(verifier).digest("base64url");
+const page = await (await fetch(`${B}/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: reg.client_id, redirect_uri: CB, code_challenge: challenge, code_challenge_method: "S256" })}`)).text();
+const pending = /name="pending" value="([^"]+)"/.exec(page)[1];
+const r = await fetch(`${B}/oauth/authorize`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", origin: B }, body: new URLSearchParams({ pending, decision: "allow" }) });
+const code = new URL(r.headers.get("location")).searchParams.get("code");
+const tok = await (await fetch(`${B}/oauth/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: CB, client_id: reg.client_id, code_verifier: verifier }) })).json();
+let id = 0;
+const tool = async (name, args = {}) => { const x = await (await fetch(`${B}/mcp`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tok.access_token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } }) })).json(); const res = x.result || {}; return { err: !!res.isError, data: res.structuredContent, text: res.content ? res.content[0].text : JSON.stringify(x) }; };
+const d = await tool("discover_strategies", { coins: ["SOL"], timeframe: "1h", leverage: 10, sides: "both", watch: ["BTC", "ETH"], candles: 20000, seed: 1 });
+if (!d.data) { console.log(d.text.slice(0, 300)); process.exit(1); }
+const hit = d.data.survivors.find((x) => x.rule.name === "Found 1-144");
+console.log("survivors", d.data.survivors.map((x) => x.rule.name).join(", "));
+if (!hit) process.exit(0);
+const rule = hit.rule;
+console.log("LONG", JSON.stringify(rule.long));
+console.log("SHORT", JSON.stringify(rule.short));
+const one = async (entry, side = "long") => { const r = { ...rule, name: "probe", long: undefined, short: undefined, [side]: { entry } }; delete r.long; delete r.short; r[side] = { entry }; const b = await tool("backtest", { rule: r, candles: 20000 }); return b.err ? b.text.slice(0, 120) : `${b.data.trades} trades`; };
+for (const c of rule.long.entry.all) console.log("  long condition alone:", JSON.stringify(c), "->", await one(c));
+console.log("  long side as written ->", await one(rule.long.entry));
+for (const c of rule.short.entry.all) console.log("  short condition alone:", JSON.stringify(c), "->", await one(c, "short"));
+for (const t of [tok.refresh_token, tok.access_token]) await fetch(`${B}/oauth/revoke`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token: t }) });
