@@ -62,7 +62,7 @@ ok(init.result && init.result.protocolVersion === "2025-06-18" && init.result.in
 const note = await fetch(`${B}/mcp`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${T}` }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
 ok(note.status === 202, "notification gets 202");
 const tl = await rpc(T, "tools/list", {});
-ok(tl.result.tools.length === 16, `tools/list (${tl.result.tools.length})`);
+ok(tl.result.tools.length === 17, `tools/list (${tl.result.tools.length})`);
 const rf = await tool(T, "rule_format");
 ok(!rf.err && rf.text.includes("supertrend") && rf.text.length > 2000, `rule_format (${rf.text.length} chars)`);
 

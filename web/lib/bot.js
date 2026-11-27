@@ -107,12 +107,16 @@ export function validateRule(rule) {
 export function series(candles, ref, base = "1h") { return indSeries(candles, ref, base); }
 
 export function makeCache(candles, base) {
-  const memo = new Map();
+  const memo = new Map(), byObj = new WeakMap();
   return (ref) => {
     if (num(ref)) return null;
+    const hit = byObj.get(ref);
+    if (hit) return hit;
     const k = JSON.stringify(ref);
     if (!memo.has(k)) memo.set(k, indSeries(candles, ref, base));
-    return memo.get(k);
+    const v = memo.get(k);
+    byObj.set(ref, v);
+    return v;
   };
 }
 function valueAt(get, ref, i) { return num(ref) ? ref : get(ref)[i]; }

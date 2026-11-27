@@ -4,6 +4,7 @@ import { marketNeeds } from "./lib/market.js";
 import * as bybit from "./lib/market_bybit.js";
 import * as hl from "./lib/market_hl.js";
 import { optimize } from "./lib/optimize.js";
+import { discover } from "./lib/discover.js";
 import { explain } from "./lib/dokoexplain.js";
 
 const START = 1000;
@@ -69,7 +70,7 @@ Indicators:
 ${INDICATORS}`;
 
 const INSTRUCTIONS = `DOKO by OPEQ lets the user build AI trading agents for perpetual futures on Hyperliquid coins, run with paper money (1,000 paper dollars each). An agent can go long, short or both, with leverage from 1x to 125x that the user chooses. Once approved it runs as fixed math on closed candles, with no AI in the loop; stops, take profits and liquidations are watched live from the order book stream, even when the user is away.
-Talk with the user in their language. Before writing a rule, call rule_format once. Ask the user for the leverage if they have not said it. Use backtest and search_settings to show how a rule would have done, including liquidations, and say plainly that past results are no promise and that high leverage can wipe the margin in a small move. Never promise profits.
+Talk with the user in their language. Before writing a rule, call rule_format once. Ask the user for the leverage if they have not said it. Use backtest and search_settings to show how a rule would have done, including liquidations, and discover_strategies to search many random rules when the user wants new ideas, and say plainly that past results are no promise and that high leverage can wipe the margin in a small move. Never promise profits.
 Changing anything is two steps: propose_agent or propose_change returns a summary; show it to the user, and call apply_proposal only after the user says yes in this conversation.
 If the user asks for something rules cannot express (news, sentiment, order book data), say so. Nothing here touches a wallet or real money.`;
 
@@ -421,6 +422,7 @@ const TOOLS = [
   { name: "market", description: "Current price of a coin's perpetual and a few readings (24h change, RSI, trend, funding) to talk about the market.", inputSchema: S({ coin: { type: "string", description: "Ticker such as SOL, BTC, ETH (default SOL)" } }), annotations: { readOnlyHint: true } },
   { name: "backtest", description: "Test a rule (or an agent's current rule) on real past perpetual prices with 1,000 paper dollars, with fees, slippage, hourly funding and liquidations. Returns the result, monthly returns and liquidations next to simply holding the coins. Past results are no promise.", inputSchema: S({ agent_id: AGENT, rule: RULE, candles: CANDLES }), annotations: { readOnlyHint: true } },
   { name: "search_settings", description: "Try up to 400 combinations of the rule's numbers on the first 65% of the history and check the best five on the last 35% it never saw. Use it to show whether a rule only fits the past.", inputSchema: S({ agent_id: AGENT, rule: RULE, candles: CANDLES }), annotations: { readOnlyHint: true } },
+  { name: "discover_strategies", description: "Search for new strategies by generating many random rules (2 to 4 conditions from all indicators, other coins as filters, random stops and take profits) and testing them: each is scored on the first 65% of the history, the best 20 are checked on the last 35% it never saw, and only rules that made money in both parts come back. Call it again with another seed to search a new batch. With thousands of tries some winners are luck, so treat survivors as candidates for paper trading, not proof.", inputSchema: S({ coins: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 5, description: "Coins to trade, default [\"SOL\"]" }, timeframe: { type: "string", enum: Object.keys(TIMEFRAMES) }, leverage: { type: "integer", minimum: 1, maximum: 125 }, marginUsd: { type: "number", minimum: 1, maximum: 1000 }, sides: { type: "string", enum: ["long", "short", "both"] }, watch: { type: "array", items: { type: "string" }, maxItems: 3, description: "Other coins the rules may use as filters, default [\"BTC\", \"ETH\"]" }, candles: CANDLES, tries: { type: "integer", minimum: 100, maximum: 2000, description: "How many random rules to test (default 1000)" }, seed: { type: "integer", minimum: 1, description: "Batch number; a new seed gives new rules" } }, ["timeframe", "leverage"]), annotations: { readOnlyHint: true } },
   { name: "propose_agent", description: "Check a rule for a new agent and get a summary to show the user. Nothing is created until the user agrees and you call apply_proposal.", inputSchema: S({ rule: RULE }, ["rule"]) },
   { name: "propose_change", description: "Check a new version of an agent's rule and get a summary to show the user. Nothing changes until the user agrees and you call apply_proposal.", inputSchema: S({ agent_id: AGENT, rule: RULE }, ["agent_id", "rule"]) },
   { name: "apply_proposal", description: "Create the agent or save the new version from a proposal. Only call this after the user said yes to that exact proposal. A new version restarts paper trading from 1,000 dollars.", inputSchema: S({ proposal_id: { type: "string" } }, ["proposal_id"]) },
@@ -464,6 +466,7 @@ async function ruleFor(env, account, args) {
   if (!rule) throw new ToolError("This agent has no rules yet.");
   return { rule, row };
 }
+const finiteNum = (v, d) => (typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 100000 ? v : d);
 const candlesArg = (v) => Math.max(300, Math.min(20000, Number.isInteger(v) ? v : 3000));
 
 async function callTool(name, args, env, account, base) {
@@ -510,6 +513,25 @@ async function callTool(name, args, env, account, base) {
       current: { searchPartPct: +r.current.train.returnPct.toFixed(2), checkPartPct: +r.current.test.returnPct.toFixed(2), checkLiquidations: r.current.test.liquidations },
       best: r.best.map((b) => ({ settings: Object.fromEntries(b.vals.map((v, i) => [r.knobs[i].label, v])), searchPartPct: +b.train.returnPct.toFixed(2), searchTrades: b.train.trades, checkPartPct: +b.test.returnPct.toFixed(2), checkTrades: b.test.trades, checkLiquidations: b.test.liquidations, rule: b.rule })),
       howToRead: "A setting that wins the search part but loses the check part only fits the past. To use one, pass its rule to propose_change.",
+    };
+  }
+  if (name === "discover_strategies") {
+    const coins = Array.isArray(args.coins) && args.coins.length ? args.coins : ["SOL"];
+    const watch = (Array.isArray(args.watch) ? args.watch : ["BTC", "ETH"]).filter((a) => typeof a === "string" && /^k?[A-Z0-9]{2,12}$/.test(a) && !coins.includes(a)).slice(0, 3);
+    if (!coins.every((c) => typeof c === "string" && /^k?[A-Z0-9]{2,12}$/.test(c)) || new Set(coins).size !== coins.length || coins.length > MAX_COINS) throw new ToolError(`coins must be 1 to ${MAX_COINS} different tickers.`);
+    if (!TIMEFRAMES[args.timeframe]) throw new ToolError(`timeframe must be one of ${Object.keys(TIMEFRAMES).join(", ")}.`);
+    if (!Number.isInteger(args.leverage) || args.leverage < 1 || args.leverage > MAX_LEVERAGE) throw new ToolError(`leverage must be a whole number from 1 to ${MAX_LEVERAGE}.`);
+    const probe = { name: "probe", coins, timeframe: args.timeframe, leverage: args.leverage, marginUsd: 100, long: { entry: { all: [{ left: { ind: "price" }, op: ">", right: 0 }, ...watch.map((a) => ({ left: { ind: "price", asset: a }, op: ">", right: 0 }))] } }, stopLossPct: 1 };
+    const n = Number.isInteger(args.candles) ? candlesArg(args.candles) : 5000;
+    const data = await loadAll(env, probe, n);
+    const seed = Number.isInteger(args.seed) && args.seed > 0 ? args.seed : 1 + Math.floor(Math.random() * 1e6);
+    let r;
+    try { r = discover(data, { coins, timeframe: args.timeframe, leverage: args.leverage, marginUsd: finiteNum(args.marginUsd, 100), sides: ["long", "short", "both"].includes(args.sides) ? args.sides : "both", tries: Math.max(100, Math.min(2000, Number.isInteger(args.tries) ? args.tries : 1000)), seed, watch, unavailable: UNAVAILABLE }); }
+    catch (x) { throw new ToolError(`The search could not run: ${x.message}.`); }
+    return {
+      ...r,
+      survivors: r.survivors.map((x) => ({ ...x, rules: Object.fromEntries(explain(x.rule)) })),
+      howToRead: `Tried ${r.built} random rules, ${r.enoughTrades} made at least 10 trades in the search part, the best ${r.testedOnCheck} were checked on the part they never saw, and ${r.survivorsCount} made money in both. Many tries mean some survivors are luck: prefer ones with many trades in both parts and few liquidations, then run search_settings on a survivor or watch it with paper money. To use one, pass its rule (rename it first) to propose_agent.`,
     };
   }
   if (name === "propose_agent" || name === "propose_change") {

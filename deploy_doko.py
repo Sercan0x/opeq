@@ -10,7 +10,7 @@ LIB = os.path.join(ROOT, "web", "lib")
 SCRIPT = "opeq-doko"
 DATABASE = "opeq-doko"
 HOST = "doko.opeq.io"
-MODULES = ["bot.js", "indicators.js", "market.js", "market_bybit.js", "market_hl.js", "optimize.js", "dokoexplain.js"]
+MODULES = ["bot.js", "indicators.js", "market.js", "market_bybit.js", "market_hl.js", "optimize.js", "discover.js", "dokoexplain.js"]
 VARS = {
     "BASE": f"https://{HOST}",
     "SITE_PAGE": "https://opeq.io/doko",
