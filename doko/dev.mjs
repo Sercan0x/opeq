@@ -73,7 +73,8 @@ createServer(async (req, res) => {
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
   const request = new Request(`http://127.0.0.1:${port}${req.url}`, { method: req.method, headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : body });
-  const r = await worker.fetch(request, env, { waitUntil() {} });
+  let r;
+  try { r = await worker.fetch(request, env, { waitUntil() {} }); } catch (e) { console.log("UNCAUGHT", req.method, req.url, e && e.message); res.writeHead(500, { "content-type": "text/plain" }); res.end("uncaught"); return; }
   const out = {};
   r.headers.forEach((v, k) => { if (k !== "set-cookie") out[k] = v; });
   const cookies = r.headers.getSetCookie ? r.headers.getSetCookie() : [];

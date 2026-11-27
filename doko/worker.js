@@ -388,7 +388,7 @@ async function issue(env, client, account) {
 }
 async function readForm(request) {
   const type = request.headers.get("content-type") || "";
-  if (type.includes("application/json")) { try { return await request.json(); } catch { return {}; } }
+  if (type.includes("application/json")) { try { const j = await request.json(); return j && typeof j === "object" && !Array.isArray(j) ? j : {}; } catch { return {}; } }
   const f = await request.formData();
   return Object.fromEntries([...f.entries()].map(([k, v]) => [k, String(v)]));
 }
@@ -863,13 +863,13 @@ export default {
       if (path === "/.well-known/oauth-authorization-server" || path === "/.well-known/openid-configuration") return json(metadata(base), 200, { "access-control-allow-origin": "*" });
       if (path === "/.well-known/oauth-protected-resource" || path === "/.well-known/oauth-protected-resource/mcp") return json({ resource: `${base}/mcp`, authorization_servers: [base], scopes_supported: ["doko"], bearer_methods_supported: ["header"], resource_name: "DOKO by OPEQ" }, 200, { "access-control-allow-origin": "*" });
       if (path === "/consent.css") return new Response(CONSENT_CSS, { headers: { "content-type": "text/css", "cache-control": "public, max-age=3600" } });
-      if (path === "/oauth/register" && request.method === "POST") return register(request, env);
-      if (path === "/oauth/authorize" && request.method === "GET") return authorizeGet(url, env, request);
-      if (path === "/oauth/authorize" && request.method === "POST") return authorizePost(request, env, base);
-      if (path === "/oauth/token" && request.method === "POST") return token(request, env);
-      if (path === "/oauth/revoke" && request.method === "POST") return revoke(request, env);
-      if (path === "/mcp") return mcp(request, env, base);
-      if (path.startsWith("/api/")) return siteApi(request, env, path);
+      if (path === "/oauth/register" && request.method === "POST") return await register(request, env);
+      if (path === "/oauth/authorize" && request.method === "GET") return await authorizeGet(url, env, request);
+      if (path === "/oauth/authorize" && request.method === "POST") return await authorizePost(request, env, base);
+      if (path === "/oauth/token" && request.method === "POST") return await token(request, env);
+      if (path === "/oauth/revoke" && request.method === "POST") return await revoke(request, env);
+      if (path === "/mcp") return await mcp(request, env, base);
+      if (path.startsWith("/api/")) return await siteApi(request, env, path);
       if (path === "/") return Response.redirect(env.SITE_PAGE || "https://opeq.io/doko", 302);
       return new Response("Not found", { status: 404 });
     } catch (x) {
