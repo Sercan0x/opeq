@@ -497,7 +497,7 @@ async function callTool(name, args, env, account, base) {
       agentPct: +r.returnPct.toFixed(2), holdingPct: Object.fromEntries(Object.entries(r.holdByCoin).map(([k, v]) => [k, Number.isFinite(v) ? +v.toFixed(2) : null])),
       trades: r.trades, wins: r.wins, longs: r.longs, shorts: r.shorts, liquidations: r.liquidations, worstDropPct: +r.maxDrawdownPct.toFixed(2), endBalance: +r.equity.toFixed(2),
       feesPaid: +r.fees.toFixed(2), fundingNet: +r.funding.toFixed(2),
-      months: r.months.slice(-24).map((m) => `${m.month} ${m.pct >= 0 ? "+" : ""}${m.pct.toFixed(1)}%`), monthsUp: `${r.monthsUp} of ${r.months.length}`,
+      months: (r.months.length > 72 ? r.months.slice(-72) : r.months).map((m) => `${m.month} ${m.pct >= 0 ? "+" : ""}${m.pct.toFixed(1)}%`), monthsShown: r.months.length > 72 ? "last 72" : "all", monthsUp: `${r.monthsUp} of ${r.months.length}`,
       lastTrades: closes.slice(-10).map((e) => `${when(e.t)} ${describeEvent(e)}`), openNow: r.open, equity: sample(r.curve.map((q) => +q.equity.toFixed(2)), 30),
     };
     if (row && !args.rule) { const d = JSON.parse(row.data); d.bt = { returnPct: out.agentPct, holdPct: out.holdingPct, trades: r.trades, wins: r.wins, liquidations: r.liquidations, maxDrawdownPct: out.worstDropPct, period: out.period, at: new Date().toISOString() }; try { await saveAgent(env, row, d); } catch {} }
