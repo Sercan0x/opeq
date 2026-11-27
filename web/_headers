@@ -12,3 +12,9 @@
 /scan.html
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://rpc.opeq.io https://lite-api.jup.ag; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'
+/doko
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://doko.opeq.io; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'
+/doko.html
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://doko.opeq.io; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'

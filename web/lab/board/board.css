@@ -42,6 +42,8 @@ p { margin: 0 0 1em; }
 .foot-links .foot-link { position: static; }
 .cta-scan { border-color: rgba(167, 139, 250, 0.6); background: rgba(139, 92, 246, 0.18); }
 .cta-scan:hover { border-color: #b9a3ff; background: rgba(139, 92, 246, 0.3); }
+.cta-doko { border-color: rgba(255, 201, 74, 0.55); background: rgba(255, 201, 74, 0.08); }
+.cta-doko:hover { border-color: #ffc94a; background: rgba(255, 201, 74, 0.16); }
 .ico-usb { width: 30px; height: 10px; margin-right: 8px; vertical-align: -1px; }
 .foot-link:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .x-link { display: inline-flex; padding: 8px; color: var(--text-2); transition: color 0.2s; }
@@ -226,6 +228,7 @@ pre { margin: 4px 0 0; padding: 12px 14px; border: 1px solid var(--rule); border
 .params dd { margin: 0; color: var(--text-2); }
 .params dd span { display: block; padding-left: 2ch; text-indent: -2ch; overflow-wrap: anywhere; }
 @media (max-width: 520px) { .params > div { grid-template-columns: 1fr; gap: 0; } }
+@media (max-width: 1320px) { .bar > .cta-doko { display: none; } }
 @media (max-width: 1240px) { .bar > .cta-scan { display: none; } }
 @media (max-width: 760px) { .cta-store, .cta-usb { display: none; } }
 @media (max-width: 420px) { .bar .cta { padding: 8px 10px; } }

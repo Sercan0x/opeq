@@ -23,9 +23,9 @@ DATABASE = "opeq-waitlist"
 ZONE = "opeq.io"
 HOSTS = ["opeq.io", "www.opeq.io"]
 API = "https://api.cloudflare.com/client/v4"
-BOARD_FILES = ["index.html", "board.css", "board.js", "app.html", "app.css", "app.js", "privacy.html", "privacy.css", "privacy.js", "docs.html", "docs.css", "docs.js", "guide.html", "guide.css", "scan.html", "scan.css", "scan.js", "sdk.html"]
+BOARD_FILES = ["index.html", "board.css", "board.js", "app.html", "app.css", "app.js", "privacy.html", "privacy.css", "privacy.js", "docs.html", "docs.css", "docs.js", "guide.html", "guide.css", "scan.html", "scan.css", "scan.js", "sdk.html", "doko.html", "doko.css", "doko.js"]
 SKIP_ASSETS = {".ttf"}
-SKIP_LIB = {"pixelfont.js", "sprites.js", "waitlist.js"}
+SKIP_LIB = {"pixelfont.js", "sprites.js", "waitlist.js", "dokoai.js"}
 
 
 def read_kv(path):
@@ -81,6 +81,8 @@ def build():
     for name in BOARD_FILES:
         with open(os.path.join(BOARD, name), encoding="utf-8") as f:
             text = f.read().replace("../../", "/" if name.endswith((".html", ".css")) else "./")
+        if name == "doko.html":
+            text = text.replace(" http://127.0.0.1:8810", "")
         with open(os.path.join(DIST, name), "w", encoding="utf-8") as f:
             f.write(text)
     shutil.copy(os.path.join(WEB, "intro.css"), DIST)

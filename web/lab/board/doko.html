@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://doko.opeq.io http://127.0.0.1:8810; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>DOKO by OPEQ</title>
+<meta name="description" content="Trading agents you build and run by talking to Claude. Test them on real SOL prices and run them with paper money.">
+<meta name="theme-color" content="#070b11">
+<link rel="icon" href="../../assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="doko.css">
+<script type="module" src="doko.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html"><img src="../../assets/logo.svg" alt="opeq" width="88" height="28"></a>
+  <span class="dk-beta mono">DOKO DEMO</span>
+  <a class="back" href="index.html">Back to the board</a>
+</header>
+
+<main class="dk">
+  <p class="err" id="load-err" role="alert"></p>
+
+  <section id="v-connect" class="hidden">
+    <div class="dk-head">
+      <h1>Trading agents you run from Claude.</h1>
+      <p class="lede">Connect DOKO to Claude once. Then tell Claude how you want to trade SOL: it writes the rules, tests them on real prices and, when you say yes, runs them with 1,000 paper dollars, every minute, even while you are away. Your agents show up on this page.</p>
+    </div>
+    <section class="dk-card dk-steps">
+      <h2>Connect in three steps</h2>
+      <ol>
+        <li>In Claude, open <b>Plugins</b> in the sidebar, press <b>Add</b> at the top right and choose <b>Add custom connector</b>.</li>
+        <li>Name it DOKO and paste this address:
+          <span class="dk-copy"><code class="mono" id="mcp-url">https://doko.opeq.io/mcp</code><button class="btn btn-line btn-sm" type="button" id="copy-url">Copy</button></span>
+        </li>
+        <li>Press <b>Connect</b>, then <b>Allow</b> on the DOKO page that opens. Do this in the browser you use for opeq.io, so your agents show up here.</li>
+      </ol>
+      <p class="dk-hint">Then start a chat in Claude and ask, for example: “Build me a DOKO agent that buys SOL on dips while the 4 hour trend is up, and backtest it.”</p>
+    </section>
+  </section>
+
+  <section id="v-list" class="hidden">
+    <div class="dk-head">
+      <h1>Your agents</h1>
+      <p class="lede">You build and change them by talking to Claude. They trade 1,000 paper dollars each on SOL, every minute, on closed candles. No real funds move.</p>
+    </div>
+    <div class="dk-agents" id="agents"></div>
+    <p class="dk-hint dk-foot">Connected in this browser. <button class="dk-link" type="button" id="disconnect">Disconnect this browser</button></p>
+  </section>
+
+  <section id="v-agent" class="hidden">
+    <button class="dk-link dk-backlink" type="button" id="to-list">All agents</button>
+    <div class="dk-ahead">
+      <canvas class="dk-ava dk-ava-lg" id="a-ava" width="56" height="56" aria-hidden="true"></canvas>
+      <div class="dk-grow">
+        <h1 id="a-name"></h1>
+        <p class="dk-sub" id="a-sub"></p>
+      </div>
+      <span class="dk-pill" id="a-pill"></span>
+    </div>
+    <div class="dk-tiles" id="a-tiles"></div>
+    <section class="dk-card">
+      <div class="dk-row dk-between"><h2>Paper balance</h2><span class="dk-legend" id="eq-legend"></span></div>
+      <canvas id="eq-chart" width="1060" height="240" aria-label="Paper balance over time"></canvas>
+      <p class="dk-hint" id="eq-hint"></p>
+    </section>
+    <div class="dk-grid">
+      <section class="dk-card dk-rule">
+        <h2>Rules</h2>
+        <p class="dk-tag mono" id="cur-tag"></p>
+        <ul class="dk-lines" id="cur-lines"></ul>
+        <details class="dk-json" id="cur-json-box"><summary>Rule as JSON</summary><pre id="cur-json"></pre></details>
+        <details class="dk-hist hidden" id="hist-box"><summary>All versions</summary><ul id="hist"></ul></details>
+      </section>
+      <section class="dk-card">
+        <h2>Recent activity</h2>
+        <ul class="dk-plog" id="pp-log"></ul>
+      </section>
+    </div>
+    <p class="dk-hint">To change this agent, ask Claude, for example: “Add a 6% take profit to <span id="a-name2"></span> and backtest it.” Claude shows you the new version before anything changes.</p>
+  </section>
+
+  <section class="notes">
+    <h2>How it works</h2>
+    <p>Claude only writes the rules. Once you approve them they run as fixed math on price data: the same candles give the same decisions every time, with no AI in the loop. Rules always include a stop loss, buy and sell SOL only, and never use leverage.</p>
+    <p>DOKO never touches your wallet. A good backtest is not a promise. Real trades will come later, only with a spending limit you set from your OPEQ wallet, and only once we are sure it is safe.</p>
+  </section>
+</main>
+</body>
+</html>
