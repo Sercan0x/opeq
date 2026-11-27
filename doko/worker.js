@@ -1,4 +1,4 @@
-import { validateRule, backtest, step, TIMEFRAMES, assetsOf, MAX_ASSETS, MAX_COINS, MAX_LEVERAGE, FEE_PCT, SLIP_PCT, freshState, cachesFor, equityOf, pricesAt, touch, levels, liqDistancePct } from "./lib/bot.js";
+import { validateRule, HIDDEN_CHARS, backtest, step, TIMEFRAMES, assetsOf, MAX_ASSETS, MAX_COINS, MAX_LEVERAGE, FEE_PCT, SLIP_PCT, freshState, cachesFor, equityOf, pricesAt, touch, levels, liqDistancePct } from "./lib/bot.js";
 import { REGISTRY, MTF_SECONDS, describe, series } from "./lib/indicators.js";
 import { marketNeeds } from "./lib/market.js";
 import * as bybit from "./lib/market_bybit.js";
@@ -196,9 +196,16 @@ async function loadAll(env, rule, n) {
   };
   const raw = {};
   await Promise.all(rule.coins.map(async (c) => { raw[c] = await get(c); }));
-  const main = raw[rule.coins[0]];
-  const data = { [rule.coins[0]]: main };
-  for (const c of rule.coins.slice(1)) data[c] = align(main, raw[c]);
+  let main;
+  if (rule.coins.length === 1) main = raw[rule.coins[0]];
+  else {
+    const ts = [...new Set(rule.coins.flatMap((c) => raw[c].map((x) => x.t)))].sort((a, b) => a - b).slice(-n);
+    main = ts.map((t) => ({ t }));
+  }
+  const data = {};
+  for (const c of rule.coins) data[c] = rule.coins.length === 1 ? raw[c] : align(main, raw[c]);
+  main = data[rule.coins[0]];
+  Object.defineProperty(data, "lastReal", { value: Math.min(...rule.coins.map((c) => (raw[c].length ? raw[c][raw[c].length - 1].t : 0))), enumerable: false });
   const extra = {};
   const assets = assetsOf(rule).filter((a) => !rule.coins.includes(a));
   await Promise.all(assets.map(async (a) => { extra[a] = align(main, await get(a)); }));
@@ -262,15 +269,38 @@ function detail(row) {
   };
 }
 
-async function accountFromCookie(request, env) {
-  const m = /(?:^|;\s*)doko_acct=([0-9a-f]{12})\.([A-Za-z0-9_-]{43})(?:;|$)/.exec(request.headers.get("cookie") || "");
+function cookieValues(request) {
+  const out = [];
+  for (const part of (request.headers.get("cookie") || "").split(";")) {
+    const i = part.indexOf("="), k = part.slice(0, i).trim();
+    if (k === COOKIE || k === `__Host-${COOKIE}`) out.push(part.slice(i + 1).trim());
+  }
+  return out;
+}
+async function sessionOf(request, env) {
+  const vals = cookieValues(request);
+  if (vals.length !== 1) return null;
+  const m = /^([0-9a-f]{12})\.([A-Za-z0-9_-]{43})$/.exec(vals[0]);
   if (!m) return null;
+  const h = await sha(m[2]);
+  const ses = await env.DB.prepare("SELECT account FROM sessions WHERE hash = ?").bind(h).first();
+  if (ses && ses.account === m[1]) return { account: m[1], hash: h, legacy: false };
   const row = await env.DB.prepare("SELECT secret FROM accounts WHERE id = ?").bind(m[1]).first();
-  if (!row || row.secret !== (await sha(m[2]))) return null;
-  return m[1];
+  if (row && row.secret === h) return { account: m[1], hash: h, legacy: true };
+  return null;
+}
+async function accountFromCookie(request, env) { const s = await sessionOf(request, env); return s ? s.account : null; }
+async function newSession(env, account, secure) {
+  const secret = rand(32);
+  await env.DB.prepare("INSERT INTO sessions (hash, account, created) VALUES (?, ?, ?)").bind(await sha(secret), account, now()).run();
+  return cookieFor(account, secret, secure);
 }
 function cookieFor(id, secret, secure) {
-  return `${COOKIE}=${id}.${secret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure ? "; Secure" : ""}`;
+  return `${secure ? `__Host-${COOKIE}` : COOKIE}=${id}.${secret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure ? "; Secure" : ""}`;
+}
+function clearCookies(res, secure) {
+  res.headers.append("set-cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`);
+  if (secure) res.headers.append("set-cookie", `__Host-${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure`);
 }
 
 function siteCors(request, env) {
@@ -294,14 +324,14 @@ function metadata(base) {
     token_endpoint_auth_methods_supported: ["none"],
   };
 }
-const REDIRECT_HOSTS = ["claude.ai", "claude.com"];
+const CLAUDE_CALLBACKS = ["https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback"];
+const exactClaude = (x, env) => x.protocol === "https:" && !x.port && !x.search && [...CLAUDE_CALLBACKS, ...String((env && env.EXTRA_REDIRECTS) || "").split(",").filter(Boolean)].includes(`${x.origin}${x.pathname}`);
+const localCallback = (x) => x.protocol === "http:" && (x.hostname === "localhost" || x.hostname === "127.0.0.1");
 function okRedirect(u, env) {
   if (typeof u !== "string" || u.length > 500) return false;
   let x; try { x = new URL(u); } catch { return false; }
   if (x.hash || x.username || x.password) return false;
-  const extra = String((env && env.EXTRA_REDIRECT_HOSTS) || "").split(",").filter(Boolean);
-  if (x.protocol === "https:") return [...REDIRECT_HOSTS, ...extra].some((h) => x.hostname === h || x.hostname.endsWith(`.${h}`));
-  return x.protocol === "http:" && (x.hostname === "localhost" || x.hostname === "127.0.0.1");
+  return exactClaude(x, env) || localCallback(x);
 }
 const TRUSTED_HOSTS = ["claude.ai", "claude.com", "localhost", "127.0.0.1"];
 
@@ -337,7 +367,7 @@ async function authorizeGet(url, env, request) {
   const id = rand(24), state = (q.get("state") || "").slice(0, 500);
   await env.DB.prepare("INSERT INTO pending (id, data, expires) VALUES (?, ?, ?)").bind(id, JSON.stringify({ client: client.id, redirect, challenge, state }), now() + 600).run();
   const host = new URL(redirect).hostname;
-  const trusted = TRUSTED_HOSTS.includes(host);
+  const trusted = exactClaude(new URL(redirect), env) || localCallback(new URL(redirect));
   const known = !!(await accountFromCookie(request, env));
   const body = `<p class="tag">DOKO BY OPEQ</p><h1>Connect DOKO to ${esc(client.name)}?</h1>
 <p>It will be able to create trading agents for you, test them on real SOL prices and run them with paper money.</p>
@@ -367,9 +397,8 @@ async function authorizePost(request, env, base) {
   if (!account) {
     if (env.CONNECT_LIMIT) { const { success } = await env.CONNECT_LIMIT.limit({ key: `acct:${request.headers.get("cf-connecting-ip") || "x"}` }); if (!success) return oauthError("slow_down", "too many new accounts from this network, try again in a minute", 429); }
     account = hexId();
-    const secret = rand(32);
-    await env.DB.prepare("INSERT INTO accounts (id, secret, created) VALUES (?, ?, ?)").bind(account, await sha(secret), now()).run();
-    headers["set-cookie"] = cookieFor(account, secret, base.startsWith("https:"));
+    await env.DB.prepare("INSERT INTO accounts (id, secret, created) VALUES (?, ?, ?)").bind(account, await sha(rand(32)), now()).run();
+    headers["set-cookie"] = await newSession(env, account, base.startsWith("https:"));
   }
   const code = rand(32);
   await env.DB.prepare("INSERT INTO codes (hash, client, account, redirect, challenge, expires) VALUES (?, ?, ?, ?, ?, ?)").bind(await sha(code), p.client, account, p.redirect, p.challenge, now() + 300).run();
@@ -378,11 +407,20 @@ async function authorizePost(request, env, base) {
   return new Response(null, { status: 302, headers });
 }
 
-async function issue(env, client, account) {
+async function login(url, env, base) {
+  const c = url.searchParams.get("c") || "";
+  const row = /^[A-Za-z0-9_-]{43}$/.test(c) ? await env.DB.prepare("DELETE FROM login_codes WHERE hash = ? RETURNING account, expires").bind(await sha(c)).first() : null;
+  if (!row || row.expires < now()) return new Response(page("DOKO", `<p class="tag">DOKO BY OPEQ</p><h1>This link has expired.</h1><p>Ask Claude for a new DOKO dashboard link. Each link works once, for ten minutes.</p>`), { status: 400, headers: pageHeaders() });
+  return new Response(null, { status: 302, headers: { location: env.SITE_PAGE || "https://opeq.io/doko", "set-cookie": await newSession(env, row.account, base.startsWith("https:")), "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+}
+async function issue(env, client, account, grant = rand(16)) {
   const access = rand(32), refresh = rand(32);
+  const ha = await sha(access), hr = await sha(refresh);
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO tokens (hash, kind, client, account, expires) VALUES (?, 'access', ?, ?, ?)").bind(await sha(access), client, account, now() + ACCESS_TTL),
-    env.DB.prepare("INSERT INTO tokens (hash, kind, client, account, expires) VALUES (?, 'refresh', ?, ?, ?)").bind(await sha(refresh), client, account, now() + REFRESH_TTL),
+    env.DB.prepare("INSERT INTO tokens (hash, kind, client, account, expires) VALUES (?, 'access', ?, ?, ?)").bind(ha, client, account, now() + ACCESS_TTL),
+    env.DB.prepare("INSERT INTO tokens (hash, kind, client, account, expires) VALUES (?, 'refresh', ?, ?, ?)").bind(hr, client, account, now() + REFRESH_TTL),
+    env.DB.prepare("INSERT INTO token_grants (hash, grant_id) VALUES (?, ?)").bind(ha, grant),
+    env.DB.prepare("INSERT INTO token_grants (hash, grant_id) VALUES (?, ?)").bind(hr, grant),
   ]);
   return json({ access_token: access, token_type: "Bearer", expires_in: ACCESS_TTL, refresh_token: refresh, scope: "doko" });
 }
@@ -396,9 +434,8 @@ async function token(request, env) {
   const f = await readForm(request);
   if (f.grant_type === "authorization_code") {
     const h = await sha(String(f.code || ""));
-    const row = await env.DB.prepare("SELECT client, account, redirect, challenge, expires FROM codes WHERE hash = ?").bind(h).first();
+    const row = await env.DB.prepare("DELETE FROM codes WHERE hash = ? RETURNING client, account, redirect, challenge, expires").bind(h).first();
     if (!row) return oauthError("invalid_grant", "unknown or used code");
-    await env.DB.prepare("DELETE FROM codes WHERE hash = ?").bind(h).run();
     if (row.expires < now()) return oauthError("invalid_grant", "code expired");
     if (row.client !== f.client_id) return oauthError("invalid_grant", "code was issued to another client");
     if (row.redirect !== f.redirect_uri) return oauthError("invalid_grant", "redirect_uri does not match");
@@ -407,17 +444,28 @@ async function token(request, env) {
   }
   if (f.grant_type === "refresh_token") {
     const h = await sha(String(f.refresh_token || ""));
-    const row = await env.DB.prepare("SELECT client, account, expires FROM tokens WHERE hash = ? AND kind = 'refresh'").bind(h).first();
-    if (!row || row.expires < now()) return oauthError("invalid_grant", "refresh token expired or unknown");
-    if (f.client_id !== row.client) return oauthError("invalid_grant", "refresh token was issued to another client");
-    await env.DB.prepare("DELETE FROM tokens WHERE hash = ?").bind(h).run();
-    return issue(env, row.client, row.account);
+    const row = await env.DB.prepare("DELETE FROM tokens WHERE hash = ? AND kind = 'refresh' AND client = ? RETURNING client, account, expires").bind(h, String(f.client_id || "")).first();
+    if (!row || row.expires < now()) return oauthError("invalid_grant", "refresh token expired, unknown, or issued to another client");
+    const g = await env.DB.prepare("DELETE FROM token_grants WHERE hash = ? RETURNING grant_id").bind(h).first();
+    if (g) await env.DB.batch([
+      env.DB.prepare("DELETE FROM tokens WHERE kind = 'access' AND hash IN (SELECT hash FROM token_grants WHERE grant_id = ?)").bind(g.grant_id),
+      env.DB.prepare("DELETE FROM token_grants WHERE grant_id = ?").bind(g.grant_id),
+    ]);
+    return issue(env, row.client, row.account, g ? g.grant_id : undefined);
   }
   return oauthError("unsupported_grant_type", "grant_type must be authorization_code or refresh_token");
 }
 async function revoke(request, env) {
   const f = await readForm(request);
-  if (f.token) await env.DB.prepare("DELETE FROM tokens WHERE hash = ?").bind(await sha(String(f.token))).run();
+  if (f.token) {
+    const h = await sha(String(f.token));
+    const g = await env.DB.prepare("SELECT grant_id FROM token_grants WHERE hash = ?").bind(h).first();
+    if (g) await env.DB.batch([
+      env.DB.prepare("DELETE FROM tokens WHERE hash IN (SELECT hash FROM token_grants WHERE grant_id = ?)").bind(g.grant_id),
+      env.DB.prepare("DELETE FROM token_grants WHERE grant_id = ?").bind(g.grant_id),
+    ]);
+    await env.DB.prepare("DELETE FROM tokens WHERE hash = ?").bind(h).run();
+  }
   return new Response(null, { status: 200, headers: { "cache-control": "no-store" } });
 }
 
@@ -482,10 +530,7 @@ async function ruleHash(rule) { const { name, ...rest } = rule; return sha(JSON.
 async function lastBacktest(env, account, rule) {
   try {
     const hit = await env.DB.prepare("SELECT data FROM bt_cache WHERE account = ? AND hash = ? AND at > ?").bind(account, await ruleHash(rule), now() - 7 * 86400).first();
-    if (hit) return JSON.parse(hit.data);
-    const w = warmup(rule), data = await loadAll(env, rule, 3000 + w), main = data[rule.coins[0]], from = Math.min(w, main.length - 10);
-    const r = backtest(rule, data, START, from);
-    return { returnPct: +r.returnPct.toFixed(2), trades: r.trades, wins: r.wins, liquidations: r.liquidations, maxDrawdownPct: +r.maxDrawdownPct.toFixed(2), period: `${when(main[from].t).slice(0, 10)} to ${when(main[main.length - 1].t).slice(0, 10)}`, candles: main.length - from, at: new Date().toISOString() };
+    return hit ? JSON.parse(hit.data) : null;
   } catch { return null; }
 }
 const finiteNum = (v, d) => (typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 100000 ? v : d);
@@ -570,34 +615,43 @@ async function callTool(name, args, env, account, base) {
     return { proposal_id: id, kind: agent ? "new version" : "new agent", name: rule.name, rules: Object.fromEntries(explain(rule)), next: "Show these rules to the user in plain words and ask if they want it. Call apply_proposal only after they say yes. The proposal expires in an hour." };
   }
   if (name === "apply_proposal") {
-    const p = await env.DB.prepare("SELECT agent, rule, expires FROM proposals WHERE id = ? AND account = ?").bind(String(args.proposal_id || ""), account).first();
-    if (!p || p.expires < now()) throw new ToolError("No such proposal, or it expired. Propose again.");
-    await env.DB.prepare("DELETE FROM proposals WHERE id = ?").bind(String(args.proposal_id)).run();
-    const rule = checkRule(JSON.parse(p.rule));
-    if (!p.agent) {
-      const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ?").bind(account).first();
-      if (c.n >= MAX_AGENTS) throw new ToolError(`The user already has ${MAX_AGENTS} agents.`);
-      const id = hexId(), d = { versions: [{ rule, at: Date.now() }], cur: 0, paper: freshPaper(rule), bt: await lastBacktest(env, account, rule) };
-      await env.DB.prepare("INSERT INTO agents_v2 (id, account, name, running, data, created, updated) VALUES (?, ?, ?, 0, ?, ?, ?)").bind(id, account, rule.name.slice(0, 60), JSON.stringify(d), now(), now()).run();
-      return { created: id, name: rule.name, next: "Offer a backtest, then start_trading when the user wants it to run." };
+    const pid = String(args.proposal_id || "");
+    const peek = await env.DB.prepare("SELECT agent, rule, expires FROM proposals WHERE id = ? AND account = ?").bind(pid, account).first();
+    if (!peek || peek.expires < now()) throw new ToolError("No such proposal, or it expired. Propose again.");
+    const rule = checkRule(JSON.parse(peek.rule));
+    const bt = await lastBacktest(env, account, rule);
+    if (!peek.agent) {
+      const id = hexId(), d = { versions: [{ rule, at: Date.now() }], cur: 0, paper: freshPaper(rule), bt };
+      const claim = await env.DB.prepare("DELETE FROM proposals WHERE id = ? AND account = ? RETURNING id").bind(pid, account).first();
+      if (!claim) throw new ToolError("This proposal was already used. Propose again.");
+      const ins = await env.DB.prepare("INSERT INTO agents_v2 (id, account, name, running, data, created, updated) SELECT ?, ?, ?, 0, ?, ?, ? WHERE (SELECT COUNT(*) FROM agents_v2 WHERE account = ?) < ?").bind(id, account, rule.name.slice(0, 60), JSON.stringify(d), now(), now(), account, MAX_AGENTS).run();
+      if (!ins.meta || ins.meta.changes !== 1) throw new ToolError(`The user already has ${MAX_AGENTS} agents, the most allowed. Delete one first.`);
+      await poke(env);
+      return { created: id, name: rule.name, next: bt ? "Offer to start_trading when the user wants it to run." : "Offer a backtest, then start_trading when the user wants it to run." };
     }
-    const row = await loadAgent(env, account, p.agent), d = JSON.parse(row.data);
-    d.versions.push({ rule, at: Date.now() }); d.versions = d.versions.slice(-20); d.cur = d.versions.length - 1;
-    d.paper = freshPaper(rule); d.bt = await lastBacktest(env, account, rule);
-    if (row.running) plog(d.paper, `Switched to version ${d.cur + 1} and started again from 1,000 dollars.`);
-    await saveAgent(env, row, d);
-    return { updated: row.id, version: d.cur + 1, trading: !!row.running, note: "Paper trading restarted from 1,000 dollars with the new version." };
+    const claim = await env.DB.prepare("DELETE FROM proposals WHERE id = ? AND account = ? RETURNING id").bind(pid, account).first();
+    if (!claim) throw new ToolError("This proposal was already used. Propose again.");
+    for (let attempt = 0; ; attempt++) {
+      const row = await loadAgent(env, account, peek.agent), d = JSON.parse(row.data);
+      d.versions.push({ rule, at: Date.now() }); d.versions = d.versions.slice(-20); d.cur = d.versions.length - 1;
+      d.paper = freshPaper(rule); d.bt = bt;
+      if (row.running) plog(d.paper, `Switched to version ${d.cur + 1} and started again from 1,000 dollars.`);
+      try { await saveAgent(env, row, d); return { updated: row.id, version: d.cur + 1, trading: !!row.running, note: "Paper trading restarted from 1,000 dollars with the new version." }; }
+      catch (x) { if (attempt >= 4) throw x; }
+    }
   }
   if (name === "start_trading") {
     const row = await loadAgent(env, account, args.agent_id), d = JSON.parse(row.data);
     if (!ruleOf(d)) throw new ToolError("This agent has no rules yet.");
     if (row.running) return { trading: true, note: "Already trading." };
-    const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ? AND running = 1").bind(account).first();
-    if (c.n >= MAX_RUNNING) throw new ToolError(`At most ${MAX_RUNNING} agents can trade at once. Pause one first.`);
-    const all = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE running = 1").first();
-    if (all.n >= MAX_RUNNING_ALL) throw new ToolError("DOKO is at its limit of agents trading at once during the beta. Try again later.");
-    if (!d.paper || !d.paper.pos || Array.isArray(d.paper.pos) || ruleOf(d).coins.some((c) => !(c in d.paper.pos))) d.paper = freshPaper(ruleOf(d));
-    await saveAgent(env, row, d, { running: true });
+    if (!d.paper || !d.paper.pos || Array.isArray(d.paper.pos) || ruleOf(d).coins.some((c) => !own(d.paper.pos, c))) d.paper = freshPaper(ruleOf(d));
+    const up = await env.DB.prepare("UPDATE agents_v2 SET running = 1, data = ?, updated = ?, ver = ver + 1 WHERE id = ? AND ver = ? AND (SELECT COUNT(*) FROM agents_v2 WHERE account = ? AND running = 1) < ? AND (SELECT COUNT(*) FROM agents_v2 WHERE running = 1) < ?").bind(JSON.stringify(d), now(), row.id, row.ver, account, MAX_RUNNING, MAX_RUNNING_ALL).run();
+    if (!up.meta || up.meta.changes !== 1) {
+      const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM agents_v2 WHERE account = ? AND running = 1").bind(account).first();
+      if (c.n >= MAX_RUNNING) throw new ToolError(`At most ${MAX_RUNNING} agents can trade at once. Pause one first.`);
+      throw new ToolError("Could not start it right now (DOKO may be at its beta limit, or the agent just changed). Try again.");
+    }
+    await poke(env);
     return { trading: true, note: `It waits for the next ${ruleOf(d).timeframe} candle to close, then acts on every closed candle.` };
   }
   if (name === "pause_trading") {
@@ -606,13 +660,15 @@ async function callTool(name, args, env, account, base) {
     if (p && p.pos && rule) {
       const open = Object.entries(p.pos).filter(([, x]) => x);
       if (open.length) {
-        const data = await loadAll(env, rule, warmup(rule) + 5).catch(() => null);
+        let live;
+        try { live = await hl.mids(spotFetch); } catch { throw new ToolError("Could not load live prices to close the open positions, so the agent keeps trading. Try pausing again in a moment."); }
+        if (open.some(([coin]) => !Number.isFinite(Number(live[coin])))) throw new ToolError("Could not load a live price for every open position, so the agent keeps trading. Try pausing again in a moment.");
         for (const [coin] of open) {
-          const C = data && data[coin], px = C && C[C.length - 1].c;
-          if (!Number.isFinite(px)) continue;
-          const box = { cash: p.cash, pos: p.pos[coin] };
-          const ev = closePositionNow(box, px, "paused");
-          p.cash = box.cash; p.pos[coin] = null; ev.coin = coin; record(p, ev);
+          const px = Number(live[coin]);
+          let ev = touch(rule, p, coin, px, now());
+          if (ev) ev.why = `${ev.why} (live)`;
+          else { const box = { cash: p.cash, pos: p.pos[coin] }; ev = closePositionNow(box, px, "paused"); p.cash = box.cash; p.pos[coin] = null; ev.coin = coin; }
+          record(p, ev);
         }
         p.equity = p.cash + Object.values(p.pos).reduce((a, x) => a + (x ? x.margin : 0), 0);
       }
@@ -638,7 +694,7 @@ async function callTool(name, args, env, account, base) {
   }
   if (name === "rename_agent") {
     const row = await loadAgent(env, account, args.agent_id);
-    const nm = String(args.name || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 60);
+    const nm = String(args.name || "").replace(new RegExp(HIDDEN_CHARS.source, "g"), "").trim().slice(0, 60);
     if (!nm) throw new ToolError("The name cannot be empty.");
     await saveAgent(env, row, JSON.parse(row.data), { name: nm });
     return { renamed: nm };
@@ -650,7 +706,11 @@ async function callTool(name, args, env, account, base) {
     await poke(env);
     return { deleted: row.id };
   }
-  if (name === "dashboard") return { url: env.SITE_PAGE || "https://opeq.io/doko", note: "It shows the agents in the browser the user connected DOKO from." };
+  if (name === "dashboard") {
+    const code = rand(32);
+    await env.DB.prepare("INSERT INTO login_codes (hash, account, expires) VALUES (?, ?, ?)").bind(await sha(code), account, now() + 600).run();
+    return { url: env.SITE_PAGE || "https://opeq.io/doko", loginLink: `${base}/login?c=${code}`, note: "The dashboard shows the agents in any browser that opened a login link. Give the user the loginLink: it works once, for ten minutes, and signs that browser in to this DOKO account. Do not share it with anyone else." };
+  }
   throw new ToolError(`Unknown tool ${name}`);
 }
 
@@ -713,8 +773,11 @@ async function siteApi(request, env, path) {
   }
   if (path === "/api/disconnect" && request.method === "POST") {
     if (!cors) return json({ error: "forbidden" }, 403);
+    const ses = await sessionOf(request, env);
+    if (ses && !ses.legacy) await env.DB.prepare("DELETE FROM sessions WHERE hash = ?").bind(ses.hash).run();
+    if (ses && ses.legacy) await env.DB.prepare("UPDATE accounts SET secret = ? WHERE id = ?").bind(await sha(rand(32)), ses.account).run();
     const res = json({ ok: true }, 200, h);
-    res.headers.append("set-cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${new URL(request.url).protocol === "https:" ? "; Secure" : ""}`);
+    clearCookies(res, new URL(request.url).protocol === "https:");
     return res;
   }
   return json({ error: "not found" }, 404, h);
@@ -736,6 +799,7 @@ export async function tickAll(env) {
       if (p.lastT == null) { p.lastT = main[lastI].t; if (!p.startedAt) p.startedAt = Date.now(); plog(p, `Started. Waiting for the next ${rule.timeframe} candle to close.`); changed = true; }
       for (let i = 1; i < main.length; i++) {
         if (main[i].t <= p.lastT) continue;
+        if (main[i].t > data.lastReal) break;
         const r = step(rule, { cash: p.cash, pos: p.pos, trades: p.trades, day: p.day }, data, i, gets);
         Object.assign(p, { cash: r.state.cash, pos: r.state.pos, trades: r.state.trades, day: r.state.day, lastT: main[i].t });
         for (const e of r.events) record(p, e);
@@ -852,6 +916,8 @@ async function cleanup(env) {
     env.DB.prepare("DELETE FROM tokens WHERE expires < ?").bind(t),
     env.DB.prepare("DELETE FROM proposals WHERE expires < ?").bind(t),
     env.DB.prepare("DELETE FROM bt_cache WHERE at < ?").bind(t - 7 * 86400),
+    env.DB.prepare("DELETE FROM login_codes WHERE expires < ?").bind(t),
+    env.DB.prepare("DELETE FROM token_grants WHERE hash NOT IN (SELECT hash FROM tokens)"),
     env.DB.prepare("DELETE FROM clients WHERE created < ? AND id NOT IN (SELECT DISTINCT client FROM tokens)").bind(t - 30 * 86400),
   ]);
 }
@@ -869,6 +935,7 @@ export default {
       if (path === "/oauth/token" && request.method === "POST") return await token(request, env);
       if (path === "/oauth/revoke" && request.method === "POST") return await revoke(request, env);
       if (path === "/mcp") return await mcp(request, env, base);
+      if (path === "/login" && request.method === "GET") return await login(url, env, base);
       if (path.startsWith("/api/")) return await siteApi(request, env, path);
       if (path === "/") return Response.redirect(env.SITE_PAGE || "https://opeq.io/doko", 302);
       return new Response("Not found", { status: 404 });

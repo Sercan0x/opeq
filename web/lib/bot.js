@@ -16,6 +16,7 @@ let ruleTf = null, assetsSeen = null;
 export const ASSET_RE = /^k?[A-Z0-9]{2,12}$/;
 export const MAX_ASSETS = 3;
 export const MAX_COINS = 5;
+export const HIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\ufeff]/;
 
 const sides = (rule) => [["long", rule.long], ["short", rule.short]].filter(([, s]) => s);
 export function assetsOf(rule) {
@@ -39,7 +40,8 @@ function checkRef(r, path) {
   }
   if (spec.names && !spec.names.includes(r.name)) throw new Error(`${path}: pattern name must be one of ${spec.names.join(", ")}`);
   const pick = (k) => (r[k] !== undefined ? r[k] : spec.p[k] && spec.p[k].def);
-  if (own(spec.p, "fast") && own(spec.p, "slow") && pick("fast") >= pick("slow")) throw new Error(`${path}: ${r.ind} fast must be below slow`);
+  if (own(spec.p, "fast") && own(spec.p, "slow") && spec.p.fast.int && pick("fast") >= pick("slow")) throw new Error(`${path}: ${r.ind} fast must be below slow`);
+  if (r.ind === "mama" && pick("fast") <= pick("slow")) throw new Error(`${path}: mama fast limit must be above the slow limit`);
   if (r.ind === "uo" && !(pick("short") < pick("mid") && pick("mid") < pick("long"))) throw new Error(`${path}: uo needs short < mid < long`);
   if (r.out !== undefined && (typeof r.out !== "string" || !spec.out.includes(r.out))) throw new Error(`${path}: ${r.ind} outputs ${spec.out.join(", ")}`);
   if (r.asset !== undefined && (typeof r.asset !== "string" || !ASSET_RE.test(r.asset))) throw new Error(`${path}: asset must be a coin ticker such as BTC, ETH or kPEPE`);
@@ -83,6 +85,7 @@ export function validateRule(rule) {
   const allowed = ["name", "coins", "timeframe", "leverage", "marginUsd", "long", "short", "stopLossPct", "takeProfitPct", "maxTradesPerDay"];
   for (const k of Object.keys(rule)) if (!allowed.includes(k)) throw new Error(`unknown rule field "${k}"`);
   if (typeof rule.name !== "string" || !rule.name.trim() || rule.name.length > 60) throw new Error("name: 1 to 60 characters");
+  if (HIDDEN_CHARS.test(rule.name)) throw new Error("name: no control, invisible or direction-changing characters");
   if (!Array.isArray(rule.coins) || !rule.coins.length || rule.coins.length > MAX_COINS || !rule.coins.every((c) => typeof c === "string" && ASSET_RE.test(c)) || new Set(rule.coins).size !== rule.coins.length) throw new Error(`coins must be a list of 1 to ${MAX_COINS} different tickers such as ["SOL", "ETH"]`);
   if (!own(TIMEFRAMES, rule.timeframe)) throw new Error(`timeframe must be one of ${Object.keys(TIMEFRAMES).join(", ")}`);
   if (!Number.isInteger(rule.leverage) || rule.leverage < 1 || rule.leverage > MAX_LEVERAGE) throw new Error(`leverage must be a whole number from 1 to ${MAX_LEVERAGE}`);
@@ -99,6 +102,7 @@ export function validateRule(rule) {
   const pct = (v, lo, hi, n) => { if (v !== undefined && (!num(v) || v < lo || v > hi)) throw new Error(`${n} must be from ${lo} to ${hi}`); };
   if (rule.stopLossPct === undefined) throw new Error("stopLossPct is required: every strategy needs a stop loss");
   pct(rule.stopLossPct, 0.05, 50, "stopLossPct"); pct(rule.takeProfitPct, 0.05, 500, "takeProfitPct");
+  if (rule.short && rule.takeProfitPct !== undefined && rule.takeProfitPct >= 99) throw new Error("takeProfitPct must be below 99 when the rule can go short: a short cannot gain more than 100%");
   if (rule.maxTradesPerDay !== undefined && (!Number.isInteger(rule.maxTradesPerDay) || rule.maxTradesPerDay < 1 || rule.maxTradesPerDay > 48)) throw new Error("maxTradesPerDay must be 1 to 48");
   const nAssets = assetsSeen.size;
   ruleTf = null; assetsSeen = null;
@@ -146,7 +150,8 @@ export function signalAt(rule, candles, i = candles.length - 1, get = makeCache(
 export function levels(rule, pos) {
   const d = pos.side;
   const stop = pos.entry * (1 - (d * rule.stopLossPct) / 100);
-  const liq = pos.entry * (1 - (d * liqDistancePct(pos.lev)) / 100);
+  const notional = pos.qty * pos.entry, room = pos.margin - (notional * MAINT_PCT) / 100;
+  const liq = Number.isFinite(pos.qty) && Number.isFinite(pos.margin) ? pos.entry - (d * room) / pos.qty : pos.entry * (1 - (d * liqDistancePct(pos.lev)) / 100);
   const take = rule.takeProfitPct !== undefined ? pos.entry * (1 + (d * rule.takeProfitPct) / 100) : d > 0 ? Infinity : -Infinity;
   const stopFirst = d > 0 ? stop >= liq : stop <= liq;
   return { stop, liq, take, adverse: stopFirst ? stop : liq, adverseIsLiq: !stopFirst };
@@ -172,7 +177,7 @@ export function touch(rule, s, coin, price, t) {
   const L = levels(rule, p), d = p.side;
   const box = { cash: s.cash, pos: p };
   let ev = null;
-  if (d * (price - L.adverse) <= 0) ev = closePosition(box, L.adverse, L.adverseIsLiq ? "liquidated" : "stop loss", t);
+  if (d * (price - L.adverse) <= 0) ev = closePosition(box, L.adverseIsLiq ? L.adverse : d > 0 ? Math.min(L.adverse, price) : Math.max(L.adverse, price), L.adverseIsLiq ? "liquidated" : "stop loss", t);
   else if (d * (price - L.take) >= 0) ev = closePosition(box, L.take, "take profit", t);
   if (ev) { s.cash = box.cash; s.pos[coin] = null; ev.coin = coin; }
   return ev;
@@ -201,14 +206,15 @@ function stepCoin(rule, s, coin, C, i, get, events) {
   if (!Number.isFinite(c.c)) return;
   const box = { cash: s.cash, pos: s.pos[coin] ? { ...s.pos[coin] } : null };
   const mine = [];
-  if (box.pos && Number.isFinite(c.fs) && c.fs !== 0) { const pay = box.pos.side * box.pos.qty * c.c * c.fs; box.cash -= pay; box.pos.funding -= pay; }
+  if (box.pos && Number.isFinite(c.fs) && c.fs !== 0) { const pay = box.pos.side * box.pos.qty * c.c * c.fs; box.pos.margin -= pay; box.pos.funding -= pay; }
   if (box.pos) {
     const L = levels(rule, box.pos), d = box.pos.side;
     const worst = d > 0 ? c.l : c.h, best = d > 0 ? c.h : c.l;
     let ev = null;
-    if (d * (c.o - L.adverse) <= 0) ev = closePosition(box, L.adverseIsLiq ? L.adverse : c.o, L.adverseIsLiq ? "liquidated" : "stop loss, opened beyond it", c.t);
-    else if (d * (worst - L.adverse) <= 0) ev = closePosition(box, L.adverse, L.adverseIsLiq ? "liquidated" : "stop loss", c.t);
+    if (box.pos.margin <= (box.pos.qty * box.pos.entry * MAINT_PCT) / 100) ev = closePosition(box, c.o, "liquidated, funding used up the margin", c.t);
+    else if (d * (c.o - L.adverse) <= 0) ev = closePosition(box, L.adverseIsLiq ? L.adverse : c.o, L.adverseIsLiq ? "liquidated" : "stop loss, opened beyond it", c.t);
     else if (d * (c.o - L.take) >= 0) ev = closePosition(box, c.o, "take profit, opened beyond it", c.t);
+    else if (d * (worst - L.adverse) <= 0) ev = closePosition(box, L.adverse, L.adverseIsLiq ? "liquidated" : "stop loss", c.t);
     else if (d * (best - L.take) >= 0) ev = closePosition(box, L.take, "take profit", c.t);
     if (ev) mine.push(ev);
   }

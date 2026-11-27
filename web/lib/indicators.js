@@ -122,7 +122,7 @@ function alma(x, p, off, sig) {
 }
 function mcginley(x, p) {
   const o = nan(x.length); const e = ema(x, p); let md = NaN;
-  for (let i = 0; i < x.length; i++) { if (!ok(md)) { if (ok(e[i])) md = e[i]; o[i] = md; continue; } md = md + (x[i] - md) / (p * (x[i] / md) ** 4); o[i] = md; }
+  for (let i = 0; i < x.length; i++) { if (!ok(md)) { if (ok(e[i])) md = e[i]; o[i] = md; continue; } if (!(md > 0) || !ok(x[i])) { md = ok(e[i]) ? e[i] : NaN; o[i] = md; continue; } const ratio = Math.min(2, Math.max(0.5, x[i] / md)); md = md + (x[i] - md) / Math.max(1, p * ratio ** 4); o[i] = md; }
   return o;
 }
 function fisher(C, p) {

@@ -15,3 +15,8 @@ CREATE TABLE IF NOT EXISTS agents_v2 (id TEXT PRIMARY KEY, account TEXT NOT NULL
 CREATE INDEX IF NOT EXISTS agents_v2_account ON agents_v2(account);
 CREATE INDEX IF NOT EXISTS agents_v2_running ON agents_v2(running);
 CREATE TABLE IF NOT EXISTS bt_cache (account TEXT NOT NULL, hash TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (account, hash));
+CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, account TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS sessions_account ON sessions(account);
+CREATE TABLE IF NOT EXISTS login_codes (hash TEXT PRIMARY KEY, account TEXT NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS token_grants (hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS token_grants_grant ON token_grants(grant_id);

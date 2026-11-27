@@ -113,7 +113,7 @@ const pnlOf = (side, inRaw, outRaw, margin, lev) => { const e = fill(inRaw, side
   const s = freshState(base, 1000);
   s.pos.SOL = { side: 1, entry: 100, qty: 10, margin: 100, lev: 10, openFee: 0.45, funding: 0, t: 0 };
   const ev = touch({ ...base, stopLossPct: 2, takeProfitPct: 3 }, s, "SOL", 97.9, 1);
-  ok(ev && ev.why === "stop loss" && near(ev.price, fill(98, 1, false)) && s.pos.SOL === null, "a live price tick past the stop closes the position at the stop");
+  ok(ev && ev.why === "stop loss" && near(ev.price, fill(97.9, 1, false)) && s.pos.SOL === null, "a live tick that jumps past the stop fills at the price seen, not the better stop price");
 }
 {
   const a = { left: { ind: "price" }, op: ">", right: 0 }, no = { left: { ind: "price" }, op: "<", right: 0 };
@@ -125,6 +125,25 @@ const pnlOf = (side, inRaw, outRaw, margin, lev) => { const e = fill(inRaw, side
   const bars = Array.from({ length: 24 * 70 }, (_, i) => { const p = 100 + i * 0.01; return { t: Date.UTC(2026, 0, 1) / 1000 + i * 3600, o: p, h: p, l: p, c: p, v: 1, fs: 0 }; });
   const res = backtest(rule, { SOL: bars }, 1000, 1, bars.length);
   ok(res.months.map((m) => m.month).join() === "2026-01,2026-02,2026-03" && res.allMonthsUp && res.monthsUp === 3, `monthly returns are split by calendar month (${res.months.map((m) => `${m.month} ${m.pct.toFixed(2)}%`).join(", ")})`);
+}
+{
+  const rule = { ...base, leverage: 10, stopLossPct: 9 };
+  const bars = [...flat(2), ...Array.from({ length: 400 }, (_, i) => bar(i + 2, 100, 100, 100, 100, 0.0005))];
+  const res = run(rule, bars), c = closeOf(res);
+  ok(c && c.liquidated && res.equity >= 0 && Math.min(...res.curve.map((p) => p.equity)) >= 0, `funding drains the margin and liquidates instead of pushing the balance below zero (${c && c.why}, equity ${res.equity.toFixed(2)})`);
+}
+{
+  const rule = { ...base, leverage: 10, stopLossPct: 5, takeProfitPct: 2 };
+  const c = closeOf(run(rule, [...flat(2), bar(2, 103, 103, 90, 95)]));
+  ok(c && c.why === "take profit, opened beyond it", "a candle that opens past the take profit fills there even if it later trades through the stop");
+}
+refuses({ ...base, name: "evil\u202Ename" }, /control|invisible|direction/, "names with direction-changing characters are refused");
+refuses({ ...base, short: { entry: any }, takeProfitPct: 150 }, /short/, "a short take profit of 100% or more is refused");
+ok(validateRule({ ...base, long: { entry: { left: { ind: "mama" }, op: "<", right: { ind: "price" } } } }), "MAMA validates with its default limits");
+{
+  const crash = [...Array.from({ length: 30 }, (_, i) => ({ t: 1700000000 + i * 86400, o: 100, h: 100, l: 100, c: 100, v: 1 })), { t: 1700000000 + 30 * 86400, o: 100, h: 100, l: 40, c: 45, v: 1 }, ...Array.from({ length: 10 }, (_, i) => ({ t: 1700000000 + (31 + i) * 86400, o: 45, h: 46, l: 44, c: 45, v: 1 }))];
+  const mg = series(crash, { ind: "mcginley", period: 14 }, "1d").slice(30);
+  ok(mg.every((v) => Number.isFinite(v) && v > 0 && v <= 100), "McGinley stays positive and finite after a 55% one-candle crash");
 }
 ok(parseKlines([[1700000000000, "1", "2", "0.5", "1.5", "10"]])[0].c === 1.5, "Binance style rows parse");
 

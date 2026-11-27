@@ -6,6 +6,8 @@ const CB = "https://claude.ai/api/mcp/auth_callback";
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else fail++; console.log(`${c ? "ok  " : "FAIL"} ${m}`); };
 const b64u = (b) => b.toString("base64url");
+const live = !B.includes("127.0.0.1");
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const form = (o) => ({ method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(o) });
 
 async function connect(cookie) {
@@ -24,10 +26,11 @@ const tool = async (token, name, args = {}) => { const r = await call(token, { j
 const good = { name: "Attack base", coins: ["SOL"], timeframe: "1h", leverage: 5, marginUsd: 100, long: { entry: { left: { ind: "rsi" }, op: "<", right: 30 } }, stopLossPct: 2 };
 
 console.log("== OAuth");
-for (const uri of ["https://evil.example/cb", "https://claude.ai.evil.example/cb", "https://evil.example/claude.ai", "https://user:pass@claude.ai/cb", "javascript:alert(1)", "http://evil.example/cb", "https://claude.ai/cb#frag"]) {
+for (const uri of ["https://claude.ai/other/path", "https://claude.ai:8443/api/mcp/auth_callback", "https://sub.claude.ai/api/mcp/auth_callback", "https://claude.ai/api/mcp/auth_callback?x=1", "https://evil.example/cb", "https://claude.ai.evil.example/cb", "https://evil.example/claude.ai", "https://user:pass@claude.ai/cb", "javascript:alert(1)", "http://evil.example/cb", "https://claude.ai/cb#frag"]) {
   const r = await fetch(`${B}/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ redirect_uris: [uri] }) });
   ok(r.status === 400, `register refuses ${uri}`);
 }
+if (live) { console.log("(waiting a minute: live registrations are limited to 10 a minute)"); await wait(62000); }
 const okReg = await fetch(`${B}/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ redirect_uris: ["http://localhost:33418/callback", "https://claude.com/api/mcp/auth_callback"] }) });
 ok(okReg.status === 201, "register accepts Claude Code localhost and claude.com callbacks");
 const A = await connect(null), V = await connect(null);
@@ -103,6 +106,54 @@ ok(!still.err && still.data.name === "Victim agent", "the victim's agent is unto
 const sqlish = await tool(A.tok.access_token, "get_agent", { agent_id: "' OR 1=1 --" });
 ok(sqlish.err, "an SQL-looking id finds nothing");
 
+console.log("== Fixes from the agent round");
+if (live) { console.log("(waiting a minute for the registration limit)"); await wait(62000); }
+{
+  const G = await connect(null);
+  await fetch(`${B}/oauth/revoke`, form({ token: G.tok.refresh_token }));
+  const after = await call(G.tok.access_token, { jsonrpc: "2.0", id: 1, method: "ping" });
+  ok(after.status === 401, "revoking the refresh token also kills its access token");
+  const H = await connect(null);
+  const r2 = await (await fetch(`${B}/oauth/token`, form({ grant_type: "refresh_token", refresh_token: H.tok.refresh_token, client_id: H.reg.client_id }))).json();
+  const old = await call(H.tok.access_token, { jsonrpc: "2.0", id: 1, method: "ping" }), fresh = await call(r2.access_token, { jsonrpc: "2.0", id: 1, method: "ping" });
+  ok(old.status === 401 && fresh.status === 200, "a refresh retires the previous access token of the same grant");
+  const P = await connect(null);
+  const props = [];
+  for (let i = 0; i < 14; i++) props.push((await tool(P.tok.access_token, "propose_agent", { rule: { ...good, name: `race ${i}` } })).data.proposal_id);
+  await Promise.all(props.map((id) => tool(P.tok.access_token, "apply_proposal", { proposal_id: id })));
+  const n = (await tool(P.tok.access_token, "list_agents")).data.agents.length;
+  ok(n <= 10, `parallel apply_proposal cannot pass the 10 agent limit (${n} agents)`);
+  const Q = await connect(null);
+  const one = (await tool(Q.tok.access_token, "propose_agent", { rule: { ...good, name: "once" } })).data.proposal_id;
+  const outs = await Promise.all(Array.from({ length: 6 }, () => tool(Q.tok.access_token, "apply_proposal", { proposal_id: one })));
+  ok(outs.filter((o) => !o.err).length === 1, `one proposal is applied exactly once under parallel calls (${outs.filter((o) => !o.err).length})`);
+  const agents = (await tool(P.tok.access_token, "list_agents")).data.agents.map((a) => a.id);
+  await Promise.all(agents.map((id) => tool(P.tok.access_token, "start_trading", { agent_id: id })));
+  const running = (await tool(P.tok.access_token, "list_agents")).data.agents.filter((a) => a.running).length;
+  ok(running <= 5, `parallel start_trading cannot pass 5 running agents (${running})`);
+  for (const id of agents) await tool(P.tok.access_token, "pause_trading", { agent_id: id });
+  const bidi = await tool(P.tok.access_token, "propose_agent", { rule: { ...good, name: "abc\u202Edef" } });
+  ok(bidi.err, "names with direction-changing characters are refused");
+  const dash = await tool(P.tok.access_token, "dashboard");
+  ok(dash.data && /\/login\?c=/.test(dash.data.loginLink), "dashboard returns a one-time login link");
+  const l1 = await fetch(dash.data.loginLink.replace(/^https?:\/\/[^/]+/, B), { redirect: "manual" });
+  const ck = (l1.headers.get("set-cookie") || "").split(";")[0];
+  const me1 = await (await fetch(`${B}/api/me`, { headers: { cookie: ck, origin: SITE } })).json();
+  ok(l1.status === 302 && me1.connected && me1.agents.length === n, "the login link signs a new browser in to the same account");
+  const l2 = await fetch(dash.data.loginLink.replace(/^https?:\/\/[^/]+/, B), { redirect: "manual" });
+  ok(l2.status === 400, "the login link works only once");
+  const dbl = await (await fetch(`${B}/api/me`, { headers: { cookie: `${ck}; ${P.cookie}`, origin: SITE } })).json();
+  ok(dbl.connected === false, "two account cookies in one request are not trusted");
+  await fetch(`${B}/api/disconnect`, { method: "POST", headers: { cookie: ck, origin: SITE } });
+  const me2 = await (await fetch(`${B}/api/me`, { headers: { cookie: ck, origin: SITE } })).json();
+  const me3 = await (await fetch(`${B}/api/me`, { headers: { cookie: P.cookie, origin: SITE } })).json();
+  ok(me2.connected === false && me3.connected === true, "disconnect ends that browser's session for good and leaves other browsers signed in");
+  for (const id of agents) await tool(P.tok.access_token, "delete_agent", { agent_id: id, confirm_name: (await tool(P.tok.access_token, "get_agent", { agent_id: id })).data.name });
+  const qa = (await tool(Q.tok.access_token, "list_agents")).data.agents;
+  for (const a of qa) await tool(Q.tok.access_token, "delete_agent", { agent_id: a.id, confirm_name: a.name });
+  for (const t of [H.tok.refresh_token, r2.refresh_token, P.tok.refresh_token, P.tok.access_token, Q.tok.refresh_token, Q.tok.access_token]) if (t) await fetch(`${B}/oauth/revoke`, form({ token: t }));
+}
+
 console.log("== Site API");
 const meEvil = await fetch(`${B}/api/me`, { headers: { cookie: V.cookie, origin: "https://evil.example" } });
 ok(!meEvil.headers.get("access-control-allow-origin"), "no CORS for another origin");
@@ -123,6 +174,7 @@ console.log(`\n${pass} passed, ${fail} failed`);
 
 if (!B.includes("127.0.0.1")) {
   console.log("== Rate limits (live only)");
+  await wait(62000);
   const L = await connect(null);
   const res = [];
   for (let i = 0; i < 10; i++) res.push(await tool(L.tok.access_token, "backtest", { rule: good, candles: 300 }));

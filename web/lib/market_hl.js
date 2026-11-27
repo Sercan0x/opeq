@@ -18,7 +18,8 @@ const candleCache = new Map();
 export async function candles(symbol, interval, total = 1000, fetchImpl = fetch) {
   const size = Math.min(5000, total <= 500 ? 500 : Math.ceil(total / 1000) * 1000);
   const key = `${symbol}|${interval}|${size}`, hit = candleCache.get(key);
-  if (hit && Date.now() - hit.at < 25000) return hit.rows.slice(-total).map((c) => ({ ...c }));
+  const stepMs = (Object.prototype.hasOwnProperty.call(SECS, interval) ? SECS[interval] : 60) * 1000;
+  if (hit && Date.now() - hit.at < 25000 && Math.floor(hit.at / stepMs) === Math.floor(Date.now() / stepMs)) return hit.rows.slice(-total).map((c) => ({ ...c }));
   const rows = await fetchCandles(symbol, interval, size, fetchImpl);
   if (candleCache.size > 80) candleCache.clear();
   candleCache.set(key, { at: Date.now(), rows });
@@ -59,6 +60,12 @@ async function fundingWindow(coin, start, fetchImpl) {
   if (fundingCache.size > 500) fundingCache.clear();
   fundingCache.set(key, { at: Date.now(), rows: list });
   return list;
+}
+
+export async function mids(fetchImpl = fetch) {
+  const m = await info({ type: "allMids" }, fetchImpl);
+  if (!m || typeof m !== "object") throw new Error("no live prices");
+  return m;
 }
 
 export async function withMarketData(C, symbol, interval, need, fetchImpl = fetch) {
