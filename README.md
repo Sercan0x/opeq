@@ -21,6 +21,7 @@ The wallet runs as a Chrome extension, from a USB stick on Windows, and soon on 
 - **Swaps** through Jupiter on Solana and Uniswap on EVM, each checked and simulated before signing, and a **bridge** between Solana and the EVM networks through Relay.
 - **Multisig** vaults where every approval is a quantum-resistant signature, and a **lock for existing Safe and Squads multisigs** that makes an OPEQ approval required.
 - **AI agents** that pay for services over x402 from the wallet, up to an allowance the token program enforces on chain.
+- **DOKO**, futures trading agents you build by talking to your own Claude and run with paper money. See [DOKO](#doko-trading-agents-beta).
 - **An SDK** for developers: [`@opeqlabs/sdk`](https://www.npmjs.com/package/@opeqlabs/sdk) (see `sdk/`).
 
 The Solana account itself:
@@ -44,7 +45,7 @@ The Solana account itself:
 Install the mainnet wallet from the [Chrome Web Store](https://chromewebstore.google.com/detail/opeq-wallet/ppddghgloaomicpgkpodjenaogmhhijj), or build the extension yourself and load `build/extension-mainnet` with *Load unpacked* on `chrome://extensions`. A mainnet build checks the program, its governance and the admin vault on chain:
 
 ```
-python3 build_extension.py --net mainnet --version 1.8.0 \
+python3 build_extension.py --net mainnet --version 1.9.0 \
   --program HL598vrersxS5AUUV6NyzHgpSyK31xAmqMsqUhxzeKm8 \
   --authority 6KX8M2fwCGyMTFodAL2HE1gbhwM5vYzfia2rsjhuHPU8 \
   --gov 2UpwhLHUUS1Uqij7KVdXxLRWjt8yCssdFjB2QG4saRAj \
@@ -53,7 +54,7 @@ python3 build_extension.py --net mainnet --version 1.8.0 \
   --rpc https://api.mainnet-beta.solana.com
 ```
 
-The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store for the same version file for file. To compare it with your own install, Chrome keeps the store copy in its profile folder under `Extensions/ppddghgloaomicpgkpodjenaogmhhijj/1.8.0_0` (on Windows `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\...`). The store adds its own `_metadata` signature folder, adds store fields such as `update_url` to `manifest.json`, and re-encodes the icon images, so leave those out:
+The build is reproducible: with `--rpc https://rpc.opeq.io` instead, `build/extension-mainnet` matches the package submitted to the store for the same version file for file. To compare it with your own install, Chrome keeps the store copy in its profile folder under `Extensions/ppddghgloaomicpgkpodjenaogmhhijj/1.9.0_0` (on Windows `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\...`). The store adds its own `_metadata` signature folder, adds store fields such as `update_url` to `manifest.json`, and re-encodes the icon images, so leave those out:
 
 ```
 diff -r --exclude=_metadata --exclude=manifest.json --exclude=icons build/extension-mainnet <installed folder>
@@ -221,6 +222,18 @@ An AI agent can pay for services over x402 while the money stays in the OPEQ wal
 - Multisig and Squads reviews show token allowances, revokes and authority changes in plain words.
 
 Library `web/lib/agent.js` and `web/lib/agentevm.js`. Tests: `test_allowance_preview.mjs`, `sdk/test/e2e_agent_devnet.mjs` (Solana devnet, settles through the x402.org facilitator), `evm/test_agentevm.mjs` (anvil) and `evm/e2e_agent_sepolia.mjs` (Base Sepolia with a real OPEQ account, settles through the x402.org facilitator).
+
+## DOKO trading agents (beta)
+
+DOKO lets anyone build a futures trading agent by talking to their own Claude. It runs with paper money only and never touches a wallet.
+
+- **Connect:** in Claude, open Plugins, choose Add custom connector and paste `https://doko.opeq.io/mcp`. Sign-in is OAuth 2.1 with dynamic client registration and PKCE, for Claude only, with no email or password.
+- **Rules, not AI, at run time:** Claude writes each agent as a JSON rule (long and short entries and exits, leverage 1x to 125x, margin, stop loss, take profit) over 140 indicators, 29 candle patterns and 10 timeframes, on any Hyperliquid coin, with up to three other coins as filters. Once the user approves it, the rule runs as fixed math on closed candles.
+- **Honest tests:** backtests charge fees and slippage on both sides, hourly funding taken from the position's margin, and isolated-margin liquidations. Stops, take profits and liquidations fire inside the candle, the worse one first. Settings search and the random strategy search score on the first 65% of the history and keep only what also holds on the last 35%. Deep tests use stored Coinbase hourly history back to June 2021.
+- **Live:** a Durable Object follows the Hyperliquid order book over WebSocket and closes positions the moment a stop, take profit or liquidation price is touched. A cron advances every running agent on each closed candle.
+- **Dashboard:** [opeq.io/doko](https://opeq.io/doko) shows each account its own agents, positions and trades. Claude can hand out a one-time login link for another browser.
+
+Code: `doko/worker.js` (MCP server, OAuth, live watcher, cron), `web/lib/bot.js` (futures engine), `web/lib/indicators.js`, `web/lib/discover.js`, `web/lib/optimize.js`, `web/lib/market_hl.js`. Tests: `test_bot.mjs`, `test_indicators.mjs` (including a no-look-ahead check on every indicator output), `doko/test_e2e.mjs` and `doko/test_attack.mjs` (81 attack cases against a running server). Deploy: `deploy_doko.py`.
 
 ## Bridge (beta)
 
